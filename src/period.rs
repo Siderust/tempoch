@@ -288,8 +288,8 @@ impl Serialize for Interval<crate::ModifiedJulianDate> {
         S: Serializer,
     {
         let mut s = serializer.serialize_struct("Period", 2)?;
-        s.serialize_field("start_mjd", &self.start.quantity())?;
-        s.serialize_field("end_mjd", &self.end.quantity())?;
+        s.serialize_field("start_mjd", &self.start.value())?;
+        s.serialize_field("end_mjd", &self.end.value())?;
         s.end()
     }
 }
@@ -322,8 +322,8 @@ impl Serialize for Interval<crate::JulianDate> {
         S: Serializer,
     {
         let mut s = serializer.serialize_struct("Period", 2)?;
-        s.serialize_field("start_jd", &self.start.quantity())?;
-        s.serialize_field("end_jd", &self.end.quantity())?;
+        s.serialize_field("start_jd", &self.start.value())?;
+        s.serialize_field("end_jd", &self.end.value())?;
         s.end()
     }
 }
