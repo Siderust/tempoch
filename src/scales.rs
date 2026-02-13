@@ -24,6 +24,8 @@
 //! | [`TDB`] | Barycentric Dynamical Time (canonical) |
 //! | [`TT`]  | Terrestrial Time |
 //! | [`TAI`] | International Atomic Time |
+//! | [`TCG`] | Geocentric Coordinate Time (IAU 2000) |
+//! | [`TCB`] | Barycentric Coordinate Time (IAU 2006) |
 
 use super::instant::TimeScale;
 use qtty::Days;
@@ -170,6 +172,117 @@ impl TimeScale for TAI {
 }
 
 // ---------------------------------------------------------------------------
+// Coordinate time scales (IAU 2000 / 2006)
+// ---------------------------------------------------------------------------
+
+/// Geocentric Coordinate Time — the coordinate time for the GCRS.
+///
+/// TCG is the proper time experienced by a clock at the geocenter, free from
+/// the gravitational time dilation of the Earth's potential.
+///
+/// The defining relation (IAU 2000 Resolution B1.9) is:
+///
+/// ```text
+/// dTT / dTCG = 1 − L_G
+/// ```
+///
+/// where **L_G = 6.969 290 134 × 10⁻¹⁰** is an IAU defining constant.
+/// Integrating:
+///
+/// ```text
+/// TT = TCG − L_G × (JD_TCG − T₀)
+/// ```
+///
+/// with **T₀ = 2 443 144.500 372 5** (JD of 1977 January 1.0 TAI in the TCG scale).
+///
+/// ## References
+/// * IAU 2000 Resolution B1.9
+/// * IERS Conventions (2010), §1.2
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
+pub struct TCG;
+
+/// IAU defining constant L_G (IAU 2000 Resolution B1.9).
+///
+/// Defines the rate difference between TT and TCG:
+/// `dTT/dTCG = 1 − L_G`.
+const L_G: f64 = 6.969_290_134e-10;
+
+/// TCG epoch T₀: JD(TCG) of 1977 January 1.0 TAI.
+const TCG_EPOCH_T0: f64 = 2_443_144.500_372_5;
+
+impl TimeScale for TCG {
+    const LABEL: &'static str = "TCG";
+
+    #[inline]
+    fn to_jd_tt(tcg_value: Days) -> Days {
+        // TT = TCG − L_G × (JD_TCG − T₀)
+        let jd_tcg = tcg_value.value();
+        Days::new(jd_tcg - L_G * (jd_tcg - TCG_EPOCH_T0))
+    }
+
+    #[inline]
+    fn from_jd_tt(jd_tt: Days) -> Days {
+        // JD_TCG = (JD_TT + L_G × T₀) / (1 − L_G)
+        //        ≈ JD_TT + L_G × (JD_TT − T₀)   (first-order, adequate for f64)
+        let tt = jd_tt.value();
+        Days::new(tt + L_G * (tt - TCG_EPOCH_T0) / (1.0 - L_G))
+    }
+}
+
+/// Barycentric Coordinate Time — the coordinate time for the BCRS.
+///
+/// TCB is the time coordinate complementary to barycentric spatial coordinates.
+/// It relates to TDB via a linear drift:
+///
+/// ```text
+/// TDB = TCB − L_B × (JD_TCB − T₀) + TDB₀
+/// ```
+///
+/// where:
+/// * **L_B = 1.550 519 768 × 10⁻⁸** (IAU 2006 Resolution B3, defining constant)
+/// * **TDB₀ = −6.55 × 10⁻⁵ s** (IAU 2006 Resolution B3)
+/// * **T₀ = 2 443 144.500 372 5** (JD of 1977 January 1.0 TAI)
+///
+/// Since TDB ≈ TT for route-through-JD(TT) purposes (the ≈1.7 ms periodic
+/// difference is handled separately), we use the TDB relation directly.
+///
+/// ## References
+/// * IAU 2006 Resolution B3
+/// * IERS Conventions (2010), §1.2
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
+pub struct TCB;
+
+/// IAU defining constant L_B (IAU 2006 Resolution B3).
+///
+/// Defines the rate difference between TDB and TCB:
+/// `TDB = TCB − L_B × (JD_TCB − T₀) + TDB₀`.
+const L_B: f64 = 1.550_519_768e-8;
+
+/// TDB₀ offset in days (IAU 2006 Resolution B3): −6.55 × 10⁻⁵ s.
+const TDB0_DAYS: f64 = -6.55e-5 / 86_400.0;
+
+impl TimeScale for TCB {
+    const LABEL: &'static str = "TCB";
+
+    #[inline]
+    fn to_jd_tt(tcb_value: Days) -> Days {
+        // TDB = TCB − L_B × (JD_TCB − T₀)
+        // Treating TDB ≈ TT (periodic ≈1.7 ms difference handled separately).
+        // Matches SOFA iauTcbtdb.
+        let jd_tcb = tcb_value.value();
+        Days::new(jd_tcb - L_B * (jd_tcb - TCG_EPOCH_T0))
+    }
+
+    #[inline]
+    fn from_jd_tt(jd_tt: Days) -> Days {
+        // JD_TCB = JD_TDB + L_B × (JD_TDB − T₀)
+        // Matches SOFA iauTdbtcb.
+        let tt = jd_tt.value();
+        Days::new(tt + L_B * (tt - TCG_EPOCH_T0))
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Navigation counters
 // ---------------------------------------------------------------------------
 
@@ -296,7 +409,7 @@ macro_rules! impl_time_conversions {
     };
 }
 
-impl_time_conversions!(JD, JDE, MJD, TDB, TT, TAI, GPS, UnixTime, UT);
+impl_time_conversions!(JD, JDE, MJD, TDB, TT, TAI, TCG, TCB, GPS, UnixTime, UT);
 
 #[cfg(test)]
 mod tests {
@@ -352,6 +465,65 @@ mod tests {
         let jd = Time::<JD>::new(2_451_545.0);
         let tdb: Time<TDB> = jd.to::<TDB>();
         assert!((tdb.quantity() - jd.quantity()).abs() < Days::new(1e-15));
+    }
+
+    #[test]
+    fn tcg_tt_offset_at_j2000() {
+        // At J2000.0 (JD 2451545.0), TCG runs ahead of TT.
+        // TT = TCG − L_G × (JD_TCG − T₀)
+        // The offset at J2000 should be ~L_G × (2451545 − 2443144.5) × 86400 s
+        //   ≈ 6.97e-10 × 8400.5 × 86400 ≈ 0.506 s
+        let tt = Time::<TT>::new(2_451_545.0);
+        let tcg: Time<TCG> = tt.to::<TCG>();
+        let offset_days = tcg.quantity() - tt.quantity();
+        let offset_secs = offset_days.to::<Second>();
+        // TCG should be ahead of TT by ~0.506 s at J2000
+        assert!(
+            (offset_secs - Seconds::new(0.506)).abs() < Seconds::new(0.01),
+            "TCG−TT offset at J2000 = {} s, expected ~0.506 s",
+            offset_secs
+        );
+    }
+
+    #[test]
+    fn tcg_tt_roundtrip() {
+        let tt = Time::<TT>::new(2_451_545.0);
+        let tcg: Time<TCG> = tt.to::<TCG>();
+        let back: Time<TT> = tcg.to::<TT>();
+        assert!(
+            (back.quantity() - tt.quantity()).abs() < Days::new(1e-12),
+            "TCG→TT roundtrip error: {} days",
+            (back.quantity() - tt.quantity()).abs()
+        );
+    }
+
+    #[test]
+    fn tcb_tdb_offset_at_j2000() {
+        // TCB runs significantly ahead of TDB.
+        // Offset ≈ L_B × (2451545 − 2443144.5) × 86400 s
+        //        ≈ 1.55e-8 × 8400.5 × 86400 ≈ 11.25 s
+        let tt = Time::<TT>::new(2_451_545.0);
+        let tcb: Time<TCB> = tt.to::<TCB>();
+        let offset_days = tcb.quantity() - tt.quantity();
+        let offset_secs = offset_days.to::<Second>();
+        // TCB should be ahead of TT/TDB by ~11.25 s at J2000
+        assert!(
+            (offset_secs - Seconds::new(11.25)).abs() < Seconds::new(0.5),
+            "TCB−TT offset at J2000 = {} s, expected ~11.25 s",
+            offset_secs
+        );
+    }
+
+    #[test]
+    fn tcb_tt_roundtrip() {
+        let tt = Time::<TT>::new(2_458_000.0);
+        let tcb: Time<TCB> = tt.to::<TCB>();
+        let back: Time<TT> = tcb.to::<TT>();
+        assert!(
+            (back.quantity() - tt.quantity()).abs() < Days::new(1e-10),
+            "TCB→TT roundtrip error: {} days",
+            (back.quantity() - tt.quantity()).abs()
+        );
     }
 
     #[test]
