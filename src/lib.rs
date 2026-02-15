@@ -28,6 +28,8 @@
 //! | [`TDB`] | Barycentric Dynamical Time |
 //! | [`TT`] | Terrestrial Time |
 //! | [`TAI`] | International Atomic Time |
+//! | [`TCG`] | Geocentric Coordinate Time |
+//! | [`TCB`] | Barycentric Coordinate Time |
 //! | [`GPS`] | GPS Time |
 //! | [`UnixTime`] | Unix / POSIX time |
 //! | [`UT`] | Universal Time (Earth rotation) |
@@ -49,7 +51,7 @@ pub(crate) mod scales;
 
 pub use instant::{Time, TimeInstant, TimeScale};
 pub use period::{complement_within, intersect_periods, Interval, Period, UtcPeriod};
-pub use scales::{UnixTime, GPS, JD, JDE, MJD, TAI, TDB, TT, UT};
+pub use scales::{UnixTime, GPS, JD, JDE, MJD, TAI, TCB, TCG, TDB, TT, UT};
 
 // ── Backward-compatible type aliases ──────────────────────────────────────
 
