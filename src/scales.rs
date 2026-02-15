@@ -258,9 +258,6 @@ pub struct TCB;
 /// `TDB = TCB − L_B × (JD_TCB − T₀) + TDB₀`.
 const L_B: f64 = 1.550_519_768e-8;
 
-/// TDB₀ offset in days (IAU 2006 Resolution B3): −6.55 × 10⁻⁵ s.
-const TDB0_DAYS: f64 = -6.55e-5 / 86_400.0;
-
 impl TimeScale for TCB {
     const LABEL: &'static str = "TCB";
 
