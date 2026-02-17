@@ -398,8 +398,17 @@ const LEAP_SECONDS: [(f64, f64); 28] = [
 ];
 
 /// Look up cumulative TAI−UTC (leap seconds) for a JD on the UTC axis.
+///
+/// Returns the number of leap seconds (TAI − UTC) in effect at the given
+/// Julian Date on the UTC time axis.  The table covers 1972–2017
+/// (28 insertions).  Before 1972 the conventional initial offset of 10 s
+/// is returned.
+///
+/// # Arguments
+///
+/// * `jd_utc` - Julian Date number on the UTC axis.
 #[inline]
-fn tai_minus_utc(jd_utc: f64) -> f64 {
+pub fn tai_minus_utc(jd_utc: f64) -> f64 {
     // Binary search for the last entry <= jd_utc
     let mut lo = 0usize;
     let mut hi = LEAP_SECONDS.len();
