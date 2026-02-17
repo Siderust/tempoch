@@ -45,13 +45,13 @@ mod delta_t;
 pub(crate) mod instant;
 mod julian_date_ext;
 mod period;
-pub(crate) mod scales;
+mod scales;
 
 // ── Re-exports ────────────────────────────────────────────────────────────
 
 pub use instant::{Time, TimeInstant, TimeScale};
 pub use period::{complement_within, intersect_periods, Interval, Period, UtcPeriod};
-pub use scales::{UnixTime, GPS, JD, JDE, MJD, TAI, TCB, TCG, TDB, TT, UT};
+pub use scales::{tai_minus_utc, UnixTime, GPS, JD, JDE, MJD, TAI, TCB, TCG, TDB, TT, UT};
 
 // ── Backward-compatible type aliases ──────────────────────────────────────
 
