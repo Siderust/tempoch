@@ -268,7 +268,15 @@ impl Interval<DateTime<Utc>> {
     ///
     /// This converts the chrono::Duration to days.
     pub fn duration_days(&self) -> f64 {
-        self.duration().num_seconds() as f64 / 86400.0
+        const NANOS_PER_DAY: f64 = 86_400_000_000_000.0;
+        const SECONDS_PER_DAY: f64 = 86_400.0;
+
+        let duration = self.duration();
+        match duration.num_nanoseconds() {
+            Some(ns) => ns as f64 / NANOS_PER_DAY,
+            // Fallback for exceptionally large durations that do not fit in i64 nanoseconds.
+            None => duration.num_seconds() as f64 / SECONDS_PER_DAY,
+        }
     }
 
     /// Returns the duration in seconds.
@@ -505,6 +513,17 @@ mod tests {
 
         assert_eq!(period.duration_days(), 1.0);
         assert_eq!(period.duration_seconds(), 86400);
+    }
+
+    #[test]
+    fn test_period_duration_utc_subsecond_precision() {
+        let start = DateTime::from_timestamp(0, 0).unwrap();
+        let end = DateTime::from_timestamp(0, 500_000_000).unwrap();
+        let period = Interval::new(start, end);
+
+        let expected_days = 0.5 / 86_400.0;
+        assert!((period.duration_days() - expected_days).abs() < 1e-15);
+        assert_eq!(period.duration_seconds(), 0);
     }
 
     #[test]
