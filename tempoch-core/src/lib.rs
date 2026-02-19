@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Vallés Puig, Ramon
 
 //! Time Module
@@ -49,8 +49,11 @@ mod scales;
 
 // ── Re-exports ────────────────────────────────────────────────────────────
 
-pub use instant::{Time, TimeInstant, TimeScale};
-pub use period::{complement_within, intersect_periods, Interval, Period, UtcPeriod};
+pub use instant::{NonFiniteTimeError, Time, TimeInstant, TimeScale};
+pub use period::{
+    complement_within, intersect_periods, normalize_periods, validate_period_list,
+    ConversionError, Interval, InvalidIntervalError, Period, PeriodListError, UtcPeriod,
+};
 pub use scales::{tai_minus_utc, UnixTime, GPS, JD, JDE, MJD, TAI, TCB, TCG, TDB, TT, UT};
 
 // ── Backward-compatible type aliases ──────────────────────────────────────

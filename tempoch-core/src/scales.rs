@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Vallés Puig, Ramon
 
 //! Time-scale marker types.
@@ -118,7 +118,7 @@ pub struct TDB;
 /// Compute TDB − TT in days using the Fairhead & Bretagnon (1990) 4-term
 /// expression.  Accuracy: better than 30 μs for |t| < 100 centuries.
 #[inline]
-fn tdb_minus_tt_days(jd_tt: Days) -> Days {
+pub(crate) fn tdb_minus_tt_days(jd_tt: Days) -> Days {
     // Julian centuries from J2000.0 on the TT axis
     let t = (jd_tt.value() - 2_451_545.0) / 36_525.0;
 

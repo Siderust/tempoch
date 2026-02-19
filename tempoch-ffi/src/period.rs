@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Vallés Puig, Ramon
 
 //! FFI bindings for tempoch period/interval types.
@@ -92,18 +92,5 @@ pub unsafe extern "C" fn tempoch_period_mjd_intersection(
             TempochStatus::Ok
         }
         None => TempochStatus::NoIntersection,
-    }
-}
-
-/// Free an array of MJD periods previously returned by siderust-ffi.
-///
-/// # Safety
-/// `ptr` must have been allocated by this library, and `count` must match.
-#[no_mangle]
-pub unsafe extern "C" fn tempoch_periods_free(ptr: *mut TempochPeriodMjd, count: usize) {
-    if !ptr.is_null() && count > 0 {
-        let slice_ptr = std::ptr::slice_from_raw_parts_mut(ptr, count);
-        // SAFETY: caller guarantees `ptr,count` came from this library and match the original allocation.
-        let _ = unsafe { Box::from_raw(slice_ptr) };
     }
 }

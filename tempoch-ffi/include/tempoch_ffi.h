@@ -76,12 +76,6 @@ tempoch_status_t tempoch_period_mjd_intersection(struct tempoch_period_mjd_t a,
                                                  struct tempoch_period_mjd_t b,
                                                  struct tempoch_period_mjd_t *out);
 
-// Free an array of MJD periods previously returned by siderust-ffi.
-//
-// # Safety
-// `ptr` must have been allocated by this library, and `count` must match.
- void tempoch_periods_free(struct tempoch_period_mjd_t *ptr, uintptr_t count);
-
 // Create a Julian Date from a raw f64 value.
  double tempoch_jd_new(double value);
 

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Vallés Puig, Ramon
 
 //! Time Module
@@ -42,7 +42,8 @@
 //! The raw ΔT value (in seconds) is available via [`Time::<UT>::delta_t()`](Time::delta_t).
 
 pub use tempoch_core::{
-    complement_within, intersect_periods, tai_minus_utc, Interval, JulianDate, JulianEphemerisDay,
-    ModifiedJulianDate, Period, Time, TimeInstant, TimeScale, UniversalTime, UnixTime, UtcPeriod,
-    GPS, JD, JDE, MJD, TAI, TCB, TCG, TDB, TT, UT,
+    complement_within, intersect_periods, normalize_periods, tai_minus_utc, validate_period_list,
+    ConversionError, Interval, InvalidIntervalError, JulianDate, JulianEphemerisDay,
+    ModifiedJulianDate, NonFiniteTimeError, Period, PeriodListError, Time, TimeInstant, TimeScale,
+    UniversalTime, UnixTime, UtcPeriod, GPS, JD, JDE, MJD, TAI, TCB, TCG, TDB, TT, UT,
 };
