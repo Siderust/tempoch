@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.2.1 - 2026-02-19]
+
+### Added
+
+- FFI support
+
 ### Fixed
 
 - Preserve sub-second precision in `Interval<DateTime<Utc>>::duration_days()` by computing from nanoseconds instead of truncating via whole seconds.
