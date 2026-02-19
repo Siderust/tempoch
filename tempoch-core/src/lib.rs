@@ -51,8 +51,8 @@ mod scales;
 
 pub use instant::{NonFiniteTimeError, Time, TimeInstant, TimeScale};
 pub use period::{
-    complement_within, intersect_periods, normalize_periods, validate_period_list,
-    ConversionError, Interval, InvalidIntervalError, Period, PeriodListError, UtcPeriod,
+    complement_within, intersect_periods, normalize_periods, validate_period_list, ConversionError,
+    Interval, InvalidIntervalError, Period, PeriodListError, UtcPeriod,
 };
 pub use scales::{tai_minus_utc, UnixTime, GPS, JD, JDE, MJD, TAI, TCB, TCG, TDB, TT, UT};
 
