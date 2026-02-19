@@ -86,16 +86,10 @@ impl fmt::Display for PeriodListError {
                 write!(f, "interval at index {index} has start > end")
             }
             PeriodListError::Unsorted { index } => {
-                write!(
-                    f,
-                    "interval at index {index} is not sorted by start time"
-                )
+                write!(f, "interval at index {index} is not sorted by start time")
             }
             PeriodListError::Overlapping { index } => {
-                write!(
-                    f,
-                    "interval at index {index} overlaps with its predecessor"
-                )
+                write!(f, "interval at index {index} overlaps with its predecessor")
             }
         }
     }
@@ -595,7 +589,10 @@ pub fn validate_period_list<T: TimeInstant>(
     periods: &[Interval<T>],
 ) -> Result<(), PeriodListError> {
     for (i, p) in periods.iter().enumerate() {
-        if p.start.partial_cmp(&p.end).is_none_or(|o| o == std::cmp::Ordering::Greater) {
+        if p.start
+            .partial_cmp(&p.end)
+            .is_none_or(|o| o == std::cmp::Ordering::Greater)
+        {
             return Err(PeriodListError::InvalidInterval { index: i });
         }
     }
