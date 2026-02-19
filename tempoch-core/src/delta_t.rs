@@ -26,6 +26,7 @@
 //!
 //! ## Quick Example
 //! ```rust
+//! # use tempoch_core as tempoch;
 //! use tempoch::{UT, JD, Time};
 //!
 //! // UT-based Julian Day -> JD(TT) with ΔT applied

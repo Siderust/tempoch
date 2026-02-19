@@ -41,8 +41,11 @@ impl TempochPeriodMjd {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Create a new MJD period. Returns InvalidPeriod if start > end.
+///
+/// # Safety
+/// `out` must be a valid, writable pointer to `TempochPeriodMjd`.
 #[no_mangle]
-pub extern "C" fn tempoch_period_mjd_new(
+pub unsafe extern "C" fn tempoch_period_mjd_new(
     start_mjd: f64,
     end_mjd: f64,
     out: *mut TempochPeriodMjd,
@@ -53,11 +56,9 @@ pub extern "C" fn tempoch_period_mjd_new(
     if start_mjd > end_mjd {
         return TempochStatus::InvalidPeriod;
     }
+    // SAFETY: `out` was checked for null and the caller guarantees it points to writable memory.
     unsafe {
-        *out = TempochPeriodMjd {
-            start_mjd,
-            end_mjd,
-        };
+        *out = TempochPeriodMjd { start_mjd, end_mjd };
     }
     TempochStatus::Ok
 }
@@ -70,8 +71,11 @@ pub extern "C" fn tempoch_period_mjd_duration_days(period: TempochPeriodMjd) -> 
 
 /// Compute the intersection of two periods.
 /// Returns NoIntersection if they don't overlap, Ok if `out` is filled.
+///
+/// # Safety
+/// `out` must be a valid, writable pointer to `TempochPeriodMjd`.
 #[no_mangle]
-pub extern "C" fn tempoch_period_mjd_intersection(
+pub unsafe extern "C" fn tempoch_period_mjd_intersection(
     a: TempochPeriodMjd,
     b: TempochPeriodMjd,
     out: *mut TempochPeriodMjd,
@@ -83,6 +87,7 @@ pub extern "C" fn tempoch_period_mjd_intersection(
     let pb = b.to_period();
     match pa.intersection(&pb) {
         Some(result) => {
+            // SAFETY: `out` was checked for null and the caller guarantees it points to writable memory.
             unsafe { *out = TempochPeriodMjd::from_period(&result) };
             TempochStatus::Ok
         }
@@ -97,6 +102,8 @@ pub extern "C" fn tempoch_period_mjd_intersection(
 #[no_mangle]
 pub unsafe extern "C" fn tempoch_periods_free(ptr: *mut TempochPeriodMjd, count: usize) {
     if !ptr.is_null() && count > 0 {
-        let _ = Box::from_raw(std::slice::from_raw_parts_mut(ptr, count));
+        let slice_ptr = std::ptr::slice_from_raw_parts_mut(ptr, count);
+        // SAFETY: caller guarantees `ptr,count` came from this library and match the original allocation.
+        let _ = unsafe { Box::from_raw(slice_ptr) };
     }
 }
