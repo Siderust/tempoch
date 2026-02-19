@@ -97,6 +97,7 @@ impl PeriodUtcTarget for DateTime<Utc> {
 /// # Examples
 ///
 /// ```
+/// # use tempoch_core as tempoch;
 /// use tempoch::{Interval, ModifiedJulianDate};
 ///
 /// let start = ModifiedJulianDate::new(59000.0);
@@ -132,6 +133,7 @@ impl<T: TimeInstant> Interval<T> {
     /// # Examples
     ///
     /// ```
+    /// # use tempoch_core as tempoch;
     /// use tempoch::{Interval, JulianDate};
     ///
     /// let start = JulianDate::new(2451545.0);
@@ -147,6 +149,7 @@ impl<T: TimeInstant> Interval<T> {
     /// # Examples
     ///
     /// ```
+    /// # use tempoch_core as tempoch;
     /// use tempoch::{Interval, JulianDate};
     /// use qtty::Days;
     ///
@@ -206,6 +209,7 @@ impl<S: TimeScale> Interval<Time<S>> {
     ///
     /// ```
     /// use chrono::{DateTime, Utc};
+    /// # use tempoch_core as tempoch;
     /// use tempoch::{Interval, JD, MJD, Period, Time};
     ///
     /// let period_jd = Period::new(Time::<JD>::new(2451545.0), Time::<JD>::new(2451546.0));
@@ -234,6 +238,7 @@ impl<T: TimeInstant<Duration = Days>> Interval<T> {
     /// # Examples
     ///
     /// ```
+    /// # use tempoch_core as tempoch;
     /// use tempoch::{Interval, ModifiedJulianDate};
     /// use qtty::Days;
     ///

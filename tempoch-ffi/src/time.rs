@@ -7,7 +7,7 @@
 use crate::error::TempochStatus;
 use chrono::{DateTime, NaiveDate, Utc};
 use qtty::Days;
-use tempoch::{JulianDate, ModifiedJulianDate, TimeInstant, MJD, JD};
+use tempoch::{JulianDate, ModifiedJulianDate, TimeInstant, JD, MJD};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // C-repr types
@@ -27,12 +27,12 @@ pub struct TempochUtc {
 }
 
 impl TempochUtc {
-    fn to_chrono(&self) -> Option<DateTime<Utc>> {
+    fn into_chrono(self) -> Option<DateTime<Utc>> {
         let date = NaiveDate::from_ymd_opt(self.year, self.month as u32, self.day as u32)?;
         let time = date.and_hms_nano_opt(
-            self.hour as u32,
-            self.minute as u32,
-            self.second as u32,
+            self.hour.into(),
+            self.minute.into(),
+            self.second.into(),
             self.nanosecond,
         )?;
         Some(DateTime::<Utc>::from_naive_utc_and_offset(time, Utc))
@@ -75,14 +75,18 @@ pub extern "C" fn tempoch_jd_to_mjd(jd: f64) -> f64 {
 }
 
 /// Create a Julian Date from a UTC date-time.
+///
+/// # Safety
+/// `out` must be a valid, writable pointer to `f64`.
 #[no_mangle]
-pub extern "C" fn tempoch_jd_from_utc(utc: TempochUtc, out: *mut f64) -> TempochStatus {
+pub unsafe extern "C" fn tempoch_jd_from_utc(utc: TempochUtc, out: *mut f64) -> TempochStatus {
     if out.is_null() {
         return TempochStatus::NullPointer;
     }
-    match utc.to_chrono() {
+    match utc.into_chrono() {
         Some(dt) => {
             let jd = JulianDate::from_utc(dt);
+            // SAFETY: `out` was checked for null and the caller guarantees writable memory.
             unsafe { *out = jd.value() };
             TempochStatus::Ok
         }
@@ -92,13 +96,17 @@ pub extern "C" fn tempoch_jd_from_utc(utc: TempochUtc, out: *mut f64) -> Tempoch
 
 /// Convert a Julian Date to UTC. Returns Ok on success,
 /// UtcConversionFailed if the date is out of representable range.
+///
+/// # Safety
+/// `out` must be a valid, writable pointer to `TempochUtc`.
 #[no_mangle]
-pub extern "C" fn tempoch_jd_to_utc(jd: f64, out: *mut TempochUtc) -> TempochStatus {
+pub unsafe extern "C" fn tempoch_jd_to_utc(jd: f64, out: *mut TempochUtc) -> TempochStatus {
     if out.is_null() {
         return TempochStatus::NullPointer;
     }
     match JulianDate::new(jd).to_utc() {
         Some(dt) => {
+            // SAFETY: `out` was checked for null and the caller guarantees writable memory.
             unsafe { *out = TempochUtc::from_chrono(&dt) };
             TempochStatus::Ok
         }
@@ -123,14 +131,18 @@ pub extern "C" fn tempoch_mjd_to_jd(mjd: f64) -> f64 {
 }
 
 /// Create a Modified Julian Date from a UTC date-time.
+///
+/// # Safety
+/// `out` must be a valid, writable pointer to `f64`.
 #[no_mangle]
-pub extern "C" fn tempoch_mjd_from_utc(utc: TempochUtc, out: *mut f64) -> TempochStatus {
+pub unsafe extern "C" fn tempoch_mjd_from_utc(utc: TempochUtc, out: *mut f64) -> TempochStatus {
     if out.is_null() {
         return TempochStatus::NullPointer;
     }
-    match utc.to_chrono() {
+    match utc.into_chrono() {
         Some(dt) => {
             let mjd = ModifiedJulianDate::from_utc(dt);
+            // SAFETY: `out` was checked for null and the caller guarantees writable memory.
             unsafe { *out = mjd.value() };
             TempochStatus::Ok
         }
@@ -139,13 +151,17 @@ pub extern "C" fn tempoch_mjd_from_utc(utc: TempochUtc, out: *mut f64) -> Tempoc
 }
 
 /// Convert a Modified Julian Date to UTC.
+///
+/// # Safety
+/// `out` must be a valid, writable pointer to `TempochUtc`.
 #[no_mangle]
-pub extern "C" fn tempoch_mjd_to_utc(mjd: f64, out: *mut TempochUtc) -> TempochStatus {
+pub unsafe extern "C" fn tempoch_mjd_to_utc(mjd: f64, out: *mut TempochUtc) -> TempochStatus {
     if out.is_null() {
         return TempochStatus::NullPointer;
     }
     match ModifiedJulianDate::new(mjd).to_utc() {
         Some(dt) => {
+            // SAFETY: `out` was checked for null and the caller guarantees writable memory.
             unsafe { *out = TempochUtc::from_chrono(&dt) };
             TempochStatus::Ok
         }
@@ -178,7 +194,9 @@ pub extern "C" fn tempoch_mjd_difference(mjd1: f64, mjd2: f64) -> f64 {
 /// Add a duration in days to a Modified Julian Date.
 #[no_mangle]
 pub extern "C" fn tempoch_mjd_add_days(mjd: f64, days: f64) -> f64 {
-    ModifiedJulianDate::new(mjd).add_duration(Days::new(days)).value()
+    ModifiedJulianDate::new(mjd)
+        .add_duration(Days::new(days))
+        .value()
 }
 
 /// Compute Julian centuries since J2000 for a given Julian Date.
