@@ -36,7 +36,7 @@ fn main() {
     let intersection = intersect_periods(&windows, &constraints);
     println!("Intersection windows: {}", intersection.len());
 
-    let utc_day: UtcPeriod = day.to::<DateTime<Utc>>();
+    let utc_day: UtcPeriod = day.to::<DateTime<Utc>>().unwrap();
     let roundtrip: Interval<ModifiedJulianDate> = utc_day.to::<ModifiedJulianDate>();
     println!(
         "Roundtrip drift (days): {:.3e}",

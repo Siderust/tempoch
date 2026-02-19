@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Vallés Puig, Ramon
 
 //! # ΔT (Delta T) — UT↔TT Correction Layer
@@ -26,6 +26,7 @@
 //!
 //! ## Quick Example
 //! ```rust
+//! # use tempoch_core as tempoch;
 //! use tempoch::{UT, JD, Time};
 //!
 //! // UT-based Julian Day -> JD(TT) with ΔT applied

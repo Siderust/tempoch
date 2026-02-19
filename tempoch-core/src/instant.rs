@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Vallés Puig, Ramon
 
 //! Generic time–scale parameterised instant.
@@ -51,6 +51,26 @@ pub trait TimeScale: Copy + Clone + std::fmt::Debug + PartialEq + PartialOrd + '
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Error types
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Error returned when a `Time` value is non-finite (`NaN` or `±∞`).
+///
+/// Non-finite values break ordering, intersection, and arithmetic invariants,
+/// so validated constructors ([`Time::try_new`], [`Time::try_from_days`])
+/// reject them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NonFiniteTimeError;
+
+impl std::fmt::Display for NonFiniteTimeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "time value must be finite (not NaN or infinity)")
+    }
+}
+
+impl std::error::Error for NonFiniteTimeError {}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Time<S> — the generic instant
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -69,6 +89,10 @@ impl<S: TimeScale> Time<S> {
     // ── constructors ──────────────────────────────────────────────────
 
     /// Create from a raw scalar (days since the scale's epoch).
+    ///
+    /// **Note:** this constructor accepts any `f64`, including `NaN` and `±∞`.
+    /// Prefer [`try_new`](Self::try_new) when the value comes from untrusted
+    /// or computed input.
     #[inline]
     pub const fn new(value: f64) -> Self {
         Self {
@@ -77,13 +101,49 @@ impl<S: TimeScale> Time<S> {
         }
     }
 
+    /// Create from a raw scalar, rejecting non-finite values.
+    ///
+    /// Returns [`NonFiniteTimeError`] if `value` is `NaN`, `+∞`, or `−∞`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use tempoch_core as tempoch;
+    /// use tempoch::{Time, JD};
+    ///
+    /// assert!(Time::<JD>::try_new(2451545.0).is_ok());
+    /// assert!(Time::<JD>::try_new(f64::NAN).is_err());
+    /// assert!(Time::<JD>::try_new(f64::INFINITY).is_err());
+    /// ```
+    #[inline]
+    pub fn try_new(value: f64) -> Result<Self, NonFiniteTimeError> {
+        if value.is_finite() {
+            Ok(Self::new(value))
+        } else {
+            Err(NonFiniteTimeError)
+        }
+    }
+
     /// Create from a [`Days`] quantity.
+    ///
+    /// **Note:** this constructor accepts any `f64`, including `NaN` and `±∞`.
+    /// Prefer [`try_from_days`](Self::try_from_days) when the value comes from
+    /// untrusted or computed input.
     #[inline]
     pub const fn from_days(days: Days) -> Self {
         Self {
             quantity: days,
             _scale: PhantomData,
         }
+    }
+
+    /// Create from a [`Days`] quantity, rejecting non-finite values.
+    ///
+    /// Returns [`NonFiniteTimeError`] if the underlying value is `NaN`,
+    /// `+∞`, or `−∞`.
+    #[inline]
+    pub fn try_from_days(days: Days) -> Result<Self, NonFiniteTimeError> {
+        Self::try_new(days.value())
     }
 
     // ── accessors ─────────────────────────────────────────────────────
@@ -217,6 +277,11 @@ impl<'de, S: TimeScale> Deserialize<'de> for Time<S> {
         D: Deserializer<'de>,
     {
         let v = f64::deserialize(deserializer)?;
+        if !v.is_finite() {
+            return Err(serde::de::Error::custom(
+                "time value must be finite (not NaN or infinity)",
+            ));
+        }
         Ok(Self::new(v))
     }
 }
@@ -565,6 +630,30 @@ mod tests {
         let jd = Time::<JD>::new(2_451_545.0);
         let s = format!("{jd}");
         assert!(s.contains("Julian Day"));
+    }
+
+    #[test]
+    fn test_try_new_finite() {
+        let jd = Time::<JD>::try_new(2_451_545.0);
+        assert!(jd.is_ok());
+        assert_eq!(jd.unwrap().value(), 2_451_545.0);
+    }
+
+    #[test]
+    fn test_try_new_nan() {
+        assert!(Time::<JD>::try_new(f64::NAN).is_err());
+    }
+
+    #[test]
+    fn test_try_new_infinity() {
+        assert!(Time::<JD>::try_new(f64::INFINITY).is_err());
+        assert!(Time::<JD>::try_new(f64::NEG_INFINITY).is_err());
+    }
+
+    #[test]
+    fn test_try_from_days() {
+        assert!(Time::<JD>::try_from_days(Days::new(100.0)).is_ok());
+        assert!(Time::<JD>::try_from_days(Days::new(f64::NAN)).is_err());
     }
 
     #[test]
