@@ -1,9 +1,9 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Vallés Puig, Ramon
 
 //! Time Module
 //!
-//! This module provides time-related types and abstractions for astronomical calculations.
+//! This crate is a façade over `tempoch-core` and re-exports its public API.
 //!
 //! # Core types
 //!
@@ -41,38 +41,9 @@
 //! or construct any scale via `from_utc()` which routes through `UT` internally.
 //! The raw ΔT value (in seconds) is available via [`Time::<UT>::delta_t()`](Time::delta_t).
 
-mod delta_t;
-pub(crate) mod instant;
-mod julian_date_ext;
-mod period;
-mod scales;
-
-// ── Re-exports ────────────────────────────────────────────────────────────
-
-pub use instant::{Time, TimeInstant, TimeScale};
-pub use period::{complement_within, intersect_periods, Interval, Period, UtcPeriod};
-pub use scales::{tai_minus_utc, UnixTime, GPS, JD, JDE, MJD, TAI, TCB, TCG, TDB, TT, UT};
-
-// ── Backward-compatible type aliases ──────────────────────────────────────
-
-/// Julian Date — continuous count of days since the Julian Period.
-///
-/// This is a type alias for [`Time<JD>`].  All historical call-sites
-/// (`JulianDate::new(...)`, `JulianDate::J2000`, `.julian_centuries()`, …)
-/// continue to work without modification.
-pub type JulianDate = Time<JD>;
-
-/// Julian Ephemeris Day — dynamical Julian day used by many ephemeris formulas.
-///
-/// This is a type alias for [`Time<JDE>`].
-pub type JulianEphemerisDay = Time<JDE>;
-
-/// Modified Julian Date — `JD − 2 400 000.5`.
-///
-/// This is a type alias for [`Time<MJD>`].
-pub type ModifiedJulianDate = Time<MJD>;
-
-/// Universal Time — Earth-rotation civil time scale.
-///
-/// This is a type alias for [`Time<UT>`].
-pub type UniversalTime = Time<UT>;
+pub use tempoch_core::{
+    complement_within, intersect_periods, normalize_periods, tai_minus_utc, validate_period_list,
+    ConversionError, Interval, InvalidIntervalError, JulianDate, JulianEphemerisDay,
+    ModifiedJulianDate, NonFiniteTimeError, Period, PeriodListError, Time, TimeInstant, TimeScale,
+    UniversalTime, UnixTime, UtcPeriod, GPS, JD, JDE, MJD, TAI, TCB, TCG, TDB, TT, UT,
+};

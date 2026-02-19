@@ -55,6 +55,9 @@ extern "C" {
  uint32_t tempoch_ffi_version(void);
 
 // Create a new MJD period. Returns InvalidPeriod if start > end.
+//
+// # Safety
+// `out` must be a valid, writable pointer to `TempochPeriodMjd`.
 
 tempoch_status_t tempoch_period_mjd_new(double start_mjd,
                                         double end_mjd,
@@ -65,16 +68,13 @@ tempoch_status_t tempoch_period_mjd_new(double start_mjd,
 
 // Compute the intersection of two periods.
 // Returns NoIntersection if they don't overlap, Ok if `out` is filled.
+//
+// # Safety
+// `out` must be a valid, writable pointer to `TempochPeriodMjd`.
 
 tempoch_status_t tempoch_period_mjd_intersection(struct tempoch_period_mjd_t a,
                                                  struct tempoch_period_mjd_t b,
                                                  struct tempoch_period_mjd_t *out);
-
-// Free an array of MJD periods previously returned by siderust-ffi.
-//
-// # Safety
-// `ptr` must have been allocated by this library, and `count` must match.
- void tempoch_periods_free(struct tempoch_period_mjd_t *ptr, uintptr_t count);
 
 // Create a Julian Date from a raw f64 value.
  double tempoch_jd_new(double value);
@@ -86,10 +86,16 @@ tempoch_status_t tempoch_period_mjd_intersection(struct tempoch_period_mjd_t a,
  double tempoch_jd_to_mjd(double jd);
 
 // Create a Julian Date from a UTC date-time.
+//
+// # Safety
+// `out` must be a valid, writable pointer to `f64`.
  tempoch_status_t tempoch_jd_from_utc(struct tempoch_utc_t utc, double *out);
 
 // Convert a Julian Date to UTC. Returns Ok on success,
 // UtcConversionFailed if the date is out of representable range.
+//
+// # Safety
+// `out` must be a valid, writable pointer to `TempochUtc`.
  tempoch_status_t tempoch_jd_to_utc(double jd, struct tempoch_utc_t *out);
 
 // Create a Modified Julian Date from a raw f64 value.
@@ -99,9 +105,15 @@ tempoch_status_t tempoch_period_mjd_intersection(struct tempoch_period_mjd_t a,
  double tempoch_mjd_to_jd(double mjd);
 
 // Create a Modified Julian Date from a UTC date-time.
+//
+// # Safety
+// `out` must be a valid, writable pointer to `f64`.
  tempoch_status_t tempoch_mjd_from_utc(struct tempoch_utc_t utc, double *out);
 
 // Convert a Modified Julian Date to UTC.
+//
+// # Safety
+// `out` must be a valid, writable pointer to `TempochUtc`.
  tempoch_status_t tempoch_mjd_to_utc(double mjd, struct tempoch_utc_t *out);
 
 // Compute the difference between two Julian Dates in days.

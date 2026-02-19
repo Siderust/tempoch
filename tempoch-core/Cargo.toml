@@ -1,0 +1,22 @@
+[package]
+name = "tempoch-core"
+version = "0.3.0"
+edition = "2021"
+authors = ["VPRamon <vallespuigramon@gmail.com>"]
+description = "Core astronomical time primitives for tempoch."
+license = "AGPL-3.0-only"
+repository = "https://github.com/Siderust/tempoch"
+
+[features]
+default = []
+serde = ["dep:serde"]
+
+[lib]
+name = "tempoch_core"
+path = "src/lib.rs"
+
+[dependencies]
+chrono = "0.4.43"
+qtty = "0.3.0"
+serde = { version = "1.0", default-features = false, features = ["derive"], optional = true }
+

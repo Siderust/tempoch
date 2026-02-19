@@ -1,0 +1,28 @@
+[package]
+name = "tempoch"
+version = "0.3.0"
+edition = "2021"
+authors = ["VPRamon <vallespuigramon@gmail.com>"]
+description = "Astronomical time primitives: typed time scales, Julian dates, UTC conversion, and interval operations."
+license = "AGPL-3.0-only"
+readme = "../README.md"
+repository = "https://github.com/Siderust/tempoch"
+keywords = ["astronomy", "time", "julian-date", "ephemeris", "science"]
+categories = ["science", "date-and-time"]
+
+[lib]
+name = "tempoch"
+path = "src/lib.rs"
+
+[features]
+default = []
+serde = ["tempoch-core/serde"]
+
+[dependencies]
+tempoch-core = { path = "../tempoch-core", version = "0.3.0" }
+
+[dev-dependencies]
+chrono = "0.4.43"
+qtty = "0.3.0"
+serde_json = "1.0"
+
