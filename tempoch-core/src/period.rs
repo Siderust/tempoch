@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Vallés Puig, Ramon
 
 //! Time period / interval implementation.
@@ -15,6 +15,94 @@ use std::fmt;
 #[cfg(feature = "serde")]
 use serde::{ser::SerializeStruct, Deserialize, Deserializer, Serialize, Serializer};
 
+/// Error returned when a period time-scale conversion fails.
+///
+/// Currently the only failure mode is an out-of-range chrono conversion
+/// (e.g. a Julian Date too far in the past/future for `DateTime<Utc>`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConversionError {
+    /// The time instant is outside the representable range of the target type.
+    OutOfRange,
+}
+
+impl fmt::Display for ConversionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ConversionError::OutOfRange => {
+                write!(f, "time instant out of representable range for target type")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ConversionError {}
+
+/// Error returned when constructing an [`Interval`] with invalid bounds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InvalidIntervalError {
+    /// The start instant is after the end instant (`!(start <= end)`).
+    ///
+    /// This also triggers for `NaN` endpoints, since `NaN` comparisons
+    /// always return `false`.
+    StartAfterEnd,
+}
+
+impl fmt::Display for InvalidIntervalError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            InvalidIntervalError::StartAfterEnd => {
+                write!(f, "interval start must not be after end")
+            }
+        }
+    }
+}
+
+impl std::error::Error for InvalidIntervalError {}
+
+/// Error indicating a period list violates sorted/non-overlapping invariants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PeriodListError {
+    /// An interval at the given index has `start > end`.
+    InvalidInterval {
+        /// Index of the malformed interval.
+        index: usize,
+    },
+    /// The interval at the given index has a start time earlier than its predecessor.
+    Unsorted {
+        /// Index of the out-of-order interval.
+        index: usize,
+    },
+    /// The interval at the given index overlaps with its predecessor.
+    Overlapping {
+        /// Index of the overlapping interval.
+        index: usize,
+    },
+}
+
+impl fmt::Display for PeriodListError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PeriodListError::InvalidInterval { index } => {
+                write!(f, "interval at index {index} has start > end")
+            }
+            PeriodListError::Unsorted { index } => {
+                write!(
+                    f,
+                    "interval at index {index} is not sorted by start time"
+                )
+            }
+            PeriodListError::Overlapping { index } => {
+                write!(
+                    f,
+                    "interval at index {index} overlaps with its predecessor"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for PeriodListError {}
+
 /// Target type adapter for [`Interval<Time<S>>::to`].
 ///
 /// This allows converting a period of `Time<S>` either to another time scale
@@ -22,15 +110,15 @@ use serde::{ser::SerializeStruct, Deserialize, Deserializer, Serialize, Serializ
 pub trait PeriodTimeTarget<S: TimeScale> {
     type Instant: TimeInstant;
 
-    fn convert(value: Time<S>) -> Self::Instant;
+    fn convert(value: Time<S>) -> Result<Self::Instant, ConversionError>;
 }
 
 impl<S: TimeScale, T: TimeScale> PeriodTimeTarget<S> for T {
     type Instant = Time<T>;
 
     #[inline]
-    fn convert(value: Time<S>) -> Self::Instant {
-        value.to::<T>()
+    fn convert(value: Time<S>) -> Result<Self::Instant, ConversionError> {
+        Ok(value.to::<T>())
     }
 }
 
@@ -38,8 +126,8 @@ impl<S: TimeScale, T: TimeScale> PeriodTimeTarget<S> for Time<T> {
     type Instant = Time<T>;
 
     #[inline]
-    fn convert(value: Time<S>) -> Self::Instant {
-        value.to::<T>()
+    fn convert(value: Time<S>) -> Result<Self::Instant, ConversionError> {
+        Ok(value.to::<T>())
     }
 }
 
@@ -47,10 +135,8 @@ impl<S: TimeScale> PeriodTimeTarget<S> for DateTime<Utc> {
     type Instant = DateTime<Utc>;
 
     #[inline]
-    fn convert(value: Time<S>) -> Self::Instant {
-        value
-            .to_utc()
-            .expect("time instant out of chrono::DateTime<Utc> representable range")
+    fn convert(value: Time<S>) -> Result<Self::Instant, ConversionError> {
+        value.to_utc().ok_or(ConversionError::OutOfRange)
     }
 }
 
@@ -125,6 +211,10 @@ pub type UtcPeriod = Interval<DateTime<Utc>>;
 impl<T: TimeInstant> Interval<T> {
     /// Creates a new period between two time instants.
     ///
+    /// **Note:** this constructor does not validate that `start <= end`.
+    /// Prefer [`try_new`](Self::try_new) when endpoints come from untrusted
+    /// or computed input.
+    ///
     /// # Arguments
     ///
     /// * `start` - The start time instant
@@ -142,6 +232,32 @@ impl<T: TimeInstant> Interval<T> {
     /// ```
     pub fn new(start: T, end: T) -> Self {
         Interval { start, end }
+    }
+
+    /// Creates a new interval, validating that `start <= end`.
+    ///
+    /// Returns [`InvalidIntervalError::StartAfterEnd`] if the start instant
+    /// is after the end instant.  This also rejects `NaN`-based instants,
+    /// since `NaN` comparisons always return `false`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use tempoch_core as tempoch;
+    /// use tempoch::{Interval, JulianDate};
+    ///
+    /// let ok = Interval::try_new(JulianDate::new(100.0), JulianDate::new(200.0));
+    /// assert!(ok.is_ok());
+    ///
+    /// let err = Interval::try_new(JulianDate::new(200.0), JulianDate::new(100.0));
+    /// assert!(err.is_err());
+    /// ```
+    pub fn try_new(start: T, end: T) -> Result<Self, InvalidIntervalError> {
+        if start <= end {
+            Ok(Interval { start, end })
+        } else {
+            Err(InvalidIntervalError::StartAfterEnd)
+        }
     }
 
     /// Returns the duration of the period as the difference between end and start.
@@ -205,6 +321,12 @@ impl<S: TimeScale> Interval<Time<S>> {
     /// - Any time-scale marker (`JD`, `MJD`, `UT`, ...)
     /// - `chrono::DateTime<Utc>`
     ///
+    /// # Errors
+    ///
+    /// Returns [`ConversionError::OutOfRange`] if the endpoints fall outside
+    /// the representable range of the target type (only possible when
+    /// converting to `DateTime<Utc>`).
+    ///
     /// # Examples
     ///
     /// ```
@@ -213,18 +335,23 @@ impl<S: TimeScale> Interval<Time<S>> {
     /// use tempoch::{Interval, JD, MJD, Period, Time};
     ///
     /// let period_jd = Period::new(Time::<JD>::new(2451545.0), Time::<JD>::new(2451546.0));
-    /// let period_mjd = period_jd.to::<MJD>();
-    /// let _period_utc: Interval<DateTime<Utc>> = period_jd.to::<DateTime<Utc>>();
+    /// let period_mjd = period_jd.to::<MJD>().unwrap();
+    /// let _period_utc: Interval<DateTime<Utc>> = period_jd.to::<DateTime<Utc>>().unwrap();
     ///
     /// assert!((period_mjd.start.value() - 51544.5).abs() < 1e-12);
     /// assert!((period_mjd.end.value() - 51545.5).abs() < 1e-12);
     /// ```
     #[inline]
-    pub fn to<Target>(&self) -> Interval<<Target as PeriodTimeTarget<S>>::Instant>
+    pub fn to<Target>(
+        &self,
+    ) -> Result<Interval<<Target as PeriodTimeTarget<S>>::Instant>, ConversionError>
     where
         Target: PeriodTimeTarget<S>,
     {
-        Interval::new(Target::convert(self.start), Target::convert(self.end))
+        Ok(Interval::new(
+            Target::convert(self.start)?,
+            Target::convert(self.end)?,
+        ))
     }
 }
 
@@ -312,6 +439,16 @@ impl<'de> Deserialize<'de> for Interval<crate::ModifiedJulianDate> {
         }
 
         let raw = Raw::deserialize(deserializer)?;
+        if !raw.start_mjd.is_finite() || !raw.end_mjd.is_finite() {
+            return Err(serde::de::Error::custom(
+                "period MJD values must be finite (not NaN or infinity)",
+            ));
+        }
+        if raw.start_mjd > raw.end_mjd {
+            return Err(serde::de::Error::custom(
+                "period start must not be after end",
+            ));
+        }
         Ok(Interval::new(
             crate::ModifiedJulianDate::new(raw.start_mjd),
             crate::ModifiedJulianDate::new(raw.end_mjd),
@@ -346,6 +483,16 @@ impl<'de> Deserialize<'de> for Interval<crate::JulianDate> {
         }
 
         let raw = Raw::deserialize(deserializer)?;
+        if !raw.start_jd.is_finite() || !raw.end_jd.is_finite() {
+            return Err(serde::de::Error::custom(
+                "period JD values must be finite (not NaN or infinity)",
+            ));
+        }
+        if raw.start_jd > raw.end_jd {
+            return Err(serde::de::Error::custom(
+                "period start must not be after end",
+            ));
+        }
         Ok(Interval::new(
             crate::JulianDate::new(raw.start_jd),
             crate::JulianDate::new(raw.end_jd),
@@ -423,10 +570,210 @@ pub fn intersect_periods<T: TimeInstant>(a: &[Interval<T>], b: &[Interval<T>]) -
     result
 }
 
+/// Validate that a period list is sorted by start time and non-overlapping.
+///
+/// Checks three invariants on every element:
+/// 1. Each interval has `start <= end`.
+/// 2. Intervals are sorted by start time (monotonically non-decreasing).
+/// 3. Adjacent intervals do not overlap (previous `end <= next start`).
+///
+/// Returns `Ok(())` if all invariants hold, or the first violation found.
+///
+/// # Examples
+///
+/// ```
+/// # use tempoch_core as tempoch;
+/// use tempoch::{validate_period_list, Interval, ModifiedJulianDate};
+///
+/// let sorted = vec![
+///     Interval::new(ModifiedJulianDate::new(0.0), ModifiedJulianDate::new(3.0)),
+///     Interval::new(ModifiedJulianDate::new(5.0), ModifiedJulianDate::new(8.0)),
+/// ];
+/// assert!(validate_period_list(&sorted).is_ok());
+/// ```
+pub fn validate_period_list<T: TimeInstant>(
+    periods: &[Interval<T>],
+) -> Result<(), PeriodListError> {
+    for (i, p) in periods.iter().enumerate() {
+        if p.start.partial_cmp(&p.end).is_none_or(|o| o == std::cmp::Ordering::Greater) {
+            return Err(PeriodListError::InvalidInterval { index: i });
+        }
+    }
+    for i in 1..periods.len() {
+        if periods[i - 1]
+            .start
+            .partial_cmp(&periods[i].start)
+            .is_none_or(|o| o == std::cmp::Ordering::Greater)
+        {
+            return Err(PeriodListError::Unsorted { index: i });
+        }
+        if periods[i - 1].end > periods[i].start {
+            return Err(PeriodListError::Overlapping { index: i });
+        }
+    }
+    Ok(())
+}
+
+/// Sort periods by start time and merge overlapping/adjacent intervals.
+///
+/// Produces a sorted, non-overlapping list suitable for [`complement_within`]
+/// and [`intersect_periods`].
+///
+/// # Examples
+///
+/// ```
+/// # use tempoch_core as tempoch;
+/// use tempoch::{normalize_periods, Interval, ModifiedJulianDate};
+///
+/// let periods = vec![
+///     Interval::new(ModifiedJulianDate::new(5.0), ModifiedJulianDate::new(8.0)),
+///     Interval::new(ModifiedJulianDate::new(0.0), ModifiedJulianDate::new(3.0)),
+///     Interval::new(ModifiedJulianDate::new(2.0), ModifiedJulianDate::new(6.0)),
+/// ];
+/// let merged = normalize_periods(&periods);
+/// assert_eq!(merged.len(), 1); // [0, 8)
+/// ```
+pub fn normalize_periods<T: TimeInstant>(periods: &[Interval<T>]) -> Vec<Interval<T>> {
+    if periods.is_empty() {
+        return Vec::new();
+    }
+    let mut sorted: Vec<_> = periods.to_vec();
+    sorted.sort_by(|a, b| {
+        a.start
+            .partial_cmp(&b.start)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let mut merged = vec![sorted[0]];
+    for p in &sorted[1..] {
+        let last = merged.last_mut().unwrap();
+        if p.start <= last.end {
+            // Overlapping or adjacent — extend
+            if p.end > last.end {
+                last.end = p.end;
+            }
+        } else {
+            merged.push(*p);
+        }
+    }
+    merged
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{JulianDate, ModifiedJulianDate, JD, MJD};
+
+    #[test]
+    fn test_try_new_valid() {
+        let p = Interval::try_new(
+            ModifiedJulianDate::new(59000.0),
+            ModifiedJulianDate::new(59001.0),
+        );
+        assert!(p.is_ok());
+    }
+
+    #[test]
+    fn test_try_new_equal_bounds() {
+        let p = Interval::try_new(
+            ModifiedJulianDate::new(59000.0),
+            ModifiedJulianDate::new(59000.0),
+        );
+        assert!(p.is_ok()); // zero-length interval is valid
+    }
+
+    #[test]
+    fn test_try_new_invalid() {
+        let p = Interval::try_new(
+            ModifiedJulianDate::new(59001.0),
+            ModifiedJulianDate::new(59000.0),
+        );
+        assert_eq!(p, Err(InvalidIntervalError::StartAfterEnd));
+    }
+
+    #[test]
+    fn test_try_new_nan_rejected() {
+        let p = Interval::try_new(
+            ModifiedJulianDate::new(f64::NAN),
+            ModifiedJulianDate::new(59000.0),
+        );
+        assert!(p.is_err());
+    }
+
+    #[test]
+    fn test_validate_period_list_ok() {
+        let periods = vec![
+            Period::new(ModifiedJulianDate::new(0.0), ModifiedJulianDate::new(3.0)),
+            Period::new(ModifiedJulianDate::new(5.0), ModifiedJulianDate::new(8.0)),
+        ];
+        assert!(validate_period_list(&periods).is_ok());
+    }
+
+    #[test]
+    fn test_validate_period_list_unsorted() {
+        let periods = vec![
+            Period::new(ModifiedJulianDate::new(5.0), ModifiedJulianDate::new(8.0)),
+            Period::new(ModifiedJulianDate::new(0.0), ModifiedJulianDate::new(3.0)),
+        ];
+        assert_eq!(
+            validate_period_list(&periods),
+            Err(PeriodListError::Unsorted { index: 1 })
+        );
+    }
+
+    #[test]
+    fn test_validate_period_list_overlapping() {
+        let periods = vec![
+            Period::new(ModifiedJulianDate::new(0.0), ModifiedJulianDate::new(5.0)),
+            Period::new(ModifiedJulianDate::new(3.0), ModifiedJulianDate::new(8.0)),
+        ];
+        assert_eq!(
+            validate_period_list(&periods),
+            Err(PeriodListError::Overlapping { index: 1 })
+        );
+    }
+
+    #[test]
+    fn test_validate_period_list_invalid_interval() {
+        let periods = vec![Period::new(
+            ModifiedJulianDate::new(5.0),
+            ModifiedJulianDate::new(3.0),
+        )];
+        assert_eq!(
+            validate_period_list(&periods),
+            Err(PeriodListError::InvalidInterval { index: 0 })
+        );
+    }
+
+    #[test]
+    fn test_normalize_periods_empty() {
+        let periods: Vec<Period<MJD>> = vec![];
+        assert!(normalize_periods(&periods).is_empty());
+    }
+
+    #[test]
+    fn test_normalize_periods_unsorted_and_overlapping() {
+        let periods = vec![
+            Period::new(ModifiedJulianDate::new(5.0), ModifiedJulianDate::new(8.0)),
+            Period::new(ModifiedJulianDate::new(0.0), ModifiedJulianDate::new(3.0)),
+            Period::new(ModifiedJulianDate::new(2.0), ModifiedJulianDate::new(6.0)),
+        ];
+        let merged = normalize_periods(&periods);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].start.quantity(), Days::new(0.0));
+        assert_eq!(merged[0].end.quantity(), Days::new(8.0));
+    }
+
+    #[test]
+    fn test_normalize_periods_disjoint() {
+        let periods = vec![
+            Period::new(ModifiedJulianDate::new(5.0), ModifiedJulianDate::new(6.0)),
+            Period::new(ModifiedJulianDate::new(0.0), ModifiedJulianDate::new(2.0)),
+        ];
+        let merged = normalize_periods(&periods);
+        assert_eq!(merged.len(), 2);
+        assert_eq!(merged[0].start.quantity(), Days::new(0.0));
+        assert_eq!(merged[1].start.quantity(), Days::new(5.0));
+    }
 
     #[test]
     fn test_period_creation_jd() {
@@ -441,7 +788,7 @@ mod tests {
     #[test]
     fn test_period_scale_conversion_jd_to_mjd() {
         let period_jd = Period::new(Time::<JD>::new(2_451_545.0), Time::<JD>::new(2_451_546.0));
-        let period_mjd = period_jd.to::<MJD>();
+        let period_mjd = period_jd.to::<MJD>().unwrap();
 
         assert!((period_mjd.start.value() - 51_544.5).abs() < 1e-12);
         assert!((period_mjd.end.value() - 51_545.5).abs() < 1e-12);
@@ -450,7 +797,7 @@ mod tests {
     #[test]
     fn test_period_scale_conversion_roundtrip() {
         let original = Period::new(Time::<MJD>::new(59_000.125), Time::<MJD>::new(59_001.75));
-        let roundtrip = original.to::<JD>().to::<MJD>();
+        let roundtrip = original.to::<JD>().unwrap().to::<MJD>().unwrap();
 
         assert!((roundtrip.start.value() - original.start.value()).abs() < 1e-12);
         assert!((roundtrip.end.value() - original.end.value()).abs() < 1e-12);
@@ -465,7 +812,7 @@ mod tests {
             Time::<JD>::from_utc(end_utc),
         );
 
-        let period_utc = period_jd.to::<DateTime<Utc>>();
+        let period_utc = period_jd.to::<DateTime<Utc>>().unwrap();
         let start_delta_ns = period_utc.start.timestamp_nanos_opt().unwrap()
             - start_utc.timestamp_nanos_opt().unwrap();
         let end_delta_ns =
@@ -518,7 +865,7 @@ mod tests {
         let mjd_end = ModifiedJulianDate::new(59001.0);
         let mjd_period = Period::new(mjd_start, mjd_end);
 
-        let utc_period = mjd_period.to::<DateTime<Utc>>();
+        let utc_period = mjd_period.to::<DateTime<Utc>>().unwrap();
 
         // The converted period should have approximately the same duration (within 1 second due to ΔT)
         let duration_secs = utc_period.duration().num_seconds();

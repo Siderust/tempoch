@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Vallés Puig, Ramon
 
 //! Julian Date (`Time<JD>`) specific extensions.
@@ -67,26 +67,7 @@ impl Time<JD> {
     /// * USNO Circular 179, eq. 2.6
     /// * SOFA `iauDtdb` (full implementation has hundreds of terms)
     pub fn tt_to_tdb(jd_tt: Self) -> Self {
-        let t = jd_tt.julian_centuries().value();
-
-        // Earth's mean anomaly (radians)
-        let m_e = (357.5291092 + 35999.0502909 * t).to_radians();
-        // Mean anomaly of Jupiter (radians)
-        let m_j = (246.4512 + 3035.2335 * t).to_radians();
-        // Mean elongation of the Moon from the Sun (radians)
-        let d = (297.8502042 + 445267.1115168 * t).to_radians();
-        // Mean longitude of lunar ascending node (radians)
-        let om = (125.0445550 - 1934.1362091 * t).to_radians();
-
-        // TDB − TT in seconds (Fairhead & Bretagnon largest terms):
-        let dt_sec = 0.001_657 * (m_e + 0.01671 * m_e.sin()).sin()
-            + 0.000_022 * (d - m_e).sin()
-            + 0.000_014 * (2.0 * d).sin()
-            + 0.000_005 * (m_j).sin()
-            + 0.000_005 * om.sin();
-
-        let delta_t = Days::new(dt_sec / 86_400.0);
-        jd_tt + delta_t
+        jd_tt + super::scales::tdb_minus_tt_days(jd_tt.quantity())
     }
 
     /// Convenience: MJD value corresponding to this JD.

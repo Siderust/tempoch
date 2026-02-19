@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0 - 2026-02-19]
+
+### Added
+
+- `Time::try_new` and `Time::try_from_days` validated constructors that reject `NaN`/`±∞`.
+- `Interval::try_new` validated constructor that rejects `start > end` (and `NaN` endpoints).
+- `NonFiniteTimeError`, `InvalidIntervalError`, `PeriodListError` error types.
+- `validate_period_list` — checks sorted/non-overlapping invariants on a period slice.
+- `normalize_periods` — sorts and merges overlapping intervals into a valid list.
+- FFI: generated C header is now also written to `tempoch-ffi/include/tempoch_ffi.h`.
+
+### Changed
+
+- `Time::new` and `Interval::new` now carry documentation warnings about
+  accepting unchecked input; prefer the new `try_*` constructors for
+  untrusted data.
+- Serde deserialization of `Time<S>`, `Period<MJD>`, and `Period<JD>` now
+  rejects non-finite values and invalid intervals (start > end).
+- `Time::<JD>::tt_to_tdb` now delegates to the shared `tdb_minus_tt_days`
+  function (previously duplicated the Fairhead & Bretagnon math).
+
+### Fixed
+
+- Eliminated duplicated TDB correction logic between `scales.rs` and
+  `julian_date_ext.rs`, reducing drift risk.
+
 ## [0.2.0 - 2026-02-16]
 
 ### Added
