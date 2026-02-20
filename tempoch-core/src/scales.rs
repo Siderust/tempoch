@@ -720,4 +720,60 @@ mod tests {
         let back: Time<UT> = jd.into();
         assert!((back.quantity() - ut.quantity()).abs() < Days::new(1e-12));
     }
+
+    // ── New coverage tests ────────────────────────────────────────────
+
+    #[test]
+    fn jde_roundtrip() {
+        // JDE is numerically identical to JD; test both conversion directions.
+        let jde = Time::<JDE>::new(2_451_545.0);
+        let jd: Time<JD> = jde.to::<JD>();
+        assert!((jd.quantity() - Days::new(2_451_545.0)).abs() < Days::new(1e-10));
+        let back: Time<JDE> = jd.to::<JDE>();
+        assert!((back.quantity() - jde.quantity()).abs() < Days::new(1e-10));
+    }
+
+    #[test]
+    fn tt_to_tai() {
+        // TT = TAI + 32.184 s  ⟹  TAI = TT − 32.184 s.
+        // This exercises TAI::from_jd_tt.
+        let tt = Time::<TT>::new(2_451_545.0);
+        let tai: Time<TAI> = tt.to::<TAI>();
+        // Round-trip: TAI → TT should recover the original TT value.
+        let back: Time<TT> = tai.to::<TT>();
+        assert!(
+            (back.quantity() - tt.quantity()).abs() < Days::new(1e-15),
+            "TT → TAI → TT roundtrip error: {}",
+            (back.quantity() - tt.quantity()).abs()
+        );
+    }
+
+    #[test]
+    fn gps_from_jd() {
+        // Round-trip JD → GPS → JD; exercises GPS::from_jd_tt.
+        let gps_zero = Time::<GPS>::new(0.0);
+        let jd: Time<JD> = gps_zero.to::<JD>();
+        let back: Time<GPS> = jd.to::<GPS>();
+        assert!((back.quantity() - gps_zero.quantity()).abs() < Days::new(1e-12));
+    }
+
+    #[test]
+    fn unix_from_jd() {
+        // Round-trip UnixTime → JD → UnixTime; exercises UnixTime::from_jd_tt.
+        let unix_2020 = Time::<UnixTime>::new(18262.0); // 2020-01-01 UTC
+        let jd: Time<JD> = unix_2020.to::<JD>();
+        let back: Time<UnixTime> = jd.to::<UnixTime>();
+        assert!(
+            (back.quantity() - unix_2020.quantity()).abs() < Days::new(1e-10),
+            "UnixTime roundtrip error: {} days",
+            (back.quantity() - unix_2020.quantity()).abs()
+        );
+    }
+
+    #[test]
+    fn tai_minus_utc_pre_1972_returns_10() {
+        // Before 1972-01-01 (JD 2 441 317.5) the leap-second table has no
+        // applicable entry, so the conventional initial 10 s offset is returned.
+        assert_eq!(tai_minus_utc(2_400_000.0), 10.0);
+    }
 }
