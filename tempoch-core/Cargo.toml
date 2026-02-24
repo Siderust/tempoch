@@ -17,7 +17,7 @@ path = "src/lib.rs"
 
 [dependencies]
 chrono = "0.4.43"
-qtty = "0.3.0"
+qtty = "0.3.1"
 serde = { version = "1.0", default-features = false, features = ["derive"], optional = true }
 
 [dev-dependencies]
