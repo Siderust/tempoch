@@ -7,6 +7,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+/* QttyQuantity and UnitId definitions come from qtty_ffi.h */
+#include "qtty_ffi.h"
+
 
 // Status codes returned by tempoch-ffi functions.
 //
@@ -130,6 +133,32 @@ tempoch_status_t tempoch_period_mjd_intersection(struct tempoch_period_mjd_t a,
 
 // Compute Julian centuries since J2000 for a given Julian Date.
  double tempoch_jd_julian_centuries(double jd);
+
+// Compute the difference between two Julian Dates as a `QttyQuantity` in days.
+ qtty_quantity_t tempoch_jd_difference_qty(double jd1, double jd2);
+
+// Add a `QttyQuantity` duration (must be time-compatible) to a Julian Date.
+// The quantity is converted to days internally.
+//
+// # Safety
+// `out` must be a valid, writable pointer to `f64`.
+ tempoch_status_t tempoch_jd_add_qty(double jd, qtty_quantity_t duration, double *out);
+
+// Compute the difference between two Modified Julian Dates as a `QttyQuantity` in days.
+ qtty_quantity_t tempoch_mjd_difference_qty(double mjd1, double mjd2);
+
+// Add a `QttyQuantity` duration (must be time-compatible) to a Modified Julian Date.
+// The quantity is converted to days internally.
+//
+// # Safety
+// `out` must be a valid, writable pointer to `f64`.
+ tempoch_status_t tempoch_mjd_add_qty(double mjd, qtty_quantity_t duration, double *out);
+
+// Compute Julian centuries since J2000 as a `QttyQuantity`.
+ qtty_quantity_t tempoch_jd_julian_centuries_qty(double jd);
+
+// Compute the duration of a period as a `QttyQuantity` in days.
+ qtty_quantity_t tempoch_period_mjd_duration_qty(struct tempoch_period_mjd_t period);
 
 #ifdef __cplusplus
 }  // extern "C"
