@@ -3,6 +3,7 @@
 
 //! FFI bindings for tempoch period/interval types.
 
+use crate::catch_panic;
 use crate::error::TempochStatus;
 use tempoch::{Interval, ModifiedJulianDate, Period, MJD};
 
@@ -50,17 +51,18 @@ pub unsafe extern "C" fn tempoch_period_mjd_new(
     end_mjd: f64,
     out: *mut TempochPeriodMjd,
 ) -> TempochStatus {
-    if out.is_null() {
-        return TempochStatus::NullPointer;
-    }
-    if start_mjd > end_mjd {
-        return TempochStatus::InvalidPeriod;
-    }
-    // SAFETY: `out` was checked for null and the caller guarantees it points to writable memory.
-    unsafe {
-        *out = TempochPeriodMjd { start_mjd, end_mjd };
-    }
-    TempochStatus::Ok
+    catch_panic!(TempochStatus::InvalidPeriod, {
+        if out.is_null() {
+            return TempochStatus::NullPointer;
+        }
+        if start_mjd > end_mjd {
+            return TempochStatus::InvalidPeriod;
+        }
+        unsafe {
+            *out = TempochPeriodMjd { start_mjd, end_mjd };
+        }
+        TempochStatus::Ok
+    })
 }
 
 /// Compute the duration of a period in days.
@@ -80,17 +82,18 @@ pub unsafe extern "C" fn tempoch_period_mjd_intersection(
     b: TempochPeriodMjd,
     out: *mut TempochPeriodMjd,
 ) -> TempochStatus {
-    if out.is_null() {
-        return TempochStatus::NullPointer;
-    }
-    let pa = a.to_period();
-    let pb = b.to_period();
-    match pa.intersection(&pb) {
-        Some(result) => {
-            // SAFETY: `out` was checked for null and the caller guarantees it points to writable memory.
-            unsafe { *out = TempochPeriodMjd::from_period(&result) };
-            TempochStatus::Ok
+    catch_panic!(TempochStatus::NoIntersection, {
+        if out.is_null() {
+            return TempochStatus::NullPointer;
         }
-        None => TempochStatus::NoIntersection,
-    }
+        let pa = a.to_period();
+        let pb = b.to_period();
+        match pa.intersection(&pb) {
+            Some(result) => {
+                unsafe { *out = TempochPeriodMjd::from_period(&result) };
+                TempochStatus::Ok
+            }
+            None => TempochStatus::NoIntersection,
+        }
+    })
 }
