@@ -19,7 +19,7 @@ serde = ["tempoch/serde", "dep:serde_json"]
 tempoch = { path = "../tempoch", version = "0.3.0" }
 qtty = "0.3.1"
 qtty-ffi = "0.3.1"
-chrono = "0.4.43"
+chrono = "0.4.44"
 serde_json = { version = "1.0", optional = true }
 
 [build-dependencies]

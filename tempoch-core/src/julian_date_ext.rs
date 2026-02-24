@@ -126,3 +126,17 @@ impl From<Time<JD>> for Millennia {
         jd.julian_millennias()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{Time, JD, MJD};
+
+    #[test]
+    fn to_mjd_convenience_matches_to_generic() {
+        // to_mjd() is a convenience wrapper for .to::<MJD>().
+        let jd = Time::<JD>::J2000;
+        let via_convenience = jd.to_mjd();
+        let via_generic = jd.to::<MJD>();
+        assert_eq!(via_convenience.value(), via_generic.value());
+    }
+}

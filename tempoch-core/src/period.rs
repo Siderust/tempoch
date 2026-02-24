@@ -1034,4 +1034,135 @@ mod tests {
         assert_eq!(between[2].start.quantity(), Days::new(8.0));
         assert_eq!(between[2].end.quantity(), Days::new(9.0));
     }
+
+    // ── New coverage tests ────────────────────────────────────────────
+
+    #[test]
+    fn test_conversion_error_display() {
+        let err = ConversionError::OutOfRange;
+        let msg = format!("{err}");
+        assert!(msg.contains("out of representable range"), "got: {msg}");
+    }
+
+    #[test]
+    fn test_conversion_error_is_error() {
+        let err = ConversionError::OutOfRange;
+        // Verify it satisfies std::error::Error
+        let _: &dyn std::error::Error = &err;
+    }
+
+    #[test]
+    fn test_invalid_interval_error_display() {
+        let err = InvalidIntervalError::StartAfterEnd;
+        let msg = format!("{err}");
+        assert!(msg.contains("start must not be after end"), "got: {msg}");
+    }
+
+    #[test]
+    fn test_invalid_interval_error_is_error() {
+        let err = InvalidIntervalError::StartAfterEnd;
+        let _: &dyn std::error::Error = &err;
+    }
+
+    #[test]
+    fn test_period_list_error_invalid_interval_display() {
+        let e = PeriodListError::InvalidInterval { index: 0 };
+        let msg = format!("{e}");
+        assert!(msg.contains("index 0"), "got: {msg}");
+    }
+
+    #[test]
+    fn test_period_list_error_unsorted_display() {
+        let e = PeriodListError::Unsorted { index: 2 };
+        let msg = format!("{e}");
+        assert!(msg.contains("index 2"), "got: {msg}");
+    }
+
+    #[test]
+    fn test_period_list_error_overlapping_display() {
+        let e = PeriodListError::Overlapping { index: 3 };
+        let msg = format!("{e}");
+        assert!(msg.contains("index 3"), "got: {msg}");
+    }
+
+    #[test]
+    fn test_period_list_error_is_error() {
+        let e = PeriodListError::InvalidInterval { index: 0 };
+        let _: &dyn std::error::Error = &e;
+    }
+
+    #[test]
+    fn test_intersection_self_larger_than_other() {
+        // a.start > b.start  AND  a.end > b.end  → intersection picks a.start and b.end.
+        // Exercises the `self.start` branch (line 284) and the `other.end` branch (line 291).
+        let a = Period::new(ModifiedJulianDate::new(2.0), ModifiedJulianDate::new(8.0));
+        let b = Period::new(ModifiedJulianDate::new(0.0), ModifiedJulianDate::new(5.0));
+        let overlap = a.intersection(&b).expect("should overlap");
+        assert_eq!(overlap.start.quantity(), Days::new(2.0));
+        assert_eq!(overlap.end.quantity(), Days::new(5.0));
+    }
+
+    #[test]
+    fn test_period_time_target_for_time_type() {
+        // Use `ModifiedJulianDate` (= Time<MJD>) as the Target type parameter,
+        // not the bare `MJD` marker, to exercise the PeriodTimeTarget impl for Time<T>.
+        let period_jd = Period::new(Time::<JD>::new(2_451_545.0), Time::<JD>::new(2_451_546.0));
+        let period_mjd: Interval<ModifiedJulianDate> =
+            period_jd.to::<ModifiedJulianDate>().unwrap();
+        assert!((period_mjd.start.value() - 51_544.5).abs() < 1e-12);
+        assert!((period_mjd.end.value() - 51_545.5).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_utc_period_to_datetime_utc_identity() {
+        // Converting an Interval<DateTime<Utc>> to DateTime<Utc> again is a
+        // no-op; exercises PeriodUtcTarget for DateTime<Utc>.
+        let start = DateTime::from_timestamp(0, 0).unwrap();
+        let end = DateTime::from_timestamp(86400, 0).unwrap();
+        let utc_period = Interval::new(start, end);
+        let same: Interval<DateTime<Utc>> = utc_period.to::<DateTime<Utc>>();
+        assert_eq!(same.start, start);
+        assert_eq!(same.end, end);
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_period_mjd_serde_roundtrip() {
+        let p = Period::new(
+            ModifiedJulianDate::new(59000.0),
+            ModifiedJulianDate::new(59001.0),
+        );
+        let json = serde_json::to_string(&p).unwrap();
+        assert!(json.contains("start_mjd"), "serialized: {json}");
+        let back: Period<MJD> = serde_json::from_str(&json).unwrap();
+        assert!((back.start.value() - 59000.0).abs() < 1e-12);
+        assert!((back.end.value() - 59001.0).abs() < 1e-12);
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_period_mjd_deserialize_start_after_end_rejected() {
+        let json = r#"{"start_mjd": 59001.0, "end_mjd": 59000.0}"#;
+        let result: Result<Period<MJD>, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_period_jd_serde_roundtrip() {
+        let p = Period::new(JulianDate::new(2_451_545.0), JulianDate::new(2_451_546.0));
+        let json = serde_json::to_string(&p).unwrap();
+        assert!(json.contains("start_jd"), "serialized: {json}");
+        let back: Period<JD> = serde_json::from_str(&json).unwrap();
+        assert!((back.start.value() - 2_451_545.0).abs() < 1e-12);
+        assert!((back.end.value() - 2_451_546.0).abs() < 1e-12);
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_period_jd_deserialize_start_after_end_rejected() {
+        let json = r#"{"start_jd": 2451546.0, "end_jd": 2451545.0}"#;
+        let result: Result<Period<JD>, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+    }
 }

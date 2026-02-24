@@ -306,3 +306,206 @@ pub extern "C" fn tempoch_jd_julian_centuries_qty(jd: f64) -> QttyQuantity {
 pub extern "C" fn tempoch_period_mjd_duration_qty(period: crate::TempochPeriodMjd) -> QttyQuantity {
     QttyQuantity::new(period.end_mjd - period.start_mjd, UnitId::Day)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::TempochStatus;
+    use std::ptr;
+
+    fn utc_j2000() -> TempochUtc {
+        TempochUtc {
+            year: 2000,
+            month: 1,
+            day: 1,
+            hour: 12,
+            minute: 0,
+            second: 0,
+            nanosecond: 0,
+        }
+    }
+
+    // ── TempochUtc::into_chrono ───────────────────────────────────────
+
+    #[test]
+    fn into_chrono_invalid_nanoseconds_returns_none() {
+        // and_hms_nano_opt returns None when nanosecond >= 1_000_000_000.
+        let utc = TempochUtc {
+            year: 2000,
+            month: 1,
+            day: 1,
+            hour: 12,
+            minute: 0,
+            second: 0,
+            nanosecond: 1_500_000_000,
+        };
+        assert!(utc.into_chrono().is_none());
+    }
+
+    // ── tempoch_jd_new / tempoch_jd_j2000 ────────────────────────────
+
+    #[test]
+    fn jd_new_is_identity() {
+        assert_eq!(tempoch_jd_new(2_451_545.0), 2_451_545.0);
+        assert_eq!(tempoch_jd_new(0.0), 0.0);
+    }
+
+    #[test]
+    fn jd_j2000_value() {
+        assert_eq!(tempoch_jd_j2000(), 2_451_545.0);
+    }
+
+    // ── tempoch_jd_to_mjd ────────────────────────────────────────────
+
+    #[test]
+    fn jd_to_mjd_roundtrip() {
+        let mjd = tempoch_jd_to_mjd(2_451_545.0);
+        assert!((mjd - 51_544.5).abs() < 1e-10);
+    }
+
+    // ── tempoch_jd_from_utc ──────────────────────────────────────────
+
+    #[test]
+    fn jd_from_utc_null_pointer_returns_error() {
+        let status = unsafe { tempoch_jd_from_utc(utc_j2000(), ptr::null_mut()) };
+        assert_eq!(status, TempochStatus::NullPointer);
+    }
+
+    #[test]
+    fn jd_from_utc_invalid_date_returns_error() {
+        let bad = TempochUtc {
+            year: 2000,
+            month: 1,
+            day: 1,
+            hour: 12,
+            minute: 0,
+            second: 0,
+            nanosecond: 2_000_000_000,
+        };
+        let mut out: f64 = 0.0;
+        let status = unsafe { tempoch_jd_from_utc(bad, &mut out) };
+        assert_eq!(status, TempochStatus::UtcConversionFailed);
+    }
+
+    #[test]
+    fn jd_from_utc_success() {
+        let mut out: f64 = 0.0;
+        let status = unsafe { tempoch_jd_from_utc(utc_j2000(), &mut out) };
+        assert_eq!(status, TempochStatus::Ok);
+        // J2000.0 UTC → JD(TT) should be close to 2 451 545
+        assert!((out - 2_451_545.0).abs() < 0.01);
+    }
+
+    // ── tempoch_jd_to_utc ────────────────────────────────────────────
+
+    #[test]
+    fn jd_to_utc_null_pointer_returns_error() {
+        let status = unsafe { tempoch_jd_to_utc(2_451_545.0, ptr::null_mut()) };
+        assert_eq!(status, TempochStatus::NullPointer);
+    }
+
+    #[test]
+    fn jd_to_utc_success() {
+        let mut out = TempochUtc {
+            year: 0,
+            month: 0,
+            day: 0,
+            hour: 0,
+            minute: 0,
+            second: 0,
+            nanosecond: 0,
+        };
+        let status = unsafe { tempoch_jd_to_utc(2_451_545.0, &mut out) };
+        assert_eq!(status, TempochStatus::Ok);
+        assert_eq!(out.year, 2000);
+        assert_eq!(out.month, 1);
+        assert_eq!(out.day, 1);
+    }
+
+    // ── tempoch_mjd_new ──────────────────────────────────────────────
+
+    #[test]
+    fn mjd_new_is_identity() {
+        assert_eq!(tempoch_mjd_new(51_544.5), 51_544.5);
+    }
+
+    // ── tempoch_mjd_to_jd ────────────────────────────────────────────
+
+    #[test]
+    fn mjd_to_jd_roundtrip() {
+        let jd = tempoch_mjd_to_jd(51_544.5);
+        assert!((jd - 2_451_545.0).abs() < 1e-10);
+    }
+
+    // ── tempoch_mjd_from_utc ─────────────────────────────────────────
+
+    #[test]
+    fn mjd_from_utc_null_pointer_returns_error() {
+        let status = unsafe { tempoch_mjd_from_utc(utc_j2000(), ptr::null_mut()) };
+        assert_eq!(status, TempochStatus::NullPointer);
+    }
+
+    #[test]
+    fn mjd_from_utc_success() {
+        let mut out: f64 = 0.0;
+        let status = unsafe { tempoch_mjd_from_utc(utc_j2000(), &mut out) };
+        assert_eq!(status, TempochStatus::Ok);
+        assert!((out - 51_544.5).abs() < 0.01);
+    }
+
+    // ── tempoch_mjd_to_utc ───────────────────────────────────────────
+
+    #[test]
+    fn mjd_to_utc_null_pointer_returns_error() {
+        let status = unsafe { tempoch_mjd_to_utc(51_544.5, ptr::null_mut()) };
+        assert_eq!(status, TempochStatus::NullPointer);
+    }
+
+    #[test]
+    fn mjd_to_utc_success() {
+        let mut out = TempochUtc {
+            year: 0,
+            month: 0,
+            day: 0,
+            hour: 0,
+            minute: 0,
+            second: 0,
+            nanosecond: 0,
+        };
+        let status = unsafe { tempoch_mjd_to_utc(51_544.5, &mut out) };
+        assert_eq!(status, TempochStatus::Ok);
+        assert_eq!(out.year, 2000);
+    }
+
+    // ── arithmetic helpers ───────────────────────────────────────────
+
+    #[test]
+    fn jd_difference_returns_days() {
+        let diff = tempoch_jd_difference(2_451_546.0, 2_451_545.0);
+        assert!((diff - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn jd_add_days_advances_epoch() {
+        let result = tempoch_jd_add_days(2_451_545.0, 1.5);
+        assert!((result - 2_451_546.5).abs() < 1e-10);
+    }
+
+    #[test]
+    fn mjd_difference_returns_days() {
+        let diff = tempoch_mjd_difference(59001.0, 59000.0);
+        assert!((diff - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn mjd_add_days_advances_epoch() {
+        let result = tempoch_mjd_add_days(59000.0, 0.5);
+        assert!((result - 59000.5).abs() < 1e-10);
+    }
+
+    #[test]
+    fn jd_julian_centuries_at_j2000_is_zero() {
+        let c = tempoch_jd_julian_centuries(2_451_545.0);
+        assert!(c.abs() < 1e-10);
+    }
+}
