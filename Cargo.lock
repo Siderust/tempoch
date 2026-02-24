@@ -382,56 +382,30 @@ dependencies = [
 
 [[package]]
 name = "qtty"
-version = "0.3.0"
-dependencies = [
- "qtty-core 0.3.0",
- "qtty-derive 0.3.0",
-]
-
-[[package]]
-name = "qtty"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec18b86dcb4c777f979a171699a5f552675bbbfd7406d3d002403a26d7bd3215"
+checksum = "b42948ee9aba0ed2217fd0d89a666df2ab020e3e25ef9b0328150e6d6c0aaee3"
 dependencies = [
- "qtty-core 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "qtty-derive 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "qtty-core",
+ "qtty-derive",
 ]
 
 [[package]]
 name = "qtty-core"
-version = "0.3.0"
-dependencies = [
- "libm",
- "qtty-derive 0.3.0",
- "typenum",
-]
-
-[[package]]
-name = "qtty-core"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02271e8e4889de336896d2b690ad40ef811e68a81726885a7ddfbccf7e35b19c"
+checksum = "283c549662e44f8a2848964e9639f2924f7a442f94294d508fc70c531a9717b3"
 dependencies = [
  "libm",
- "qtty-derive 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "qtty-derive",
  "typenum",
 ]
 
 [[package]]
 name = "qtty-derive"
-version = "0.3.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "qtty-derive"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6b1435ce1b31534c420c9b7c08dc7cf1d4a39f18748e7c7f29b71296d558a51"
+checksum = "5edb55d59461af47a984baae7fafc2374dac2a79d41434a77ee7807f0f592757"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -440,10 +414,12 @@ dependencies = [
 
 [[package]]
 name = "qtty-ffi"
-version = "0.3.0"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d93de7d3db9abe1006b8a8b635de51f6d967636be144d06c28f66c3b8a49bd17"
 dependencies = [
  "cbindgen",
- "qtty 0.3.0",
+ "qtty",
  "quote",
  "serde",
  "serde_json",
@@ -583,7 +559,7 @@ name = "tempoch"
 version = "0.3.0"
 dependencies = [
  "chrono",
- "qtty 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "qtty",
  "serde_json",
  "tempoch-core",
 ]
@@ -593,7 +569,7 @@ name = "tempoch-core"
 version = "0.3.0"
 dependencies = [
  "chrono",
- "qtty 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "qtty",
  "serde",
 ]
 
@@ -603,7 +579,7 @@ version = "0.1.0"
 dependencies = [
  "cbindgen",
  "chrono",
- "qtty 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "qtty",
  "qtty-ffi",
  "serde_json",
  "tempoch",
