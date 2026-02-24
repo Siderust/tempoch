@@ -383,11 +383,28 @@ dependencies = [
 [[package]]
 name = "qtty"
 version = "0.3.0"
+dependencies = [
+ "qtty-core 0.3.0",
+ "qtty-derive 0.3.0",
+]
+
+[[package]]
+name = "qtty"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec18b86dcb4c777f979a171699a5f552675bbbfd7406d3d002403a26d7bd3215"
 dependencies = [
- "qtty-core",
- "qtty-derive",
+ "qtty-core 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "qtty-derive 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "qtty-core"
+version = "0.3.0"
+dependencies = [
+ "libm",
+ "qtty-derive 0.3.0",
+ "typenum",
 ]
 
 [[package]]
@@ -397,8 +414,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "02271e8e4889de336896d2b690ad40ef811e68a81726885a7ddfbccf7e35b19c"
 dependencies = [
  "libm",
- "qtty-derive",
+ "qtty-derive 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "typenum",
+]
+
+[[package]]
+name = "qtty-derive"
+version = "0.3.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -409,6 +435,18 @@ checksum = "a6b1435ce1b31534c420c9b7c08dc7cf1d4a39f18748e7c7f29b71296d558a51"
 dependencies = [
  "proc-macro2",
  "quote",
+ "syn",
+]
+
+[[package]]
+name = "qtty-ffi"
+version = "0.3.0"
+dependencies = [
+ "cbindgen",
+ "qtty 0.3.0",
+ "quote",
+ "serde",
+ "serde_json",
  "syn",
 ]
 
@@ -545,7 +583,7 @@ name = "tempoch"
 version = "0.3.0"
 dependencies = [
  "chrono",
- "qtty",
+ "qtty 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json",
  "tempoch-core",
 ]
@@ -555,7 +593,7 @@ name = "tempoch-core"
 version = "0.3.0"
 dependencies = [
  "chrono",
- "qtty",
+ "qtty 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde",
 ]
 
@@ -565,7 +603,8 @@ version = "0.1.0"
 dependencies = [
  "cbindgen",
  "chrono",
- "qtty",
+ "qtty 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "qtty-ffi",
  "serde_json",
  "tempoch",
 ]

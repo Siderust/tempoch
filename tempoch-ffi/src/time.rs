@@ -4,9 +4,11 @@
 //! FFI bindings for tempoch time types: JulianDate, ModifiedJulianDate,
 //! and UTC conversions.
 
+use crate::catch_panic;
 use crate::error::TempochStatus;
 use chrono::{DateTime, NaiveDate, Utc};
 use qtty::Days;
+use qtty_ffi::{QttyQuantity, UnitId};
 use tempoch::{JulianDate, ModifiedJulianDate, TimeInstant, JD, MJD};
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -80,18 +82,19 @@ pub extern "C" fn tempoch_jd_to_mjd(jd: f64) -> f64 {
 /// `out` must be a valid, writable pointer to `f64`.
 #[no_mangle]
 pub unsafe extern "C" fn tempoch_jd_from_utc(utc: TempochUtc, out: *mut f64) -> TempochStatus {
-    if out.is_null() {
-        return TempochStatus::NullPointer;
-    }
-    match utc.into_chrono() {
-        Some(dt) => {
-            let jd = JulianDate::from_utc(dt);
-            // SAFETY: `out` was checked for null and the caller guarantees writable memory.
-            unsafe { *out = jd.value() };
-            TempochStatus::Ok
+    catch_panic!(TempochStatus::UtcConversionFailed, {
+        if out.is_null() {
+            return TempochStatus::NullPointer;
         }
-        None => TempochStatus::UtcConversionFailed,
-    }
+        match utc.into_chrono() {
+            Some(dt) => {
+                let jd = JulianDate::from_utc(dt);
+                unsafe { *out = jd.value() };
+                TempochStatus::Ok
+            }
+            None => TempochStatus::UtcConversionFailed,
+        }
+    })
 }
 
 /// Convert a Julian Date to UTC. Returns Ok on success,
@@ -101,17 +104,18 @@ pub unsafe extern "C" fn tempoch_jd_from_utc(utc: TempochUtc, out: *mut f64) -> 
 /// `out` must be a valid, writable pointer to `TempochUtc`.
 #[no_mangle]
 pub unsafe extern "C" fn tempoch_jd_to_utc(jd: f64, out: *mut TempochUtc) -> TempochStatus {
-    if out.is_null() {
-        return TempochStatus::NullPointer;
-    }
-    match JulianDate::new(jd).to_utc() {
-        Some(dt) => {
-            // SAFETY: `out` was checked for null and the caller guarantees writable memory.
-            unsafe { *out = TempochUtc::from_chrono(&dt) };
-            TempochStatus::Ok
+    catch_panic!(TempochStatus::UtcConversionFailed, {
+        if out.is_null() {
+            return TempochStatus::NullPointer;
         }
-        None => TempochStatus::UtcConversionFailed,
-    }
+        match JulianDate::new(jd).to_utc() {
+            Some(dt) => {
+                unsafe { *out = TempochUtc::from_chrono(&dt) };
+                TempochStatus::Ok
+            }
+            None => TempochStatus::UtcConversionFailed,
+        }
+    })
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -136,18 +140,19 @@ pub extern "C" fn tempoch_mjd_to_jd(mjd: f64) -> f64 {
 /// `out` must be a valid, writable pointer to `f64`.
 #[no_mangle]
 pub unsafe extern "C" fn tempoch_mjd_from_utc(utc: TempochUtc, out: *mut f64) -> TempochStatus {
-    if out.is_null() {
-        return TempochStatus::NullPointer;
-    }
-    match utc.into_chrono() {
-        Some(dt) => {
-            let mjd = ModifiedJulianDate::from_utc(dt);
-            // SAFETY: `out` was checked for null and the caller guarantees writable memory.
-            unsafe { *out = mjd.value() };
-            TempochStatus::Ok
+    catch_panic!(TempochStatus::UtcConversionFailed, {
+        if out.is_null() {
+            return TempochStatus::NullPointer;
         }
-        None => TempochStatus::UtcConversionFailed,
-    }
+        match utc.into_chrono() {
+            Some(dt) => {
+                let mjd = ModifiedJulianDate::from_utc(dt);
+                unsafe { *out = mjd.value() };
+                TempochStatus::Ok
+            }
+            None => TempochStatus::UtcConversionFailed,
+        }
+    })
 }
 
 /// Convert a Modified Julian Date to UTC.
@@ -156,18 +161,23 @@ pub unsafe extern "C" fn tempoch_mjd_from_utc(utc: TempochUtc, out: *mut f64) ->
 /// `out` must be a valid, writable pointer to `TempochUtc`.
 #[no_mangle]
 pub unsafe extern "C" fn tempoch_mjd_to_utc(mjd: f64, out: *mut TempochUtc) -> TempochStatus {
-    if out.is_null() {
-        return TempochStatus::NullPointer;
-    }
-    match ModifiedJulianDate::new(mjd).to_utc() {
-        Some(dt) => {
-            // SAFETY: `out` was checked for null and the caller guarantees writable memory.
-            unsafe { *out = TempochUtc::from_chrono(&dt) };
-            TempochStatus::Ok
+    catch_panic!(TempochStatus::UtcConversionFailed, {
+        if out.is_null() {
+            return TempochStatus::NullPointer;
         }
-        None => TempochStatus::UtcConversionFailed,
-    }
+        match ModifiedJulianDate::new(mjd).to_utc() {
+            Some(dt) => {
+                unsafe { *out = TempochUtc::from_chrono(&dt) };
+                TempochStatus::Ok
+            }
+            None => TempochStatus::UtcConversionFailed,
+        }
+    })
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Duration / Difference (raw f64 — backward compatible)
+// ═══════════════════════════════════════════════════════════════════════════
 
 /// Compute the difference between two Julian Dates in days.
 #[no_mangle]
@@ -203,4 +213,96 @@ pub extern "C" fn tempoch_mjd_add_days(mjd: f64, days: f64) -> f64 {
 #[no_mangle]
 pub extern "C" fn tempoch_jd_julian_centuries(jd: f64) -> f64 {
     JulianDate::new(jd).julian_centuries().value()
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Duration / Difference (QttyQuantity — typed)
+// ═══════════════════════════════════════════════════════════════════════════
+// These functions return `QttyQuantity` values with proper unit metadata,
+// enabling type-safe conversions via the qtty-ffi API.
+
+/// Compute the difference between two Julian Dates as a `QttyQuantity` in days.
+#[no_mangle]
+pub extern "C" fn tempoch_jd_difference_qty(jd1: f64, jd2: f64) -> QttyQuantity {
+    let t1 = JulianDate::new(jd1);
+    let t2 = JulianDate::new(jd2);
+    QttyQuantity::new(t1.difference(&t2).value(), UnitId::Day)
+}
+
+/// Add a `QttyQuantity` duration (must be time-compatible) to a Julian Date.
+/// The quantity is converted to days internally.
+///
+/// # Safety
+/// `out` must be a valid, writable pointer to `f64`.
+#[no_mangle]
+pub unsafe extern "C" fn tempoch_jd_add_qty(
+    jd: f64,
+    duration: QttyQuantity,
+    out: *mut f64,
+) -> TempochStatus {
+    catch_panic!(TempochStatus::UtcConversionFailed, {
+        if out.is_null() {
+            return TempochStatus::NullPointer;
+        }
+        // Convert quantity to days via qtty-ffi registry
+        let days_val = match duration.convert_to(UnitId::Day) {
+            Some(q) => q.value,
+            None => return TempochStatus::UtcConversionFailed,
+        };
+        let result = JulianDate::new(jd)
+            .add_duration(Days::new(days_val))
+            .value();
+        unsafe { *out = result };
+        TempochStatus::Ok
+    })
+}
+
+/// Compute the difference between two Modified Julian Dates as a `QttyQuantity` in days.
+#[no_mangle]
+pub extern "C" fn tempoch_mjd_difference_qty(mjd1: f64, mjd2: f64) -> QttyQuantity {
+    let t1 = ModifiedJulianDate::new(mjd1);
+    let t2 = ModifiedJulianDate::new(mjd2);
+    QttyQuantity::new(t1.difference(&t2).value(), UnitId::Day)
+}
+
+/// Add a `QttyQuantity` duration (must be time-compatible) to a Modified Julian Date.
+/// The quantity is converted to days internally.
+///
+/// # Safety
+/// `out` must be a valid, writable pointer to `f64`.
+#[no_mangle]
+pub unsafe extern "C" fn tempoch_mjd_add_qty(
+    mjd: f64,
+    duration: QttyQuantity,
+    out: *mut f64,
+) -> TempochStatus {
+    catch_panic!(TempochStatus::UtcConversionFailed, {
+        if out.is_null() {
+            return TempochStatus::NullPointer;
+        }
+        let days_val = match duration.convert_to(UnitId::Day) {
+            Some(q) => q.value,
+            None => return TempochStatus::UtcConversionFailed,
+        };
+        let result = ModifiedJulianDate::new(mjd)
+            .add_duration(Days::new(days_val))
+            .value();
+        unsafe { *out = result };
+        TempochStatus::Ok
+    })
+}
+
+/// Compute Julian centuries since J2000 as a `QttyQuantity`.
+#[no_mangle]
+pub extern "C" fn tempoch_jd_julian_centuries_qty(jd: f64) -> QttyQuantity {
+    QttyQuantity::new(
+        JulianDate::new(jd).julian_centuries().value(),
+        UnitId::JulianCentury,
+    )
+}
+
+/// Compute the duration of a period as a `QttyQuantity` in days.
+#[no_mangle]
+pub extern "C" fn tempoch_period_mjd_duration_qty(period: crate::TempochPeriodMjd) -> QttyQuantity {
+    QttyQuantity::new(period.end_mjd - period.start_mjd, UnitId::Day)
 }
