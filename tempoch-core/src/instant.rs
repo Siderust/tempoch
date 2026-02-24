@@ -743,4 +743,69 @@ mod tests {
         assert_eq!(later.sub_duration(diff), base);
         assert_eq!(TimeInstant::to_utc(&later), Some(later));
     }
+
+    // ── New coverage tests ────────────────────────────────────────────
+
+    #[test]
+    fn test_non_finite_error_display() {
+        let err = NonFiniteTimeError;
+        let msg = format!("{err}");
+        assert!(msg.contains("finite"), "unexpected: {msg}");
+    }
+
+    #[test]
+    fn test_julian_day_and_julian_day_value() {
+        // MJD 51544.5 == JD 2451545.0 (J2000.0 in TT).
+        let mjd = Time::<MJD>::new(51_544.5);
+        let jd_days = mjd.julian_day();
+        assert!(
+            (jd_days - Days::new(2_451_545.0)).abs() < Days::new(1e-10),
+            "julian_day mismatch: {jd_days}"
+        );
+        assert!(
+            (mjd.julian_day_value() - 2_451_545.0).abs() < 1e-10,
+            "julian_day_value mismatch: {}",
+            mjd.julian_day_value()
+        );
+    }
+
+    #[test]
+    fn test_timeinstant_trait_to_utc_and_from_utc_for_time() {
+        // Call to_utc / from_utc through the TimeInstant trait (UFCS) so that
+        // the forwarding wrapper functions in the TimeInstant impl are covered.
+        let jd = Time::<JD>::new(2_451_545.0);
+        let utc: Option<_> = TimeInstant::to_utc(&jd);
+        assert!(utc.is_some());
+        let back: Time<JD> = TimeInstant::from_utc(utc.unwrap());
+        assert!((back.value() - jd.value()).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_datetime_timeinstant_from_utc() {
+        // Exercises TimeInstant::from_utc for DateTime<Utc>.
+        let dt = DateTime::from_timestamp(0, 0).unwrap();
+        let back: DateTime<Utc> = TimeInstant::from_utc(dt);
+        assert_eq!(back, dt);
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_serde_serialize_time() {
+        let jd = Time::<JD>::new(2_451_545.0);
+        let json = serde_json::to_string(&jd).unwrap();
+        assert!(json.contains("2451545"), "serialized: {json}");
+        let back: Time<JD> = serde_json::from_str(&json).unwrap();
+        assert_eq!(jd.value(), back.value());
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_serde_deserialize_nan_rejected() {
+        use serde::{de::IntoDeserializer, Deserialize};
+        let result: Result<Time<JD>, serde::de::value::Error> =
+            Time::<JD>::deserialize(f64::NAN.into_deserializer());
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("finite"), "unexpected error: {msg}");
+    }
 }
