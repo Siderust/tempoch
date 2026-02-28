@@ -33,6 +33,29 @@ enum tempoch_status_t
 typedef int32_t tempoch_status_t;
 #endif // __cplusplus
 
+// Scale label for the `tempoch_jd_to_scale()` / `tempoch_scale_to_jd()` dispatch.
+//
+enum TempochScale
+#ifdef __cplusplus
+  : int32_t
+#endif // __cplusplus
+ {
+  TEMPOCH_SCALE_JD = 0,
+  TEMPOCH_SCALE_MJD = 1,
+  TEMPOCH_SCALE_TDB = 2,
+  TEMPOCH_SCALE_TT = 3,
+  TEMPOCH_SCALE_TAI = 4,
+  TEMPOCH_SCALE_TCG = 5,
+  TEMPOCH_SCALE_TCB = 6,
+  TEMPOCH_SCALE_GPS = 7,
+  TEMPOCH_SCALE_UT = 8,
+  TEMPOCH_SCALE_JDE = 9,
+  TEMPOCH_SCALE_UNIX_TIME = 10,
+};
+#ifndef __cplusplus
+typedef int32_t TempochScale;
+#endif // __cplusplus
+
 // A time period in Modified Julian Date, suitable for C interop.
 typedef struct tempoch_period_mjd_t {
   double start_mjd;
@@ -159,6 +182,75 @@ tempoch_status_t tempoch_period_mjd_intersection(struct tempoch_period_mjd_t a,
 
 // Compute the duration of a period as a `QttyQuantity` in days.
  qtty_quantity_t tempoch_period_mjd_duration_qty(struct tempoch_period_mjd_t period);
+
+// Convert a Julian Date (TT) to TDB (Barycentric Dynamical Time).
+ double tempoch_jd_to_tdb(double jd);
+
+// Convert TDB back to Julian Date (TT).
+ double tempoch_tdb_to_jd(double tdb);
+
+// Convert a Julian Date (TT) to TT (Terrestrial Time). Identity—included for completeness.
+ double tempoch_jd_to_tt(double jd);
+
+// Convert TT back to Julian Date (TT). Identity.
+ double tempoch_tt_to_jd(double tt);
+
+// Convert a Julian Date (TT) to TAI (International Atomic Time).
+ double tempoch_jd_to_tai(double jd);
+
+// Convert TAI back to Julian Date (TT).
+ double tempoch_tai_to_jd(double tai);
+
+// Convert a Julian Date (TT) to TCG (Geocentric Coordinate Time).
+ double tempoch_jd_to_tcg(double jd);
+
+// Convert TCG back to Julian Date (TT).
+ double tempoch_tcg_to_jd(double tcg);
+
+// Convert a Julian Date (TT) to TCB (Barycentric Coordinate Time).
+ double tempoch_jd_to_tcb(double jd);
+
+// Convert TCB back to Julian Date (TT).
+ double tempoch_tcb_to_jd(double tcb);
+
+// Convert a Julian Date (TT) to GPS Time.
+ double tempoch_jd_to_gps(double jd);
+
+// Convert GPS Time back to Julian Date (TT).
+ double tempoch_gps_to_jd(double gps);
+
+// Convert a Julian Date (TT) to UT (Universal Time UT1).
+ double tempoch_jd_to_ut(double jd);
+
+// Convert UT back to Julian Date (TT).
+ double tempoch_ut_to_jd(double ut);
+
+// Convert a Julian Date (TT) to JDE (Julian Ephemeris Day — semantic alias of JD(TT)).
+ double tempoch_jd_to_jde(double jd);
+
+// Convert JDE back to Julian Date (TT).
+ double tempoch_jde_to_jd(double jde);
+
+// Convert a Julian Date (TT) to Unix Time (seconds since 1970-01-01T00:00:00 UTC, ignoring leap seconds).
+
+double tempoch_jd_to_unix(double jd);
+
+// Convert Unix Time back to Julian Date (TT).
+ double tempoch_unix_to_jd(double unix);
+
+// Return ΔT = TT − UT1 in seconds for a given Julian Date.
+//
+// Uses the piecewise polynomial/tabular model from tempoch-core.
+ double tempoch_delta_t_seconds(double jd);
+
+// Generic JD → any scale dispatch.
+//
+// Returns the value in the target time scale. Prefer the individual functions
+// (`tempoch_jd_to_tdb`, etc.) when the target scale is known at compile time.
+ double tempoch_jd_to_scale(double jd, TempochScale scale);
+
+// Generic any scale → JD dispatch.
+ double tempoch_scale_to_jd(double value, TempochScale scale);
 
 #ifdef __cplusplus
 }  // extern "C"

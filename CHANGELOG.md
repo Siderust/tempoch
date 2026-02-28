@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Time scale conversion functions in FFI (`tempoch_jd_to_tt`, `tempoch_tt_to_jd`, `tempoch_jd_to_mjd`, `tempoch_mjd_to_jd`, `tempoch_jd_to_tai`, `tempoch_tai_to_jd`, `tempoch_jd_to_tdb`, `tempoch_tdb_to_jd`, `tempoch_jd_to_tcg`, `tempoch_tcg_to_jd`, `tempoch_jd_to_tcb`, `tempoch_tcb_to_jd`, `tempoch_jd_to_gps`, `tempoch_gps_to_jd`, `tempoch_jd_to_jde`, `tempoch_jde_to_jd`, `tempoch_jd_to_unix`, `tempoch_unix_to_jd`, `tempoch_jd_add_days`, `tempoch_jd_difference`, `tempoch_jd_difference_qty`, `tempoch_jd_add_qty`).
+- `TempochScale` enum in FFI to enumerate all supported time scales.
+
+### Changed
+
+- Improved formatting and consistency in FFI time conversion implementations.
+
 ## [0.3.0 - 2026-02-19]
 
 ### Added
