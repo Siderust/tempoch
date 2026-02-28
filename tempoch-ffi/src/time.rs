@@ -9,8 +9,10 @@ use crate::error::TempochStatus;
 use chrono::{DateTime, NaiveDate, Utc};
 use qtty::Days;
 use qtty_ffi::{QttyQuantity, UnitId};
-use tempoch::{JulianDate, ModifiedJulianDate, TimeInstant, UniversalTime, JD, JDE, MJD, TAI,
-              TCB, TCG, TDB, TT, UT, GPS, Time};
+use tempoch::{
+    JulianDate, ModifiedJulianDate, Time, TimeInstant, UniversalTime, GPS, JD, JDE, MJD, TAI, TCB,
+    TCG, TDB, TT, UT,
+};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // C-repr types
@@ -455,16 +457,16 @@ pub enum TempochScale {
 #[no_mangle]
 pub extern "C" fn tempoch_jd_to_scale(jd: f64, scale: TempochScale) -> f64 {
     match scale {
-        TempochScale::JD       => jd,
-        TempochScale::MJD      => tempoch_jd_to_mjd(jd),
-        TempochScale::TDB      => tempoch_jd_to_tdb(jd),
-        TempochScale::TT       => tempoch_jd_to_tt(jd),
-        TempochScale::TAI      => tempoch_jd_to_tai(jd),
-        TempochScale::TCG      => tempoch_jd_to_tcg(jd),
-        TempochScale::TCB      => tempoch_jd_to_tcb(jd),
-        TempochScale::GPS      => tempoch_jd_to_gps(jd),
-        TempochScale::UT       => tempoch_jd_to_ut(jd),
-        TempochScale::JDE      => tempoch_jd_to_jde(jd),
+        TempochScale::JD => jd,
+        TempochScale::MJD => tempoch_jd_to_mjd(jd),
+        TempochScale::TDB => tempoch_jd_to_tdb(jd),
+        TempochScale::TT => tempoch_jd_to_tt(jd),
+        TempochScale::TAI => tempoch_jd_to_tai(jd),
+        TempochScale::TCG => tempoch_jd_to_tcg(jd),
+        TempochScale::TCB => tempoch_jd_to_tcb(jd),
+        TempochScale::GPS => tempoch_jd_to_gps(jd),
+        TempochScale::UT => tempoch_jd_to_ut(jd),
+        TempochScale::JDE => tempoch_jd_to_jde(jd),
         TempochScale::UnixTime => tempoch_jd_to_unix(jd),
     }
 }
@@ -473,16 +475,16 @@ pub extern "C" fn tempoch_jd_to_scale(jd: f64, scale: TempochScale) -> f64 {
 #[no_mangle]
 pub extern "C" fn tempoch_scale_to_jd(value: f64, scale: TempochScale) -> f64 {
     match scale {
-        TempochScale::JD       => value,
-        TempochScale::MJD      => tempoch_mjd_to_jd(value),
-        TempochScale::TDB      => tempoch_tdb_to_jd(value),
-        TempochScale::TT       => tempoch_tt_to_jd(value),
-        TempochScale::TAI      => tempoch_tai_to_jd(value),
-        TempochScale::TCG      => tempoch_tcg_to_jd(value),
-        TempochScale::TCB      => tempoch_tcb_to_jd(value),
-        TempochScale::GPS      => tempoch_gps_to_jd(value),
-        TempochScale::UT       => tempoch_ut_to_jd(value),
-        TempochScale::JDE      => tempoch_jde_to_jd(value),
+        TempochScale::JD => value,
+        TempochScale::MJD => tempoch_mjd_to_jd(value),
+        TempochScale::TDB => tempoch_tdb_to_jd(value),
+        TempochScale::TT => tempoch_tt_to_jd(value),
+        TempochScale::TAI => tempoch_tai_to_jd(value),
+        TempochScale::TCG => tempoch_tcg_to_jd(value),
+        TempochScale::TCB => tempoch_tcb_to_jd(value),
+        TempochScale::GPS => tempoch_gps_to_jd(value),
+        TempochScale::UT => tempoch_ut_to_jd(value),
+        TempochScale::JDE => tempoch_jde_to_jd(value),
         TempochScale::UnixTime => tempoch_unix_to_jd(value),
     }
 }
