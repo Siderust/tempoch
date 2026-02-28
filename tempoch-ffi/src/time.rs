@@ -9,7 +9,8 @@ use crate::error::TempochStatus;
 use chrono::{DateTime, NaiveDate, Utc};
 use qtty::Days;
 use qtty_ffi::{QttyQuantity, UnitId};
-use tempoch::{JulianDate, ModifiedJulianDate, TimeInstant, JD, MJD};
+use tempoch::{JulianDate, ModifiedJulianDate, TimeInstant, UniversalTime, JD, JDE, MJD, TAI,
+              TCB, TCG, TDB, TT, UT, GPS, Time};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // C-repr types
@@ -305,6 +306,185 @@ pub extern "C" fn tempoch_jd_julian_centuries_qty(jd: f64) -> QttyQuantity {
 #[no_mangle]
 pub extern "C" fn tempoch_period_mjd_duration_qty(period: crate::TempochPeriodMjd) -> QttyQuantity {
     QttyQuantity::new(period.end_mjd - period.start_mjd, UnitId::Day)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Time scale conversions  (JD ↔ TDB, TT, TAI, TCG, TCB, GPS, UT, JDE, UnixTime)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Convert a Julian Date (TT) to TDB (Barycentric Dynamical Time).
+#[no_mangle]
+pub extern "C" fn tempoch_jd_to_tdb(jd: f64) -> f64 {
+    JulianDate::new(jd).to::<TDB>().value()
+}
+
+/// Convert TDB back to Julian Date (TT).
+#[no_mangle]
+pub extern "C" fn tempoch_tdb_to_jd(tdb: f64) -> f64 {
+    Time::<TDB>::new(tdb).to::<JD>().value()
+}
+
+/// Convert a Julian Date (TT) to TT (Terrestrial Time). Identity—included for completeness.
+#[no_mangle]
+pub extern "C" fn tempoch_jd_to_tt(jd: f64) -> f64 {
+    JulianDate::new(jd).to::<TT>().value()
+}
+
+/// Convert TT back to Julian Date (TT). Identity.
+#[no_mangle]
+pub extern "C" fn tempoch_tt_to_jd(tt: f64) -> f64 {
+    Time::<TT>::new(tt).to::<JD>().value()
+}
+
+/// Convert a Julian Date (TT) to TAI (International Atomic Time).
+#[no_mangle]
+pub extern "C" fn tempoch_jd_to_tai(jd: f64) -> f64 {
+    JulianDate::new(jd).to::<TAI>().value()
+}
+
+/// Convert TAI back to Julian Date (TT).
+#[no_mangle]
+pub extern "C" fn tempoch_tai_to_jd(tai: f64) -> f64 {
+    Time::<TAI>::new(tai).to::<JD>().value()
+}
+
+/// Convert a Julian Date (TT) to TCG (Geocentric Coordinate Time).
+#[no_mangle]
+pub extern "C" fn tempoch_jd_to_tcg(jd: f64) -> f64 {
+    JulianDate::new(jd).to::<TCG>().value()
+}
+
+/// Convert TCG back to Julian Date (TT).
+#[no_mangle]
+pub extern "C" fn tempoch_tcg_to_jd(tcg: f64) -> f64 {
+    Time::<TCG>::new(tcg).to::<JD>().value()
+}
+
+/// Convert a Julian Date (TT) to TCB (Barycentric Coordinate Time).
+#[no_mangle]
+pub extern "C" fn tempoch_jd_to_tcb(jd: f64) -> f64 {
+    JulianDate::new(jd).to::<TCB>().value()
+}
+
+/// Convert TCB back to Julian Date (TT).
+#[no_mangle]
+pub extern "C" fn tempoch_tcb_to_jd(tcb: f64) -> f64 {
+    Time::<TCB>::new(tcb).to::<JD>().value()
+}
+
+/// Convert a Julian Date (TT) to GPS Time.
+#[no_mangle]
+pub extern "C" fn tempoch_jd_to_gps(jd: f64) -> f64 {
+    JulianDate::new(jd).to::<GPS>().value()
+}
+
+/// Convert GPS Time back to Julian Date (TT).
+#[no_mangle]
+pub extern "C" fn tempoch_gps_to_jd(gps: f64) -> f64 {
+    Time::<GPS>::new(gps).to::<JD>().value()
+}
+
+/// Convert a Julian Date (TT) to UT (Universal Time UT1).
+#[no_mangle]
+pub extern "C" fn tempoch_jd_to_ut(jd: f64) -> f64 {
+    JulianDate::new(jd).to::<UT>().value()
+}
+
+/// Convert UT back to Julian Date (TT).
+#[no_mangle]
+pub extern "C" fn tempoch_ut_to_jd(ut: f64) -> f64 {
+    Time::<UT>::new(ut).to::<JD>().value()
+}
+
+/// Convert a Julian Date (TT) to JDE (Julian Ephemeris Day — semantic alias of JD(TT)).
+#[no_mangle]
+pub extern "C" fn tempoch_jd_to_jde(jd: f64) -> f64 {
+    JulianDate::new(jd).to::<JDE>().value()
+}
+
+/// Convert JDE back to Julian Date (TT).
+#[no_mangle]
+pub extern "C" fn tempoch_jde_to_jd(jde: f64) -> f64 {
+    Time::<JDE>::new(jde).to::<JD>().value()
+}
+
+/// Convert a Julian Date (TT) to Unix Time (seconds since 1970-01-01T00:00:00 UTC, ignoring leap seconds).
+#[no_mangle]
+pub extern "C" fn tempoch_jd_to_unix(jd: f64) -> f64 {
+    JulianDate::new(jd).to::<tempoch::UnixTime>().value()
+}
+
+/// Convert Unix Time back to Julian Date (TT).
+#[no_mangle]
+pub extern "C" fn tempoch_unix_to_jd(unix: f64) -> f64 {
+    Time::<tempoch::UnixTime>::new(unix).to::<JD>().value()
+}
+
+/// Return ΔT = TT − UT1 in seconds for a given Julian Date.
+///
+/// Uses the piecewise polynomial/tabular model from tempoch-core.
+#[no_mangle]
+pub extern "C" fn tempoch_delta_t_seconds(jd: f64) -> f64 {
+    let ut: UniversalTime = JulianDate::new(jd).to::<UT>();
+    ut.delta_t().value()
+}
+
+/// Scale label for the `tempoch_jd_to_scale()` / `tempoch_scale_to_jd()` dispatch.
+///
+/// cbindgen:prefix-with-name
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TempochScale {
+    JD = 0,
+    MJD = 1,
+    TDB = 2,
+    TT = 3,
+    TAI = 4,
+    TCG = 5,
+    TCB = 6,
+    GPS = 7,
+    UT = 8,
+    JDE = 9,
+    UnixTime = 10,
+}
+
+/// Generic JD → any scale dispatch.
+///
+/// Returns the value in the target time scale. Prefer the individual functions
+/// (`tempoch_jd_to_tdb`, etc.) when the target scale is known at compile time.
+#[no_mangle]
+pub extern "C" fn tempoch_jd_to_scale(jd: f64, scale: TempochScale) -> f64 {
+    match scale {
+        TempochScale::JD       => jd,
+        TempochScale::MJD      => tempoch_jd_to_mjd(jd),
+        TempochScale::TDB      => tempoch_jd_to_tdb(jd),
+        TempochScale::TT       => tempoch_jd_to_tt(jd),
+        TempochScale::TAI      => tempoch_jd_to_tai(jd),
+        TempochScale::TCG      => tempoch_jd_to_tcg(jd),
+        TempochScale::TCB      => tempoch_jd_to_tcb(jd),
+        TempochScale::GPS      => tempoch_jd_to_gps(jd),
+        TempochScale::UT       => tempoch_jd_to_ut(jd),
+        TempochScale::JDE      => tempoch_jd_to_jde(jd),
+        TempochScale::UnixTime => tempoch_jd_to_unix(jd),
+    }
+}
+
+/// Generic any scale → JD dispatch.
+#[no_mangle]
+pub extern "C" fn tempoch_scale_to_jd(value: f64, scale: TempochScale) -> f64 {
+    match scale {
+        TempochScale::JD       => value,
+        TempochScale::MJD      => tempoch_mjd_to_jd(value),
+        TempochScale::TDB      => tempoch_tdb_to_jd(value),
+        TempochScale::TT       => tempoch_tt_to_jd(value),
+        TempochScale::TAI      => tempoch_tai_to_jd(value),
+        TempochScale::TCG      => tempoch_tcg_to_jd(value),
+        TempochScale::TCB      => tempoch_tcb_to_jd(value),
+        TempochScale::GPS      => tempoch_gps_to_jd(value),
+        TempochScale::UT       => tempoch_ut_to_jd(value),
+        TempochScale::JDE      => tempoch_jde_to_jd(value),
+        TempochScale::UnixTime => tempoch_unix_to_jd(value),
+    }
 }
 
 #[cfg(test)]
