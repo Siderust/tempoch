@@ -40,16 +40,27 @@ enum TempochScale
   : int32_t
 #endif // __cplusplus
  {
+  // Julian Date.
   TEMPOCH_SCALE_JD = 0,
+  // Modified Julian Date.
   TEMPOCH_SCALE_MJD = 1,
+  // Barycentric Dynamical Time.
   TEMPOCH_SCALE_TDB = 2,
+  // Terrestrial Time.
   TEMPOCH_SCALE_TT = 3,
+  // International Atomic Time.
   TEMPOCH_SCALE_TAI = 4,
+  // Geocentric Coordinate Time.
   TEMPOCH_SCALE_TCG = 5,
+  // Barycentric Coordinate Time.
   TEMPOCH_SCALE_TCB = 6,
+  // GPS Time.
   TEMPOCH_SCALE_GPS = 7,
+  // Universal Time.
   TEMPOCH_SCALE_UT = 8,
+  // Julian Ephemeris Date.
   TEMPOCH_SCALE_JDE = 9,
+  // Unix timestamp (seconds since 1970-01-01 00:00:00 UTC).
   TEMPOCH_SCALE_UNIX_TIME = 10,
 };
 #ifndef __cplusplus
@@ -58,18 +69,27 @@ typedef int32_t TempochScale;
 
 // A time period in Modified Julian Date, suitable for C interop.
 typedef struct tempoch_period_mjd_t {
+  // Start of the period (MJD).
   double start_mjd;
+  // End of the period (MJD).
   double end_mjd;
 } tempoch_period_mjd_t;
 
 // UTC date-time breakdown for C interop.
 typedef struct tempoch_utc_t {
+  // Calendar year (e.g. 2026).
   int32_t year;
+  // Month of the year (1–12).
   uint8_t month;
+  // Day of the month (1–31).
   uint8_t day;
+  // Hour of the day (0–23).
   uint8_t hour;
+  // Minute of the hour (0–59).
   uint8_t minute;
+  // Second of the minute (0–59).
   uint8_t second;
+  // Sub-second component in nanoseconds (0–999_999_999).
   uint32_t nanosecond;
 } tempoch_utc_t;
 

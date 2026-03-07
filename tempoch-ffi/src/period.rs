@@ -15,7 +15,9 @@ use tempoch::{Interval, ModifiedJulianDate, Period, MJD};
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct TempochPeriodMjd {
+    /// Start of the period (MJD).
     pub start_mjd: f64,
+    /// End of the period (MJD).
     pub end_mjd: f64,
 }
 
