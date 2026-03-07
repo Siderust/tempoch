@@ -22,12 +22,19 @@ use tempoch::{
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct TempochUtc {
+    /// Calendar year (e.g. 2026).
     pub year: i32,
+    /// Month of the year (1–12).
     pub month: u8,
+    /// Day of the month (1–31).
     pub day: u8,
+    /// Hour of the day (0–23).
     pub hour: u8,
+    /// Minute of the hour (0–59).
     pub minute: u8,
+    /// Second of the minute (0–59).
     pub second: u8,
+    /// Sub-second component in nanoseconds (0–999_999_999).
     pub nanosecond: u32,
 }
 
@@ -437,16 +444,27 @@ pub extern "C" fn tempoch_delta_t_seconds(jd: f64) -> f64 {
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TempochScale {
+    /// Julian Date.
     JD = 0,
+    /// Modified Julian Date.
     MJD = 1,
+    /// Barycentric Dynamical Time.
     TDB = 2,
+    /// Terrestrial Time.
     TT = 3,
+    /// International Atomic Time.
     TAI = 4,
+    /// Geocentric Coordinate Time.
     TCG = 5,
+    /// Barycentric Coordinate Time.
     TCB = 6,
+    /// GPS Time.
     GPS = 7,
+    /// Universal Time.
     UT = 8,
+    /// Julian Ephemeris Date.
     JDE = 9,
+    /// Unix timestamp (seconds since 1970-01-01 00:00:00 UTC).
     UnixTime = 10,
 }
 
