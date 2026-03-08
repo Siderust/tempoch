@@ -383,28 +383,11 @@ dependencies = [
 [[package]]
 name = "qtty"
 version = "0.4.1"
-dependencies = [
- "qtty-core 0.4.1",
- "qtty-derive 0.4.1",
-]
-
-[[package]]
-name = "qtty"
-version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9dc60ed0161fc68ec0b0faf090e4feec70dd179447c6ca14e5cc052b4eb2a789"
 dependencies = [
- "qtty-core 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "qtty-derive 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "qtty-core"
-version = "0.4.1"
-dependencies = [
- "libm",
- "qtty-derive 0.4.1",
- "typenum",
+ "qtty-core",
+ "qtty-derive",
 ]
 
 [[package]]
@@ -414,17 +397,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab488371c17ea2db038caa2a3d0044a85a433c4c2172467978d05ee39d22b6fb"
 dependencies = [
  "libm",
- "qtty-derive 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "qtty-derive",
  "typenum",
-]
-
-[[package]]
-name = "qtty-derive"
-version = "0.4.1"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]
@@ -441,9 +415,11 @@ dependencies = [
 [[package]]
 name = "qtty-ffi"
 version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8ee8ce830af38e0287f1cf409b6cd713db88f647c5472fc66df00be7cfa53b14"
 dependencies = [
  "cbindgen",
- "qtty 0.4.1",
+ "qtty",
  "quote",
  "serde",
  "serde_json",
@@ -583,7 +559,7 @@ name = "tempoch"
 version = "0.4.0"
 dependencies = [
  "chrono",
- "qtty 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "qtty",
  "serde_json",
  "tempoch-core",
 ]
@@ -593,7 +569,7 @@ name = "tempoch-core"
 version = "0.4.0"
 dependencies = [
  "chrono",
- "qtty 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "qtty",
  "serde",
  "serde_json",
 ]
@@ -604,7 +580,7 @@ version = "0.2.0"
 dependencies = [
  "cbindgen",
  "chrono",
- "qtty 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "qtty",
  "qtty-ffi",
  "serde_json",
  "tempoch",
