@@ -254,7 +254,14 @@ impl<S: TimeScale> Time<S> {
 
 impl<S: TimeScale> std::fmt::Display for Time<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {}", S::LABEL, self.quantity)
+        // Format: "JD 2451545.0" — scale label followed by the raw day value.
+        // The `d` unit suffix is intentionally omitted: for time scales the
+        // scale label already conveys the scale (JD, MJD, TT, …) and the
+        // trailing `d` was redundant and visually confusing.
+        // All format flags (precision, width, …) are forwarded to the f64
+        // value so that e.g. `format!("{:.9}", my_jd)` works directly.
+        write!(f, "{} ", S::LABEL)?;
+        std::fmt::Display::fmt(&self.quantity.value(), f)
     }
 }
 
