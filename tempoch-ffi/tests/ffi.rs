@@ -240,8 +240,8 @@ fn mjd_arithmetic() {
 #[test]
 fn ffi_version_matches_cargo() {
     let v = tempoch_ffi_version();
-    // 0.1.0 → 0*10000 + 1*100 + 0 = 100
-    assert_eq!(v, 100);
+    // 0.2.0 → 0*10000 + 2*100 + 0 = 200
+    assert_eq!(v, 200);
 }
 
 // ─── Julian centuries ─────────────────────────────────────────────────────

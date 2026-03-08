@@ -7,14 +7,25 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.4.0 - 2026-03-08]
+
 ### Added
 
-- Time scale conversion functions in FFI (`tempoch_jd_to_tt`, `tempoch_tt_to_jd`, `tempoch_jd_to_mjd`, `tempoch_mjd_to_jd`, `tempoch_jd_to_tai`, `tempoch_tai_to_jd`, `tempoch_jd_to_tdb`, `tempoch_tdb_to_jd`, `tempoch_jd_to_tcg`, `tempoch_tcg_to_jd`, `tempoch_jd_to_tcb`, `tempoch_tcb_to_jd`, `tempoch_jd_to_gps`, `tempoch_gps_to_jd`, `tempoch_jd_to_jde`, `tempoch_jde_to_jd`, `tempoch_jd_to_unix`, `tempoch_unix_to_jd`, `tempoch_jd_add_days`, `tempoch_jd_difference`, `tempoch_jd_difference_qty`, `tempoch_jd_add_qty`).
-- `TempochScale` enum in FFI to enumerate all supported time scales.
+- Typed `qtty-ffi` duration helpers in `tempoch-ffi`, including `tempoch_jd_difference_qty`, `tempoch_jd_add_qty`, `tempoch_mjd_difference_qty`, `tempoch_mjd_add_qty`, `tempoch_jd_julian_centuries_qty`, and `tempoch_period_mjd_duration_qty`.
+- FFI time-scale conversion functions for `TDB`, `TT`, `TAI`, `TCG`, `TCB`, `GPS`, `UT`, `JDE`, and `UnixTime`.
+- FFI `TempochScale` enum plus generic `tempoch_jd_to_scale` / `tempoch_scale_to_jd` dispatch helpers.
+- `timescales` example covering the supported scale conversions.
 
 ### Changed
 
+- Updated the public `qtty` dependency to `0.4.1`.
+- `Time<S>` display output now omits the redundant trailing day-unit suffix and forwards standard formatting flags to the raw numeric value.
+- Generated FFI headers now include `qtty_ffi.h` instead of duplicating shared quantity declarations.
 - Improved formatting and consistency in FFI time conversion implementations.
+
+### Fixed
+
+- `Interval<DateTime<Utc>>::duration_days()` now preserves sub-second precision instead of truncating through whole seconds.
 
 ## [0.3.0 - 2026-02-19]
 

@@ -38,7 +38,7 @@ pub(crate) use catch_panic;
 #[allow(clippy::erasing_op, clippy::identity_op)]
 #[no_mangle]
 pub extern "C" fn tempoch_ffi_version() -> u32 {
-    0 * 10000 + 1 * 100 + 0 // 0.1.0
+    0 * 10000 + 2 * 100 + 0 // 0.2.0
 }
 
 #[cfg(test)]
@@ -47,7 +47,7 @@ mod tests {
 
     #[test]
     fn version_returns_expected_value() {
-        assert_eq!(tempoch_ffi_version(), 100);
+        assert_eq!(tempoch_ffi_version(), 200);
     }
 
     // ── Layout tests ─────────────────────────────────────────────────

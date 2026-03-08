@@ -18,7 +18,7 @@ Typed astronomical time primitives for Rust.
 
 ```toml
 [dependencies]
-tempoch = "0.3"
+tempoch = "0.4"
 ```
 
 ## Quick Start
