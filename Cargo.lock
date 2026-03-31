@@ -555,7 +555,7 @@ dependencies = [
 
 [[package]]
 name = "tempoch"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "chrono",
  "qtty",
@@ -565,7 +565,7 @@ dependencies = [
 
 [[package]]
 name = "tempoch-core"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "chrono",
  "qtty",
@@ -575,7 +575,7 @@ dependencies = [
 
 [[package]]
 name = "tempoch-ffi"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "cbindgen",
  "chrono",
