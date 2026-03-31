@@ -79,6 +79,7 @@ impl std::error::Error for NonFiniteTimeError {}
 /// Internally stores a single `Days` quantity whose interpretation depends on
 /// `S: TimeScale`.  The struct is `Copy` and zero-cost: `PhantomData` is
 /// zero-sized, so `Time<S>` is layout-identical to `Days` (a single `f64`).
+#[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub struct Time<S: TimeScale> {
     quantity: Days,
@@ -544,6 +545,15 @@ mod tests {
 
         let roundtrip = Time::<JD>::from(years);
         assert!((roundtrip.quantity() - jd.quantity()).abs() < Days::new(1e-12));
+    }
+
+    #[test]
+    fn time_has_days_layout() {
+        assert_eq!(std::mem::size_of::<Time<JD>>(), std::mem::size_of::<Days>());
+        assert_eq!(
+            std::mem::align_of::<Time<JD>>(),
+            std::mem::align_of::<Days>()
+        );
     }
 
     #[test]

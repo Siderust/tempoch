@@ -5,7 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.1 - 2026-03-31]
+
+### Changed
+
+- Simplified `tempoch-ffi` to a scalar C ABI centered on `double` time values plus raw scale IDs, with generic `tempoch_time_convert`, `tempoch_time_from_utc`, `tempoch_time_to_utc`, `tempoch_time_difference_*`, and `tempoch_time_add_*` entrypoints.
+- Standardized the FFI `UnixTime` contract as POSIX seconds since `1970-01-01T00:00:00 UTC`, instead of exposing the Rust crate's internal day-count representation directly.
+- Bumped `tempoch-ffi` to `0.4.0` / ABI version `400` and regenerated the public C header to match the new generic surface.
+- Simplified the `tempoch-cpp` wrapper to rebuild typed `Time<S>` operations on top of the generic scale-based FFI calls rather than maintaining a hand-written pairwise conversion matrix.
+
+### Fixed
+
+- `tempoch-ffi` period APIs now reject malformed `MJD` intervals consistently, including non-finite endpoints passed across the C boundary.
+- Rust and C++ FFI-facing civil-time docs now agree on the supported `second` range (`0..=59`), removing the earlier leap-second mismatch at the adapter boundary.
 
 ## [0.4.0 - 2026-03-08]
 

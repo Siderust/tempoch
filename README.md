@@ -21,6 +21,11 @@ Typed astronomical time primitives for Rust.
 tempoch = "0.4"
 ```
 
+Optional features:
+
+- `serde`: serialization support for public time types
+- `ffi`: marks `Time<S>` as `repr(transparent)` for Rust-side FFI layout guarantees
+
 ## Quick Start
 
 ```rust
