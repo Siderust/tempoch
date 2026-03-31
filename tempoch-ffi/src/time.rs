@@ -3,34 +3,22 @@
 
 //! FFI bindings for tempoch time operations.
 //!
-//! All absolute instant inputs and outputs use the typed carriers defined in
-//! [`crate::carriers`] rather than bare `f64`.  Generic scale-dispatch
-//! functions accept raw `int32_t` scale IDs (validated before dispatch) rather
-//! than `TempochScaleId` enum values in the ABI.
+//! The public C ABI uses scalar time values (`double`) plus an explicit
+//! scale identifier for the generic entry points. Language-specific bindings
+//! are expected to rebuild stronger typed wrappers on top of that substrate.
 
 use crate::carriers::{
-    jd_to_scale_value, scale_value_to_jd, TempochGps, TempochJd, TempochJde, TempochMjd,
-    TempochScaleId, TempochTai, TempochTcb, TempochTcg, TempochTdb, TempochTt, TempochUnixTime,
-    TempochUt,
+    jd_to_scale_value, scale_value_to_jd, time_add_days_value, time_difference_days_value,
+    time_from_utc_value, time_to_utc_value, TempochScaleId,
 };
 use crate::catch_panic;
 use crate::error::TempochStatus;
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{NaiveDate, Utc};
 use qtty::Days;
 use qtty_ffi::{QttyQuantity, UnitId};
-use tempoch::{
-    JulianDate, ModifiedJulianDate, Time, TimeInstant, UniversalTime, GPS, JD, JDE, MJD, TAI, TCB,
-    TCG, TDB, TT, UT,
-};
-
-// ═══════════════════════════════════════════════════════════════════════════
-// UTC calendar breakdown
-// ═══════════════════════════════════════════════════════════════════════════
+use tempoch::{JulianDate, UniversalTime, UT};
 
 /// UTC date-time breakdown for C interop.
-///
-/// Calendar fields remain raw integer types.  This struct is NOT a numeric
-/// carrier; use the `tempoch_*_t` carriers for absolute instant values.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct TempochUtc {
@@ -51,7 +39,7 @@ pub struct TempochUtc {
 }
 
 impl TempochUtc {
-    pub(crate) fn into_chrono(self) -> Option<DateTime<Utc>> {
+    pub(crate) fn into_chrono(self) -> Option<chrono::DateTime<Utc>> {
         let date = NaiveDate::from_ymd_opt(self.year, self.month as u32, self.day as u32)?;
         let time = date.and_hms_nano_opt(
             self.hour.into(),
@@ -59,10 +47,12 @@ impl TempochUtc {
             self.second.into(),
             self.nanosecond,
         )?;
-        Some(DateTime::<Utc>::from_naive_utc_and_offset(time, Utc))
+        Some(chrono::DateTime::<Utc>::from_naive_utc_and_offset(
+            time, Utc,
+        ))
     }
 
-    pub(crate) fn from_chrono(dt: &DateTime<Utc>) -> Self {
+    pub(crate) fn from_chrono(dt: &chrono::DateTime<Utc>) -> Self {
         use chrono::{Datelike, Timelike};
         Self {
             year: dt.year(),
@@ -76,44 +66,50 @@ impl TempochUtc {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Julian Date (JD / TT)
-// ═══════════════════════════════════════════════════════════════════════════
-
-/// Create a `TempochJd` carrier from a raw `double`.
-#[no_mangle]
-pub extern "C" fn tempoch_jd_new(value: f64) -> TempochJd {
-    TempochJd::new(value)
+#[inline]
+fn days_from_qty(duration: QttyQuantity) -> Result<Days, TempochStatus> {
+    duration
+        .convert_to(UnitId::Day)
+        .map(|q| Days::new(q.value))
+        .ok_or(TempochStatus::InvalidDurationUnit)
 }
 
-/// Return the J2000.0 epoch as a `TempochJd` (2451545.0).
-#[no_mangle]
-pub extern "C" fn tempoch_jd_j2000() -> TempochJd {
-    TempochJd::new(JulianDate::J2000.value())
+#[inline]
+fn decode_scale(scale_id: i32) -> Result<TempochScaleId, TempochStatus> {
+    TempochScaleId::from_raw(scale_id).ok_or(TempochStatus::InvalidScaleId)
 }
 
-/// Convert a `TempochJd` to a `TempochMjd`.
+/// Create a Julian Date from a raw `double`.
 #[no_mangle]
-pub extern "C" fn tempoch_jd_to_mjd(jd: TempochJd) -> TempochMjd {
-    TempochMjd::new(JulianDate::new(jd.value).to::<MJD>().value())
+pub extern "C" fn tempoch_jd_new(value: f64) -> f64 {
+    value
 }
 
-/// Create a `TempochJd` from a UTC date-time.
+/// Return the J2000.0 epoch as a Julian Date (2451545.0).
+#[no_mangle]
+pub extern "C" fn tempoch_jd_j2000() -> f64 {
+    JulianDate::J2000.value()
+}
+
+/// Convert a Julian Date to a Modified Julian Date.
+#[no_mangle]
+pub extern "C" fn tempoch_jd_to_mjd(jd: f64) -> f64 {
+    jd_to_scale_value(jd, TempochScaleId::MJD)
+}
+
+/// Create a Julian Date from a UTC date-time.
 ///
 /// # Safety
-/// `out` must be a valid, writable pointer to `TempochJd`.
+/// `out` must be a valid, writable pointer to `double`.
 #[no_mangle]
-pub unsafe extern "C" fn tempoch_jd_from_utc(
-    utc: TempochUtc,
-    out: *mut TempochJd,
-) -> TempochStatus {
+pub unsafe extern "C" fn tempoch_jd_from_utc(utc: TempochUtc, out: *mut f64) -> TempochStatus {
     catch_panic!(TempochStatus::InternalPanic, {
         if out.is_null() {
             return TempochStatus::NullPointer;
         }
         match utc.into_chrono() {
             Some(dt) => {
-                unsafe { *out = TempochJd::new(JulianDate::from_utc(dt).value()) };
+                unsafe { *out = time_from_utc_value(dt, TempochScaleId::JD) };
                 TempochStatus::Ok
             }
             None => TempochStatus::UtcConversionFailed,
@@ -121,17 +117,17 @@ pub unsafe extern "C" fn tempoch_jd_from_utc(
     })
 }
 
-/// Convert a `TempochJd` to a UTC breakdown.
+/// Convert a Julian Date to a UTC breakdown.
 ///
 /// # Safety
 /// `out` must be a valid, writable pointer to `TempochUtc`.
 #[no_mangle]
-pub unsafe extern "C" fn tempoch_jd_to_utc(jd: TempochJd, out: *mut TempochUtc) -> TempochStatus {
+pub unsafe extern "C" fn tempoch_jd_to_utc(jd: f64, out: *mut TempochUtc) -> TempochStatus {
     catch_panic!(TempochStatus::InternalPanic, {
         if out.is_null() {
             return TempochStatus::NullPointer;
         }
-        match JulianDate::new(jd.value).to_utc() {
+        match time_to_utc_value(jd, TempochScaleId::JD) {
             Some(dt) => {
                 unsafe { *out = TempochUtc::from_chrono(&dt) };
                 TempochStatus::Ok
@@ -141,38 +137,31 @@ pub unsafe extern "C" fn tempoch_jd_to_utc(jd: TempochJd, out: *mut TempochUtc) 
     })
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Modified Julian Date (MJD / TT)
-// ═══════════════════════════════════════════════════════════════════════════
-
-/// Create a `TempochMjd` carrier from a raw `double`.
+/// Create a Modified Julian Date from a raw `double`.
 #[no_mangle]
-pub extern "C" fn tempoch_mjd_new(value: f64) -> TempochMjd {
-    TempochMjd::new(value)
+pub extern "C" fn tempoch_mjd_new(value: f64) -> f64 {
+    value
 }
 
-/// Convert a `TempochMjd` to a `TempochJd`.
+/// Convert a Modified Julian Date to a Julian Date.
 #[no_mangle]
-pub extern "C" fn tempoch_mjd_to_jd(mjd: TempochMjd) -> TempochJd {
-    TempochJd::new(ModifiedJulianDate::new(mjd.value).to::<JD>().value())
+pub extern "C" fn tempoch_mjd_to_jd(mjd: f64) -> f64 {
+    scale_value_to_jd(mjd, TempochScaleId::MJD)
 }
 
-/// Create a `TempochMjd` from a UTC date-time.
+/// Create a Modified Julian Date from a UTC date-time.
 ///
 /// # Safety
-/// `out` must be a valid, writable pointer to `TempochMjd`.
+/// `out` must be a valid, writable pointer to `double`.
 #[no_mangle]
-pub unsafe extern "C" fn tempoch_mjd_from_utc(
-    utc: TempochUtc,
-    out: *mut TempochMjd,
-) -> TempochStatus {
+pub unsafe extern "C" fn tempoch_mjd_from_utc(utc: TempochUtc, out: *mut f64) -> TempochStatus {
     catch_panic!(TempochStatus::InternalPanic, {
         if out.is_null() {
             return TempochStatus::NullPointer;
         }
         match utc.into_chrono() {
             Some(dt) => {
-                unsafe { *out = TempochMjd::new(ModifiedJulianDate::from_utc(dt).value()) };
+                unsafe { *out = time_from_utc_value(dt, TempochScaleId::MJD) };
                 TempochStatus::Ok
             }
             None => TempochStatus::UtcConversionFailed,
@@ -180,20 +169,17 @@ pub unsafe extern "C" fn tempoch_mjd_from_utc(
     })
 }
 
-/// Convert a `TempochMjd` to a UTC breakdown.
+/// Convert a Modified Julian Date to a UTC breakdown.
 ///
 /// # Safety
 /// `out` must be a valid, writable pointer to `TempochUtc`.
 #[no_mangle]
-pub unsafe extern "C" fn tempoch_mjd_to_utc(
-    mjd: TempochMjd,
-    out: *mut TempochUtc,
-) -> TempochStatus {
+pub unsafe extern "C" fn tempoch_mjd_to_utc(mjd: f64, out: *mut TempochUtc) -> TempochStatus {
     catch_panic!(TempochStatus::InternalPanic, {
         if out.is_null() {
             return TempochStatus::NullPointer;
         }
-        match ModifiedJulianDate::new(mjd.value).to_utc() {
+        match time_to_utc_value(mjd, TempochScaleId::MJD) {
             Some(dt) => {
                 unsafe { *out = TempochUtc::from_chrono(&dt) };
                 TempochStatus::Ok
@@ -203,276 +189,255 @@ pub unsafe extern "C" fn tempoch_mjd_to_utc(
     })
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Duration / Difference (raw f64 — for arithmetic convenience)
-// ═══════════════════════════════════════════════════════════════════════════
-
-/// Compute the difference between two JD values in days (jd1 − jd2).
+/// Compute the difference between two Julian Dates in days (jd1 − jd2).
 #[no_mangle]
-pub extern "C" fn tempoch_jd_difference(jd1: TempochJd, jd2: TempochJd) -> f64 {
-    JulianDate::new(jd1.value)
-        .difference(&JulianDate::new(jd2.value))
-        .value()
+pub extern "C" fn tempoch_jd_difference(jd1: f64, jd2: f64) -> f64 {
+    time_difference_days_value(jd1, jd2, TempochScaleId::JD)
 }
 
-/// Add a duration in days to a `TempochJd`.
+/// Add a duration in days to a Julian Date.
 #[no_mangle]
-pub extern "C" fn tempoch_jd_add_days(jd: TempochJd, days: f64) -> TempochJd {
-    TempochJd::new(
-        JulianDate::new(jd.value)
-            .add_duration(Days::new(days))
-            .value(),
-    )
+pub extern "C" fn tempoch_jd_add_days(jd: f64, days: f64) -> f64 {
+    time_add_days_value(jd, Days::new(days), TempochScaleId::JD)
 }
 
-/// Compute the difference between two MJD values in days (mjd1 − mjd2).
+/// Compute the difference between two Modified Julian Dates in days (mjd1 − mjd2).
 #[no_mangle]
-pub extern "C" fn tempoch_mjd_difference(mjd1: TempochMjd, mjd2: TempochMjd) -> f64 {
-    ModifiedJulianDate::new(mjd1.value)
-        .difference(&ModifiedJulianDate::new(mjd2.value))
-        .value()
+pub extern "C" fn tempoch_mjd_difference(mjd1: f64, mjd2: f64) -> f64 {
+    time_difference_days_value(mjd1, mjd2, TempochScaleId::MJD)
 }
 
-/// Add a duration in days to a `TempochMjd`.
+/// Add a duration in days to a Modified Julian Date.
 #[no_mangle]
-pub extern "C" fn tempoch_mjd_add_days(mjd: TempochMjd, days: f64) -> TempochMjd {
-    TempochMjd::new(
-        ModifiedJulianDate::new(mjd.value)
-            .add_duration(Days::new(days))
-            .value(),
-    )
+pub extern "C" fn tempoch_mjd_add_days(mjd: f64, days: f64) -> f64 {
+    time_add_days_value(mjd, Days::new(days), TempochScaleId::MJD)
 }
 
-/// Compute Julian centuries since J2000 for a given `TempochJd`.
+/// Compute Julian centuries since J2000 for a given Julian Date.
 #[no_mangle]
-pub extern "C" fn tempoch_jd_julian_centuries(jd: TempochJd) -> f64 {
-    JulianDate::new(jd.value).julian_centuries().value()
+pub extern "C" fn tempoch_jd_julian_centuries(jd: f64) -> f64 {
+    JulianDate::new(jd).julian_centuries().value()
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Duration / Difference (QttyQuantity — typed)
-// ═══════════════════════════════════════════════════════════════════════════
-
-/// Compute the difference between two JDs as a `QttyQuantity` in days.
+/// Compute the difference between two Julian Dates as a `QttyQuantity` in days.
 #[no_mangle]
-pub extern "C" fn tempoch_jd_difference_qty(jd1: TempochJd, jd2: TempochJd) -> QttyQuantity {
-    let diff = JulianDate::new(jd1.value)
-        .difference(&JulianDate::new(jd2.value))
-        .value();
-    QttyQuantity::new(diff, UnitId::Day)
+pub extern "C" fn tempoch_jd_difference_qty(jd1: f64, jd2: f64) -> QttyQuantity {
+    QttyQuantity::new(tempoch_jd_difference(jd1, jd2), UnitId::Day)
 }
 
-/// Add a `QttyQuantity` duration (time-compatible) to a `TempochJd`.
+/// Add a `QttyQuantity` duration (time-compatible) to a Julian Date.
 ///
 /// Returns `InvalidDurationUnit` if the quantity cannot be converted to days.
 ///
 /// # Safety
-/// `out` must be a valid, writable pointer to `TempochJd`.
+/// `out` must be a valid, writable pointer to `double`.
 #[no_mangle]
 pub unsafe extern "C" fn tempoch_jd_add_qty(
-    jd: TempochJd,
+    jd: f64,
     duration: QttyQuantity,
-    out: *mut TempochJd,
+    out: *mut f64,
 ) -> TempochStatus {
     catch_panic!(TempochStatus::InternalPanic, {
         if out.is_null() {
             return TempochStatus::NullPointer;
         }
-        let days_val = match duration.convert_to(UnitId::Day) {
-            Some(q) => q.value,
-            None => return TempochStatus::InvalidDurationUnit,
+        let days = match days_from_qty(duration) {
+            Ok(days) => days,
+            Err(status) => return status,
         };
-        let result = JulianDate::new(jd.value)
-            .add_duration(Days::new(days_val))
-            .value();
-        unsafe { *out = TempochJd::new(result) };
+        unsafe { *out = time_add_days_value(jd, days, TempochScaleId::JD) };
         TempochStatus::Ok
     })
 }
 
-/// Compute the difference between two MJDs as a `QttyQuantity` in days.
+/// Compute the difference between two Modified Julian Dates as a `QttyQuantity` in days.
 #[no_mangle]
-pub extern "C" fn tempoch_mjd_difference_qty(mjd1: TempochMjd, mjd2: TempochMjd) -> QttyQuantity {
-    let diff = ModifiedJulianDate::new(mjd1.value)
-        .difference(&ModifiedJulianDate::new(mjd2.value))
-        .value();
-    QttyQuantity::new(diff, UnitId::Day)
+pub extern "C" fn tempoch_mjd_difference_qty(mjd1: f64, mjd2: f64) -> QttyQuantity {
+    QttyQuantity::new(tempoch_mjd_difference(mjd1, mjd2), UnitId::Day)
 }
 
-/// Add a `QttyQuantity` duration (time-compatible) to a `TempochMjd`.
+/// Add a `QttyQuantity` duration (time-compatible) to a Modified Julian Date.
 ///
 /// Returns `InvalidDurationUnit` if the quantity cannot be converted to days.
 ///
 /// # Safety
-/// `out` must be a valid, writable pointer to `TempochMjd`.
+/// `out` must be a valid, writable pointer to `double`.
 #[no_mangle]
 pub unsafe extern "C" fn tempoch_mjd_add_qty(
-    mjd: TempochMjd,
+    mjd: f64,
     duration: QttyQuantity,
-    out: *mut TempochMjd,
+    out: *mut f64,
 ) -> TempochStatus {
     catch_panic!(TempochStatus::InternalPanic, {
         if out.is_null() {
             return TempochStatus::NullPointer;
         }
-        let days_val = match duration.convert_to(UnitId::Day) {
-            Some(q) => q.value,
-            None => return TempochStatus::InvalidDurationUnit,
+        let days = match days_from_qty(duration) {
+            Ok(days) => days,
+            Err(status) => return status,
         };
-        let result = ModifiedJulianDate::new(mjd.value)
-            .add_duration(Days::new(days_val))
-            .value();
-        unsafe { *out = TempochMjd::new(result) };
+        unsafe { *out = time_add_days_value(mjd, days, TempochScaleId::MJD) };
         TempochStatus::Ok
     })
 }
 
 /// Compute Julian centuries since J2000 as a `QttyQuantity`.
 #[no_mangle]
-pub extern "C" fn tempoch_jd_julian_centuries_qty(jd: TempochJd) -> QttyQuantity {
-    QttyQuantity::new(
-        JulianDate::new(jd.value).julian_centuries().value(),
-        UnitId::JulianCentury,
-    )
+pub extern "C" fn tempoch_jd_julian_centuries_qty(jd: f64) -> QttyQuantity {
+    QttyQuantity::new(tempoch_jd_julian_centuries(jd), UnitId::JulianCentury)
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Typed scale conversions (JD(TT) ↔ each scale)
-// ═══════════════════════════════════════════════════════════════════════════
-
-/// Convert a `TempochJd` to `TempochTdb`.
+/// Convert a Julian Date (TT) to TDB.
 #[no_mangle]
-pub extern "C" fn tempoch_jd_to_tdb(jd: TempochJd) -> TempochTdb {
-    TempochTdb::new(JulianDate::new(jd.value).to::<TDB>().value())
+pub extern "C" fn tempoch_jd_to_tdb(jd: f64) -> f64 {
+    jd_to_scale_value(jd, TempochScaleId::TDB)
 }
 
-/// Convert a `TempochTdb` to `TempochJd`.
+/// Convert TDB back to Julian Date (TT).
 #[no_mangle]
-pub extern "C" fn tempoch_tdb_to_jd(tdb: TempochTdb) -> TempochJd {
-    TempochJd::new(Time::<TDB>::new(tdb.value).to::<JD>().value())
+pub extern "C" fn tempoch_tdb_to_jd(tdb: f64) -> f64 {
+    scale_value_to_jd(tdb, TempochScaleId::TDB)
 }
 
-/// Convert a `TempochJd` to `TempochTt` (identity — included for completeness).
+/// Convert a Julian Date (TT) to TT (identity).
 #[no_mangle]
-pub extern "C" fn tempoch_jd_to_tt(jd: TempochJd) -> TempochTt {
-    TempochTt::new(JulianDate::new(jd.value).to::<TT>().value())
+pub extern "C" fn tempoch_jd_to_tt(jd: f64) -> f64 {
+    jd_to_scale_value(jd, TempochScaleId::TT)
 }
 
-/// Convert a `TempochTt` to `TempochJd` (identity).
+/// Convert TT back to Julian Date (TT).
 #[no_mangle]
-pub extern "C" fn tempoch_tt_to_jd(tt: TempochTt) -> TempochJd {
-    TempochJd::new(Time::<TT>::new(tt.value).to::<JD>().value())
+pub extern "C" fn tempoch_tt_to_jd(tt: f64) -> f64 {
+    scale_value_to_jd(tt, TempochScaleId::TT)
 }
 
-/// Convert a `TempochJd` to `TempochTai`.
+/// Convert a Julian Date (TT) to TAI.
 #[no_mangle]
-pub extern "C" fn tempoch_jd_to_tai(jd: TempochJd) -> TempochTai {
-    TempochTai::new(JulianDate::new(jd.value).to::<TAI>().value())
+pub extern "C" fn tempoch_jd_to_tai(jd: f64) -> f64 {
+    jd_to_scale_value(jd, TempochScaleId::TAI)
 }
 
-/// Convert a `TempochTai` to `TempochJd`.
+/// Convert TAI back to Julian Date (TT).
 #[no_mangle]
-pub extern "C" fn tempoch_tai_to_jd(tai: TempochTai) -> TempochJd {
-    TempochJd::new(Time::<TAI>::new(tai.value).to::<JD>().value())
+pub extern "C" fn tempoch_tai_to_jd(tai: f64) -> f64 {
+    scale_value_to_jd(tai, TempochScaleId::TAI)
 }
 
-/// Convert a `TempochJd` to `TempochTcg`.
+/// Convert a Julian Date (TT) to TCG.
 #[no_mangle]
-pub extern "C" fn tempoch_jd_to_tcg(jd: TempochJd) -> TempochTcg {
-    TempochTcg::new(JulianDate::new(jd.value).to::<TCG>().value())
+pub extern "C" fn tempoch_jd_to_tcg(jd: f64) -> f64 {
+    jd_to_scale_value(jd, TempochScaleId::TCG)
 }
 
-/// Convert a `TempochTcg` to `TempochJd`.
+/// Convert TCG back to Julian Date (TT).
 #[no_mangle]
-pub extern "C" fn tempoch_tcg_to_jd(tcg: TempochTcg) -> TempochJd {
-    TempochJd::new(Time::<TCG>::new(tcg.value).to::<JD>().value())
+pub extern "C" fn tempoch_tcg_to_jd(tcg: f64) -> f64 {
+    scale_value_to_jd(tcg, TempochScaleId::TCG)
 }
 
-/// Convert a `TempochJd` to `TempochTcb`.
+/// Convert a Julian Date (TT) to TCB.
 #[no_mangle]
-pub extern "C" fn tempoch_jd_to_tcb(jd: TempochJd) -> TempochTcb {
-    TempochTcb::new(JulianDate::new(jd.value).to::<TCB>().value())
+pub extern "C" fn tempoch_jd_to_tcb(jd: f64) -> f64 {
+    jd_to_scale_value(jd, TempochScaleId::TCB)
 }
 
-/// Convert a `TempochTcb` to `TempochJd`.
+/// Convert TCB back to Julian Date (TT).
 #[no_mangle]
-pub extern "C" fn tempoch_tcb_to_jd(tcb: TempochTcb) -> TempochJd {
-    TempochJd::new(Time::<TCB>::new(tcb.value).to::<JD>().value())
+pub extern "C" fn tempoch_tcb_to_jd(tcb: f64) -> f64 {
+    scale_value_to_jd(tcb, TempochScaleId::TCB)
 }
 
-/// Convert a `TempochJd` to `TempochGps`.
+/// Convert a Julian Date (TT) to GPS Time.
 #[no_mangle]
-pub extern "C" fn tempoch_jd_to_gps(jd: TempochJd) -> TempochGps {
-    TempochGps::new(JulianDate::new(jd.value).to::<GPS>().value())
+pub extern "C" fn tempoch_jd_to_gps(jd: f64) -> f64 {
+    jd_to_scale_value(jd, TempochScaleId::GPS)
 }
 
-/// Convert a `TempochGps` to `TempochJd`.
+/// Convert GPS Time back to Julian Date (TT).
 #[no_mangle]
-pub extern "C" fn tempoch_gps_to_jd(gps: TempochGps) -> TempochJd {
-    TempochJd::new(Time::<GPS>::new(gps.value).to::<JD>().value())
+pub extern "C" fn tempoch_gps_to_jd(gps: f64) -> f64 {
+    scale_value_to_jd(gps, TempochScaleId::GPS)
 }
 
-/// Convert a `TempochJd` to `TempochUt` (UT1).
+/// Convert a Julian Date (TT) to Universal Time UT1.
 #[no_mangle]
-pub extern "C" fn tempoch_jd_to_ut(jd: TempochJd) -> TempochUt {
-    TempochUt::new(JulianDate::new(jd.value).to::<UT>().value())
+pub extern "C" fn tempoch_jd_to_ut(jd: f64) -> f64 {
+    jd_to_scale_value(jd, TempochScaleId::UT)
 }
 
-/// Convert a `TempochUt` to `TempochJd`.
+/// Convert Universal Time UT1 back to Julian Date (TT).
 #[no_mangle]
-pub extern "C" fn tempoch_ut_to_jd(ut: TempochUt) -> TempochJd {
-    TempochJd::new(Time::<UT>::new(ut.value).to::<JD>().value())
+pub extern "C" fn tempoch_ut_to_jd(ut: f64) -> f64 {
+    scale_value_to_jd(ut, TempochScaleId::UT)
 }
 
-/// Convert a `TempochJd` to `TempochJde` (semantic alias of JD(TT)).
+/// Convert a Julian Date (TT) to Julian Ephemeris Date.
 #[no_mangle]
-pub extern "C" fn tempoch_jd_to_jde(jd: TempochJd) -> TempochJde {
-    TempochJde::new(JulianDate::new(jd.value).to::<JDE>().value())
+pub extern "C" fn tempoch_jd_to_jde(jd: f64) -> f64 {
+    jd_to_scale_value(jd, TempochScaleId::JDE)
 }
 
-/// Convert a `TempochJde` to `TempochJd`.
+/// Convert Julian Ephemeris Date back to Julian Date (TT).
 #[no_mangle]
-pub extern "C" fn tempoch_jde_to_jd(jde: TempochJde) -> TempochJd {
-    TempochJd::new(Time::<JDE>::new(jde.value).to::<JD>().value())
+pub extern "C" fn tempoch_jde_to_jd(jde: f64) -> f64 {
+    scale_value_to_jd(jde, TempochScaleId::JDE)
 }
 
-/// Convert a `TempochJd` to `TempochUnixTime`.
+/// Convert a Julian Date (TT) to Unix time in seconds since 1970-01-01T00:00:00 UTC.
 #[no_mangle]
-pub extern "C" fn tempoch_jd_to_unix(jd: TempochJd) -> TempochUnixTime {
-    TempochUnixTime::new(JulianDate::new(jd.value).to::<tempoch::UnixTime>().value())
+pub extern "C" fn tempoch_jd_to_unix(jd: f64) -> f64 {
+    jd_to_scale_value(jd, TempochScaleId::UnixTime)
 }
 
-/// Convert a `TempochUnixTime` to `TempochJd`.
+/// Convert Unix time in seconds back to Julian Date (TT).
 #[no_mangle]
-pub extern "C" fn tempoch_unix_to_jd(unix: TempochUnixTime) -> TempochJd {
-    TempochJd::new(
-        Time::<tempoch::UnixTime>::new(unix.value)
-            .to::<JD>()
-            .value(),
-    )
+pub extern "C" fn tempoch_unix_to_jd(unix: f64) -> f64 {
+    scale_value_to_jd(unix, TempochScaleId::UnixTime)
 }
 
-/// Return ΔT = TT − UT1 in seconds for a given `TempochJd`.
+/// Return ΔT = TT − UT1 in seconds for a given Julian Date.
 #[no_mangle]
-pub extern "C" fn tempoch_delta_t_seconds(jd: TempochJd) -> f64 {
-    let ut: UniversalTime = JulianDate::new(jd.value).to::<UT>();
+pub extern "C" fn tempoch_delta_t_seconds(jd: f64) -> f64 {
+    let ut: UniversalTime = JulianDate::new(jd).to::<UT>();
     ut.delta_t().value()
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Generic dispatch (validated raw i32 scale ID)
-// ═══════════════════════════════════════════════════════════════════════════
-
-/// Convert a `TempochJd` to any scale, writing the result into `out`.
-///
-/// `scale_id` must be a valid `TempochScaleId` discriminant (0–10).
-/// Returns `InvalidScaleId` if `scale_id` is not recognized.
+/// Convert a `double` time value from one scale to another.
 ///
 /// # Safety
 /// `out` must be a valid, writable pointer to `double`.
 #[no_mangle]
-pub unsafe extern "C" fn tempoch_jd_to_scale(
-    jd: TempochJd,
+pub unsafe extern "C" fn tempoch_time_convert(
+    value: f64,
+    from_scale_id: i32,
+    to_scale_id: i32,
+    out: *mut f64,
+) -> TempochStatus {
+    catch_panic!(TempochStatus::InternalPanic, {
+        if out.is_null() {
+            return TempochStatus::NullPointer;
+        }
+        let from = match decode_scale(from_scale_id) {
+            Ok(scale) => scale,
+            Err(status) => return status,
+        };
+        let to = match decode_scale(to_scale_id) {
+            Ok(scale) => scale,
+            Err(status) => return status,
+        };
+        let jd = scale_value_to_jd(value, from);
+        unsafe { *out = jd_to_scale_value(jd, to) };
+        TempochStatus::Ok
+    })
+}
+
+/// Convert a UTC date-time to a value in any supported scale.
+///
+/// # Safety
+/// `out` must be a valid, writable pointer to `double`.
+#[no_mangle]
+pub unsafe extern "C" fn tempoch_time_from_utc(
+    utc: TempochUtc,
     scale_id: i32,
     out: *mut f64,
 ) -> TempochStatus {
@@ -480,48 +445,178 @@ pub unsafe extern "C" fn tempoch_jd_to_scale(
         if out.is_null() {
             return TempochStatus::NullPointer;
         }
-        match TempochScaleId::from_raw(scale_id) {
-            Some(scale) => {
-                unsafe { *out = jd_to_scale_value(jd, scale) };
+        let scale = match decode_scale(scale_id) {
+            Ok(scale) => scale,
+            Err(status) => return status,
+        };
+        match utc.into_chrono() {
+            Some(dt) => {
+                unsafe { *out = time_from_utc_value(dt, scale) };
                 TempochStatus::Ok
             }
-            None => TempochStatus::InvalidScaleId,
+            None => TempochStatus::UtcConversionFailed,
         }
     })
 }
 
-/// Convert a value in any scale to a `TempochJd`, writing the result into `out`.
-///
-/// `scale_id` must be a valid `TempochScaleId` discriminant (0–10).
-/// Returns `InvalidScaleId` if `scale_id` is not recognized.
+/// Convert a time value in any supported scale to UTC.
 ///
 /// # Safety
-/// `out` must be a valid, writable pointer to `TempochJd`.
+/// `out` must be a valid, writable pointer to `TempochUtc`.
 #[no_mangle]
-pub unsafe extern "C" fn tempoch_scale_to_jd(
+pub unsafe extern "C" fn tempoch_time_to_utc(
     value: f64,
     scale_id: i32,
-    out: *mut TempochJd,
+    out: *mut TempochUtc,
 ) -> TempochStatus {
     catch_panic!(TempochStatus::InternalPanic, {
         if out.is_null() {
             return TempochStatus::NullPointer;
         }
-        match TempochScaleId::from_raw(scale_id) {
-            Some(scale) => {
-                unsafe { *out = scale_value_to_jd(value, scale) };
+        let scale = match decode_scale(scale_id) {
+            Ok(scale) => scale,
+            Err(status) => return status,
+        };
+        match time_to_utc_value(value, scale) {
+            Some(dt) => {
+                unsafe { *out = TempochUtc::from_chrono(&dt) };
                 TempochStatus::Ok
             }
-            None => TempochStatus::InvalidScaleId,
+            None => TempochStatus::UtcConversionFailed,
         }
     })
+}
+
+/// Compute a same-scale duration in days.
+///
+/// # Safety
+/// `out` must be a valid, writable pointer to `double`.
+#[no_mangle]
+pub unsafe extern "C" fn tempoch_time_difference_days(
+    lhs: f64,
+    rhs: f64,
+    scale_id: i32,
+    out: *mut f64,
+) -> TempochStatus {
+    catch_panic!(TempochStatus::InternalPanic, {
+        if out.is_null() {
+            return TempochStatus::NullPointer;
+        }
+        let scale = match decode_scale(scale_id) {
+            Ok(scale) => scale,
+            Err(status) => return status,
+        };
+        unsafe { *out = time_difference_days_value(lhs, rhs, scale) };
+        TempochStatus::Ok
+    })
+}
+
+/// Compute a same-scale duration as a day-valued `QttyQuantity`.
+///
+/// # Safety
+/// `out` must be a valid, writable pointer to `qtty_quantity_t`.
+#[no_mangle]
+pub unsafe extern "C" fn tempoch_time_difference_qty(
+    lhs: f64,
+    rhs: f64,
+    scale_id: i32,
+    out: *mut QttyQuantity,
+) -> TempochStatus {
+    catch_panic!(TempochStatus::InternalPanic, {
+        if out.is_null() {
+            return TempochStatus::NullPointer;
+        }
+        let scale = match decode_scale(scale_id) {
+            Ok(scale) => scale,
+            Err(status) => return status,
+        };
+        let days = time_difference_days_value(lhs, rhs, scale);
+        unsafe { *out = QttyQuantity::new(days, UnitId::Day) };
+        TempochStatus::Ok
+    })
+}
+
+/// Add a same-scale duration in days.
+///
+/// # Safety
+/// `out` must be a valid, writable pointer to `double`.
+#[no_mangle]
+pub unsafe extern "C" fn tempoch_time_add_days(
+    value: f64,
+    scale_id: i32,
+    days: f64,
+    out: *mut f64,
+) -> TempochStatus {
+    catch_panic!(TempochStatus::InternalPanic, {
+        if out.is_null() {
+            return TempochStatus::NullPointer;
+        }
+        let scale = match decode_scale(scale_id) {
+            Ok(scale) => scale,
+            Err(status) => return status,
+        };
+        unsafe { *out = time_add_days_value(value, Days::new(days), scale) };
+        TempochStatus::Ok
+    })
+}
+
+/// Add a same-scale duration from a time-compatible `QttyQuantity`.
+///
+/// # Safety
+/// `out` must be a valid, writable pointer to `double`.
+#[no_mangle]
+pub unsafe extern "C" fn tempoch_time_add_qty(
+    value: f64,
+    scale_id: i32,
+    duration: QttyQuantity,
+    out: *mut f64,
+) -> TempochStatus {
+    catch_panic!(TempochStatus::InternalPanic, {
+        if out.is_null() {
+            return TempochStatus::NullPointer;
+        }
+        let scale = match decode_scale(scale_id) {
+            Ok(scale) => scale,
+            Err(status) => return status,
+        };
+        let days = match days_from_qty(duration) {
+            Ok(days) => days,
+            Err(status) => return status,
+        };
+        unsafe { *out = time_add_days_value(value, days, scale) };
+        TempochStatus::Ok
+    })
+}
+
+/// Convert a Julian Date to any scale, writing the result into `out`.
+///
+/// # Safety
+/// `out` must be a valid, writable pointer to `double`.
+#[no_mangle]
+pub unsafe extern "C" fn tempoch_jd_to_scale(
+    jd: f64,
+    scale_id: i32,
+    out: *mut f64,
+) -> TempochStatus {
+    unsafe { tempoch_time_convert(jd, TempochScaleId::JD as i32, scale_id, out) }
+}
+
+/// Convert a value in any scale to a Julian Date, writing the result into `out`.
+///
+/// # Safety
+/// `out` must be a valid, writable pointer to `double`.
+#[no_mangle]
+pub unsafe extern "C" fn tempoch_scale_to_jd(
+    value: f64,
+    scale_id: i32,
+    out: *mut f64,
+) -> TempochStatus {
+    unsafe { tempoch_time_convert(value, scale_id, TempochScaleId::JD as i32, out) }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::carriers::TempochScaleId;
-    use crate::error::TempochStatus;
     use std::ptr;
 
     fn utc_j2000() -> TempochUtc {
@@ -536,47 +631,33 @@ mod tests {
         }
     }
 
-    // ── UTC helpers ───────────────────────────────────────────────────────
-
     #[test]
     fn into_chrono_invalid_nanoseconds_returns_none() {
         let utc = TempochUtc {
-            year: 2000,
-            month: 1,
-            day: 1,
-            hour: 12,
-            minute: 0,
-            second: 0,
             nanosecond: 1_500_000_000,
+            ..utc_j2000()
         };
         assert!(utc.into_chrono().is_none());
     }
 
-    // ── tempoch_jd_new / tempoch_jd_j2000 ────────────────────────────────
-
     #[test]
     fn jd_new_carries_value() {
-        let jd = tempoch_jd_new(2_451_545.0);
-        assert_eq!(jd.value, 2_451_545.0);
+        assert_eq!(tempoch_jd_new(2_451_545.0), 2_451_545.0);
     }
 
     #[test]
     fn jd_j2000_value() {
-        assert_eq!(tempoch_jd_j2000().value, 2_451_545.0);
+        assert_eq!(tempoch_jd_j2000(), 2_451_545.0);
     }
-
-    // ── JD ↔ MJD ─────────────────────────────────────────────────────────
 
     #[test]
     fn jd_to_mjd_roundtrip() {
-        let jd = TempochJd::new(2_451_545.0);
+        let jd = 2_451_545.0;
         let mjd = tempoch_jd_to_mjd(jd);
-        assert!((mjd.value - 51_544.5).abs() < 1e-10);
+        assert!((mjd - 51_544.5).abs() < 1e-10);
         let back = tempoch_mjd_to_jd(mjd);
-        assert!((back.value - jd.value).abs() < 1e-10);
+        assert!((back - jd).abs() < 1e-10);
     }
-
-    // ── tempoch_jd_from_utc ───────────────────────────────────────────────
 
     #[test]
     fn jd_from_utc_null_pointer_returns_error() {
@@ -590,24 +671,22 @@ mod tests {
             nanosecond: 2_000_000_000,
             ..utc_j2000()
         };
-        let mut out = TempochJd::new(0.0);
+        let mut out = 0.0;
         let status = unsafe { tempoch_jd_from_utc(bad, &mut out) };
         assert_eq!(status, TempochStatus::UtcConversionFailed);
     }
 
     #[test]
     fn jd_from_utc_success() {
-        let mut out = TempochJd::new(0.0);
+        let mut out = 0.0;
         let status = unsafe { tempoch_jd_from_utc(utc_j2000(), &mut out) };
         assert_eq!(status, TempochStatus::Ok);
-        assert!((out.value - 2_451_545.0).abs() < 0.01);
+        assert!((out - 2_451_545.0).abs() < 0.01);
     }
-
-    // ── tempoch_jd_to_utc ─────────────────────────────────────────────────
 
     #[test]
     fn jd_to_utc_null_pointer_returns_error() {
-        let status = unsafe { tempoch_jd_to_utc(TempochJd::new(2_451_545.0), ptr::null_mut()) };
+        let status = unsafe { tempoch_jd_to_utc(2_451_545.0, ptr::null_mut()) };
         assert_eq!(status, TempochStatus::NullPointer);
     }
 
@@ -622,33 +701,19 @@ mod tests {
             second: 0,
             nanosecond: 0,
         };
-        let status = unsafe { tempoch_jd_to_utc(TempochJd::new(2_451_545.0), &mut out) };
+        let status = unsafe { tempoch_jd_to_utc(2_451_545.0, &mut out) };
         assert_eq!(status, TempochStatus::Ok);
         assert_eq!(out.year, 2000);
         assert_eq!(out.month, 1);
         assert_eq!(out.day, 1);
     }
 
-    // ── MJD UTC ───────────────────────────────────────────────────────────
-
-    #[test]
-    fn mjd_new_carries_value() {
-        let mjd = tempoch_mjd_new(51_544.5);
-        assert_eq!(mjd.value, 51_544.5);
-    }
-
-    #[test]
-    fn mjd_from_utc_null_returns_error() {
-        let status = unsafe { tempoch_mjd_from_utc(utc_j2000(), ptr::null_mut()) };
-        assert_eq!(status, TempochStatus::NullPointer);
-    }
-
     #[test]
     fn mjd_from_utc_success() {
-        let mut out = TempochMjd::new(0.0);
+        let mut out = 0.0;
         let status = unsafe { tempoch_mjd_from_utc(utc_j2000(), &mut out) };
         assert_eq!(status, TempochStatus::Ok);
-        assert!((out.value - 51_544.5).abs() < 0.01);
+        assert!((out - 51_544.5).abs() < 0.01);
     }
 
     #[test]
@@ -662,202 +727,292 @@ mod tests {
             second: 0,
             nanosecond: 0,
         };
-        let status = unsafe { tempoch_mjd_to_utc(TempochMjd::new(51_544.5), &mut out) };
+        let status = unsafe { tempoch_mjd_to_utc(51_544.5, &mut out) };
         assert_eq!(status, TempochStatus::Ok);
         assert_eq!(out.year, 2000);
-    }
-
-    // ── Arithmetic ────────────────────────────────────────────────────────
-
-    #[test]
-    fn jd_difference_is_correct() {
-        let jd1 = TempochJd::new(2_451_545.0);
-        let jd2 = TempochJd::new(2_451_544.0);
-        let diff = tempoch_jd_difference(jd1, jd2);
-        assert!((diff - 1.0).abs() < 1e-12);
+        assert_eq!(out.month, 1);
+        assert_eq!(out.day, 1);
     }
 
     #[test]
     fn jd_add_days_is_correct() {
-        let jd = TempochJd::new(2_451_545.0);
-        let result = tempoch_jd_add_days(jd, 1.0);
-        assert!((result.value - 2_451_546.0).abs() < 1e-12);
+        assert!((tempoch_jd_add_days(2_451_545.0, 10.0) - 2_451_555.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn jd_difference_is_correct() {
+        assert!((tempoch_jd_difference(2_451_545.0, 2_451_544.0) - 1.0).abs() < 1e-12);
     }
 
     #[test]
     fn mjd_difference_is_correct() {
-        let mjd1 = TempochMjd::new(51_544.5);
-        let mjd2 = TempochMjd::new(51_543.5);
-        let diff = tempoch_mjd_difference(mjd1, mjd2);
-        assert!((diff - 1.0).abs() < 1e-12);
+        assert!((tempoch_mjd_difference(51_544.5, 51_543.5) - 1.0).abs() < 1e-12);
     }
 
     #[test]
     fn jd_add_qty_hours() {
-        let jd = TempochJd::new(2_451_545.0);
-        let duration = QttyQuantity::new(24.0, UnitId::Hour);
-        let mut out = TempochJd::new(0.0);
-        let status = unsafe { tempoch_jd_add_qty(jd, duration, &mut out) };
+        let mut out = 0.0;
+        let status = unsafe {
+            tempoch_jd_add_qty(2_451_545.0, QttyQuantity::new(24.0, UnitId::Hour), &mut out)
+        };
         assert_eq!(status, TempochStatus::Ok);
-        assert!((out.value - 2_451_546.0).abs() < 1e-10);
+        assert!((out - 2_451_546.0).abs() < 1e-10);
     }
 
     #[test]
     fn jd_add_qty_invalid_unit_returns_error() {
-        let jd = TempochJd::new(2_451_545.0);
-        let duration = QttyQuantity::new(1.0, UnitId::Meter); // not a time unit
-        let mut out = TempochJd::new(0.0);
-        let status = unsafe { tempoch_jd_add_qty(jd, duration, &mut out) };
+        let mut out = 0.0;
+        let status = unsafe {
+            tempoch_jd_add_qty(2_451_545.0, QttyQuantity::new(1.0, UnitId::Meter), &mut out)
+        };
         assert_eq!(status, TempochStatus::InvalidDurationUnit);
     }
 
     #[test]
     fn jd_add_qty_null_returns_error() {
-        let jd = TempochJd::new(2_451_545.0);
-        let duration = QttyQuantity::new(1.0, UnitId::Day);
-        let status = unsafe { tempoch_jd_add_qty(jd, duration, ptr::null_mut()) };
+        let status = unsafe {
+            tempoch_jd_add_qty(
+                2_451_545.0,
+                QttyQuantity::new(1.0, UnitId::Day),
+                ptr::null_mut(),
+            )
+        };
         assert_eq!(status, TempochStatus::NullPointer);
     }
 
-    // ── Scale round-trips ─────────────────────────────────────────────────
-
     #[test]
     fn jd_tdb_roundtrip() {
-        let jd = TempochJd::new(2_451_545.0);
+        let jd = 2_451_545.0;
         let tdb = tempoch_jd_to_tdb(jd);
         let back = tempoch_tdb_to_jd(tdb);
-        assert!((back.value - jd.value).abs() < 1e-6);
+        assert!((back - jd).abs() < 1e-6);
     }
 
     #[test]
     fn jd_tai_roundtrip() {
-        let jd = TempochJd::new(2_451_545.0);
+        let jd = 2_451_545.0;
         let tai = tempoch_jd_to_tai(jd);
         let back = tempoch_tai_to_jd(tai);
-        assert!((back.value - jd.value).abs() < 1e-10);
+        assert!((back - jd).abs() < 1e-10);
     }
 
     #[test]
     fn jd_tcg_roundtrip() {
-        let jd = TempochJd::new(2_451_545.0);
+        let jd = 2_451_545.0;
         let tcg = tempoch_jd_to_tcg(jd);
         let back = tempoch_tcg_to_jd(tcg);
-        assert!((back.value - jd.value).abs() < 1e-6);
+        assert!((back - jd).abs() < 1e-6);
     }
 
     #[test]
     fn jd_tcb_roundtrip() {
-        let jd = TempochJd::new(2_451_545.0);
+        let jd = 2_451_545.0;
         let tcb = tempoch_jd_to_tcb(jd);
         let back = tempoch_tcb_to_jd(tcb);
-        assert!((back.value - jd.value).abs() < 1e-6);
+        assert!((back - jd).abs() < 1e-6);
     }
 
     #[test]
     fn jd_gps_roundtrip() {
-        let jd = TempochJd::new(2_451_545.0);
+        let jd = 2_451_545.0;
         let gps = tempoch_jd_to_gps(jd);
         let back = tempoch_gps_to_jd(gps);
-        assert!((back.value - jd.value).abs() < 1e-10);
+        assert!((back - jd).abs() < 1e-10);
     }
 
     #[test]
     fn jd_ut_roundtrip() {
-        let jd = TempochJd::new(2_451_545.0);
+        let jd = 2_451_545.0;
         let ut = tempoch_jd_to_ut(jd);
         let back = tempoch_ut_to_jd(ut);
-        assert!((back.value - jd.value).abs() < 1e-6);
+        assert!((back - jd).abs() < 1e-6);
     }
 
     #[test]
     fn jd_jde_roundtrip() {
-        let jd = TempochJd::new(2_451_545.0);
+        let jd = 2_451_545.0;
         let jde = tempoch_jd_to_jde(jd);
         let back = tempoch_jde_to_jd(jde);
-        assert!((back.value - jd.value).abs() < 1e-12);
+        assert!((back - jd).abs() < 1e-12);
     }
 
     #[test]
     fn jd_unix_roundtrip() {
-        let jd = TempochJd::new(2_451_545.0);
+        let jd = 2_451_545.0;
         let unix = tempoch_jd_to_unix(jd);
         let back = tempoch_unix_to_jd(unix);
-        assert!((back.value - jd.value).abs() < 1e-10);
+        assert!((back - jd).abs() < 1e-10);
     }
 
-    // ── Generic dispatch ──────────────────────────────────────────────────
+    #[test]
+    fn unix_epoch_is_zero_seconds() {
+        let mut out = 1.0;
+        let status = unsafe {
+            tempoch_time_from_utc(
+                TempochUtc {
+                    year: 1970,
+                    month: 1,
+                    day: 1,
+                    hour: 0,
+                    minute: 0,
+                    second: 0,
+                    nanosecond: 0,
+                },
+                TempochScaleId::UnixTime as i32,
+                &mut out,
+            )
+        };
+        assert_eq!(status, TempochStatus::Ok);
+        assert!(out.abs() < 1e-9, "unix={out}");
+    }
 
     #[test]
     fn jd_to_scale_valid_ids() {
-        let jd = TempochJd::new(2_451_545.0);
+        let jd = 2_451_545.0;
         for scale_id in 0..=10i32 {
-            let mut out: f64 = 0.0;
+            let mut out = 0.0;
             let status = unsafe { tempoch_jd_to_scale(jd, scale_id, &mut out) };
-            assert_eq!(
-                status,
-                TempochStatus::Ok,
-                "scale_id {} should succeed",
-                scale_id
-            );
-            assert!(
-                out.is_finite(),
-                "scale_id {} produced non-finite output",
-                scale_id
-            );
+            assert_eq!(status, TempochStatus::Ok, "scale_id {scale_id}");
+            assert!(out.is_finite());
         }
     }
 
     #[test]
     fn jd_to_scale_invalid_id() {
-        let jd = TempochJd::new(2_451_545.0);
-        for bad_id in [-1i32, 11, 100, i32::MAX] {
-            let mut out: f64 = 0.0;
-            let status = unsafe { tempoch_jd_to_scale(jd, bad_id, &mut out) };
-            assert_eq!(
-                status,
-                TempochStatus::InvalidScaleId,
-                "scale_id {} should be rejected",
-                bad_id
-            );
-        }
-    }
-
-    #[test]
-    fn jd_to_scale_null_out() {
-        let jd = TempochJd::new(2_451_545.0);
-        let status = unsafe { tempoch_jd_to_scale(jd, 0, ptr::null_mut()) };
-        assert_eq!(status, TempochStatus::NullPointer);
-    }
-
-    #[test]
-    fn scale_to_jd_valid_roundtrip() {
-        let jd_orig = TempochJd::new(2_451_545.0);
-        for scale_id in 0..=10i32 {
-            let scale = TempochScaleId::from_raw(scale_id).unwrap();
-            let value = jd_to_scale_value(jd_orig, scale);
-            let mut out = TempochJd::new(0.0);
-            let status = unsafe { tempoch_scale_to_jd(value, scale_id, &mut out) };
-            assert_eq!(status, TempochStatus::Ok, "scale_id {} failed", scale_id);
-            assert!(
-                (out.value - jd_orig.value).abs() < 1e-6,
-                "scale_id {} roundtrip error: {} vs {}",
-                scale_id,
-                out.value,
-                jd_orig.value
-            );
-        }
-    }
-
-    #[test]
-    fn scale_to_jd_invalid_id() {
-        let mut out = TempochJd::new(0.0);
-        let status = unsafe { tempoch_scale_to_jd(1.0, -1, &mut out) };
+        let mut out = 0.0;
+        let status = unsafe { tempoch_jd_to_scale(2_451_545.0, -1, &mut out) };
         assert_eq!(status, TempochStatus::InvalidScaleId);
     }
 
     #[test]
-    fn scale_to_jd_null_out() {
-        let status = unsafe { tempoch_scale_to_jd(1.0, 0, ptr::null_mut()) };
+    fn scale_to_jd_valid_roundtrip() {
+        let jd_orig = 2_451_545.0;
+        for scale_id in 0..=10i32 {
+            let mut scale_val = 0.0;
+            let s1 = unsafe { tempoch_jd_to_scale(jd_orig, scale_id, &mut scale_val) };
+            assert_eq!(s1, TempochStatus::Ok);
+            let mut out = 0.0;
+            let s2 = unsafe { tempoch_scale_to_jd(scale_val, scale_id, &mut out) };
+            assert_eq!(s2, TempochStatus::Ok);
+            assert!((out - jd_orig).abs() < 1e-6, "scale_id={scale_id}");
+        }
+    }
+
+    #[test]
+    fn time_convert_roundtrip() {
+        let mut unix = 0.0;
+        let s1 = unsafe {
+            tempoch_time_convert(
+                2_451_545.0,
+                TempochScaleId::JD as i32,
+                TempochScaleId::UnixTime as i32,
+                &mut unix,
+            )
+        };
+        assert_eq!(s1, TempochStatus::Ok);
+        let mut jd = 0.0;
+        let s2 = unsafe {
+            tempoch_time_convert(
+                unix,
+                TempochScaleId::UnixTime as i32,
+                TempochScaleId::JD as i32,
+                &mut jd,
+            )
+        };
+        assert_eq!(s2, TempochStatus::Ok);
+        assert!((jd - 2_451_545.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn time_from_utc_and_to_utc_generic() {
+        let mut unix = 0.0;
+        let s1 = unsafe {
+            tempoch_time_from_utc(utc_j2000(), TempochScaleId::UnixTime as i32, &mut unix)
+        };
+        assert_eq!(s1, TempochStatus::Ok);
+        let mut utc = TempochUtc {
+            year: 0,
+            month: 0,
+            day: 0,
+            hour: 0,
+            minute: 0,
+            second: 0,
+            nanosecond: 0,
+        };
+        let s2 = unsafe { tempoch_time_to_utc(unix, TempochScaleId::UnixTime as i32, &mut utc) };
+        assert_eq!(s2, TempochStatus::Ok);
+        assert_eq!(utc.year, 2000);
+        assert_eq!(utc.month, 1);
+        assert_eq!(utc.day, 1);
+    }
+
+    #[test]
+    fn time_add_qty_generic() {
+        let mut out = 0.0;
+        let status = unsafe {
+            tempoch_time_add_qty(
+                2_451_545.0,
+                TempochScaleId::JD as i32,
+                QttyQuantity::new(24.0, UnitId::Hour),
+                &mut out,
+            )
+        };
+        assert_eq!(status, TempochStatus::Ok);
+        assert!((out - 2_451_546.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn time_difference_qty_generic() {
+        let mut out = QttyQuantity::new(0.0, UnitId::Day);
+        let status = unsafe {
+            tempoch_time_difference_qty(
+                2_451_546.0,
+                2_451_545.0,
+                TempochScaleId::JD as i32,
+                &mut out,
+            )
+        };
+        assert_eq!(status, TempochStatus::Ok);
+        assert_eq!(out.unit, UnitId::Day);
+        assert!((out.value - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn time_difference_days_generic() {
+        let mut out = 0.0;
+        let status = unsafe {
+            tempoch_time_difference_days(
+                2_451_546.0,
+                2_451_545.0,
+                TempochScaleId::JD as i32,
+                &mut out,
+            )
+        };
+        assert_eq!(status, TempochStatus::Ok);
+        assert!((out - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn time_add_days_generic() {
+        let mut out = 0.0;
+        let status =
+            unsafe { tempoch_time_add_days(2_451_545.0, TempochScaleId::JD as i32, 1.5, &mut out) };
+        assert_eq!(status, TempochStatus::Ok);
+        assert!((out - 2_451_546.5).abs() < 1e-12);
+    }
+
+    #[test]
+    fn time_generic_invalid_scale() {
+        let mut out = 0.0;
+        let status = unsafe { tempoch_time_add_days(1.0, i32::MAX, 1.0, &mut out) };
+        assert_eq!(status, TempochStatus::InvalidScaleId);
+    }
+
+    #[test]
+    fn time_generic_null_out() {
+        let status = unsafe {
+            tempoch_time_difference_days(1.0, 0.0, TempochScaleId::JD as i32, ptr::null_mut())
+        };
         assert_eq!(status, TempochStatus::NullPointer);
     }
 }

@@ -6,14 +6,13 @@
 //! This crate exposes a flat C-compatible API for creating and manipulating
 //! Julian Dates, Modified Julian Dates, time periods, and UTC conversions.
 //!
-//! # ABI conventions (vNext)
+//! # ABI conventions
 //!
-//! - Every absolute instant is wrapped in a typed carrier (`TempochJd`,
-//!   `TempochMjd`, `TempochTt`, …) rather than a bare `double`.
+//! - Scalar time values cross the ABI as plain `double`s.
 //! - UTC calendar fields remain in `TempochUtc` as raw integer fields.
 //! - Duration-related functions return [`QttyQuantity`] from qtty-ffi.
-//! - Generic scale-dispatch functions accept raw `int32_t` scale IDs (not
-//!   the `TempochScaleId` enum directly), validated before dispatch.
+//! - Generic time functions accept raw `int32_t` scale IDs, validated before
+//!   dispatch.
 //! - Every fallible function returns `TempochStatus`; `InternalPanic` is
 //!   reserved exclusively for caught Rust panics.
 
@@ -47,11 +46,11 @@ pub(crate) use catch_panic;
 
 /// Returns the tempoch-ffi ABI version (major*10000 + minor*100 + patch).
 ///
-/// Current version: 0.3.0 → 300
+/// Current version: 0.4.0 → 400
 #[allow(clippy::erasing_op, clippy::identity_op)]
 #[no_mangle]
 pub extern "C" fn tempoch_ffi_version() -> u32 {
-    0 * 10000 + 3 * 100 + 0 // 0.3.0
+    0 * 10000 + 4 * 100 + 0 // 0.4.0
 }
 
 #[cfg(test)]
@@ -60,7 +59,7 @@ mod tests {
 
     #[test]
     fn version_returns_expected_value() {
-        assert_eq!(tempoch_ffi_version(), 300);
+        assert_eq!(tempoch_ffi_version(), 400);
     }
 
     // ── Layout tests ──────────────────────────────────────────────────────
@@ -87,74 +86,7 @@ mod tests {
     }
 
     #[test]
-    fn layout_tempoch_jd() {
-        assert_eq!(std::mem::size_of::<TempochJd>(), 8);
-        assert_eq!(std::mem::align_of::<TempochJd>(), 8);
-    }
-
-    #[test]
-    fn layout_tempoch_mjd() {
-        assert_eq!(std::mem::size_of::<TempochMjd>(), 8);
-        assert_eq!(std::mem::align_of::<TempochMjd>(), 8);
-    }
-
-    #[test]
-    fn layout_tempoch_tt() {
-        assert_eq!(std::mem::size_of::<TempochTt>(), 8);
-        assert_eq!(std::mem::align_of::<TempochTt>(), 8);
-    }
-
-    #[test]
-    fn layout_tempoch_tdb() {
-        assert_eq!(std::mem::size_of::<TempochTdb>(), 8);
-        assert_eq!(std::mem::align_of::<TempochTdb>(), 8);
-    }
-
-    #[test]
-    fn layout_tempoch_tai() {
-        assert_eq!(std::mem::size_of::<TempochTai>(), 8);
-        assert_eq!(std::mem::align_of::<TempochTai>(), 8);
-    }
-
-    #[test]
-    fn layout_tempoch_tcg() {
-        assert_eq!(std::mem::size_of::<TempochTcg>(), 8);
-        assert_eq!(std::mem::align_of::<TempochTcg>(), 8);
-    }
-
-    #[test]
-    fn layout_tempoch_tcb() {
-        assert_eq!(std::mem::size_of::<TempochTcb>(), 8);
-        assert_eq!(std::mem::align_of::<TempochTcb>(), 8);
-    }
-
-    #[test]
-    fn layout_tempoch_gps() {
-        assert_eq!(std::mem::size_of::<TempochGps>(), 8);
-        assert_eq!(std::mem::align_of::<TempochGps>(), 8);
-    }
-
-    #[test]
-    fn layout_tempoch_ut() {
-        assert_eq!(std::mem::size_of::<TempochUt>(), 8);
-        assert_eq!(std::mem::align_of::<TempochUt>(), 8);
-    }
-
-    #[test]
-    fn layout_tempoch_jde() {
-        assert_eq!(std::mem::size_of::<TempochJde>(), 8);
-        assert_eq!(std::mem::align_of::<TempochJde>(), 8);
-    }
-
-    #[test]
-    fn layout_tempoch_unix_time() {
-        assert_eq!(std::mem::size_of::<TempochUnixTime>(), 8);
-        assert_eq!(std::mem::align_of::<TempochUnixTime>(), 8);
-    }
-
-    #[test]
     fn layout_tempoch_period_mjd() {
-        // Two TempochMjd (each 8 bytes) → 16 bytes, 8-aligned
         assert_eq!(std::mem::size_of::<TempochPeriodMjd>(), 16);
         assert_eq!(std::mem::align_of::<TempochPeriodMjd>(), 8);
     }
