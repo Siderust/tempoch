@@ -324,7 +324,8 @@ mod tests {
         let ut = Time::<UT>::new(2_451_545.0);
         let jd_tt = ut.to::<crate::JD>();
         let offset = jd_tt - JulianDate::new(2_451_545.0);
-        let expected = delta_t_seconds_from_ut(JulianDate::new(2_451_545.0)).to::<qtty::unit::Day>();
+        let expected =
+            delta_t_seconds_from_ut(JulianDate::new(2_451_545.0)).to::<qtty::unit::Day>();
         assert!((offset - expected).abs() < Day::new(1e-9));
     }
 

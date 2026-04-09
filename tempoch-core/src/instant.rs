@@ -206,7 +206,9 @@ impl<S: TimeScale> Time<S> {
         use super::scales::UT;
         const UNIX_EPOCH_JD: f64 = 2_440_587.5;
         let jd_ut = self.to::<UT>().quantity();
-        let seconds_since_epoch = (jd_ut - Day::new(UNIX_EPOCH_JD)).to::<qtty::unit::Second>().value();
+        let seconds_since_epoch = (jd_ut - Day::new(UNIX_EPOCH_JD))
+            .to::<qtty::unit::Second>()
+            .value();
         let secs = seconds_since_epoch.floor() as i64;
         let nanos = ((seconds_since_epoch - secs as f64) * 1e9) as u32;
         DateTime::<Utc>::from_timestamp(secs, nanos)
