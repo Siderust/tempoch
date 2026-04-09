@@ -182,7 +182,7 @@ mod tests {
             end_mjd: 51_546.5,
         };
         let qty = tempoch_period_mjd_duration_qty(p);
-        assert_eq!(qty.unit, UnitId::Day);
+        assert_eq!(qty.unit, UnitId::Day as u32);
         assert!((qty.value - 2.0).abs() < 1e-12);
     }
 

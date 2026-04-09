@@ -9,7 +9,7 @@
 
 use super::{Time, TimeInstant, TimeScale};
 use chrono::{DateTime, Utc};
-use qtty::Days;
+use qtty::Day;
 use std::fmt;
 
 #[cfg(feature = "serde")]
@@ -261,14 +261,14 @@ impl<T: TimeInstant> Interval<T> {
     /// ```
     /// # use tempoch_core as tempoch;
     /// use tempoch::{Interval, JulianDate};
-    /// use qtty::Days;
+    /// use qtty::Day;
     ///
     /// let start = JulianDate::new(2451545.0);
     /// let end = JulianDate::new(2451546.5);
     /// let period = Interval::new(start, end);
     ///
     /// let duration = period.duration();
-    /// assert_eq!(duration, Days::new(1.5));
+    /// assert_eq!(duration, Day::new(1.5));
     /// ```
     pub fn duration(&self) -> T::Duration {
         self.end.difference(&self.start)
@@ -349,11 +349,11 @@ impl<S: TimeScale> Interval<Time<S>> {
     }
 }
 
-// Specific implementation for periods with Days duration (JD and MJD)
-impl<T: TimeInstant<Duration = Days>> Interval<T> {
+// Specific implementation for periods with Day duration (JD and MJD)
+impl<T: TimeInstant<Duration = Day>> Interval<T> {
     /// Returns the duration of the period in days as a floating-point value.
     ///
-    /// This method is available for time instants with `Days` as their duration type
+    /// This method is available for time instants with `Day` as their duration type
     /// (e.g., `JulianDate` and `ModifiedJulianDate`).
     ///
     /// # Examples
@@ -361,15 +361,15 @@ impl<T: TimeInstant<Duration = Days>> Interval<T> {
     /// ```
     /// # use tempoch_core as tempoch;
     /// use tempoch::{Interval, ModifiedJulianDate};
-    /// use qtty::Days;
+    /// use qtty::Day;
     ///
     /// let start = ModifiedJulianDate::new(59000.0);
     /// let end = ModifiedJulianDate::new(59001.5);
     /// let period = Interval::new(start, end);
     ///
-    /// assert_eq!(period.duration_days(), Days::new(1.5));
+    /// assert_eq!(period.duration_days(), Day::new(1.5));
     /// ```
-    pub fn duration_days(&self) -> Days {
+    pub fn duration_days(&self) -> Day {
         self.duration()
     }
 }
@@ -764,8 +764,8 @@ mod tests {
         ];
         let merged = normalize_periods(&periods);
         assert_eq!(merged.len(), 1);
-        assert_eq!(merged[0].start.quantity(), Days::new(0.0));
-        assert_eq!(merged[0].end.quantity(), Days::new(8.0));
+        assert_eq!(merged[0].start.quantity(), Day::new(0.0));
+        assert_eq!(merged[0].end.quantity(), Day::new(8.0));
     }
 
     #[test]
@@ -776,8 +776,8 @@ mod tests {
         ];
         let merged = normalize_periods(&periods);
         assert_eq!(merged.len(), 2);
-        assert_eq!(merged[0].start.quantity(), Days::new(0.0));
-        assert_eq!(merged[1].start.quantity(), Days::new(5.0));
+        assert_eq!(merged[0].start.quantity(), Day::new(0.0));
+        assert_eq!(merged[1].start.quantity(), Day::new(5.0));
     }
 
     #[test]
@@ -842,7 +842,7 @@ mod tests {
         let end = JulianDate::new(2451546.5);
         let period = Period::new(start, end);
 
-        assert_eq!(period.duration_days(), Days::new(1.5));
+        assert_eq!(period.duration_days(), Day::new(1.5));
     }
 
     #[test]
@@ -851,7 +851,7 @@ mod tests {
         let end = ModifiedJulianDate::new(59001.5);
         let period = Period::new(start, end);
 
-        assert_eq!(period.duration_days(), Days::new(1.5));
+        assert_eq!(period.duration_days(), Day::new(1.5));
     }
 
     #[test]
@@ -921,8 +921,8 @@ mod tests {
         let b = Period::new(ModifiedJulianDate::new(3.0), ModifiedJulianDate::new(8.0));
 
         let overlap = a.intersection(&b).expect("expected overlap");
-        assert_eq!(overlap.start.quantity(), Days::new(3.0));
-        assert_eq!(overlap.end.quantity(), Days::new(5.0));
+        assert_eq!(overlap.start.quantity(), Day::new(3.0));
+        assert_eq!(overlap.end.quantity(), Day::new(5.0));
     }
 
     #[test]
@@ -950,12 +950,12 @@ mod tests {
         ];
         let gaps = complement_within(outer, &periods);
         assert_eq!(gaps.len(), 3);
-        assert_eq!(gaps[0].start.quantity(), Days::new(0.0));
-        assert_eq!(gaps[0].end.quantity(), Days::new(2.0));
-        assert_eq!(gaps[1].start.quantity(), Days::new(4.0));
-        assert_eq!(gaps[1].end.quantity(), Days::new(6.0));
-        assert_eq!(gaps[2].start.quantity(), Days::new(8.0));
-        assert_eq!(gaps[2].end.quantity(), Days::new(10.0));
+        assert_eq!(gaps[0].start.quantity(), Day::new(0.0));
+        assert_eq!(gaps[0].end.quantity(), Day::new(2.0));
+        assert_eq!(gaps[1].start.quantity(), Day::new(4.0));
+        assert_eq!(gaps[1].end.quantity(), Day::new(6.0));
+        assert_eq!(gaps[2].start.quantity(), Day::new(8.0));
+        assert_eq!(gaps[2].end.quantity(), Day::new(10.0));
     }
 
     #[test]
@@ -963,8 +963,8 @@ mod tests {
         let outer = Period::new(ModifiedJulianDate::new(0.0), ModifiedJulianDate::new(10.0));
         let gaps = complement_within(outer, &[]);
         assert_eq!(gaps.len(), 1);
-        assert_eq!(gaps[0].start.quantity(), Days::new(0.0));
-        assert_eq!(gaps[0].end.quantity(), Days::new(10.0));
+        assert_eq!(gaps[0].start.quantity(), Day::new(0.0));
+        assert_eq!(gaps[0].end.quantity(), Day::new(10.0));
     }
 
     #[test]
@@ -990,8 +990,8 @@ mod tests {
         )];
         let overlap = intersect_periods(&a, &b);
         assert_eq!(overlap.len(), 1);
-        assert_eq!(overlap[0].start.quantity(), Days::new(3.0));
-        assert_eq!(overlap[0].end.quantity(), Days::new(5.0));
+        assert_eq!(overlap[0].start.quantity(), Day::new(3.0));
+        assert_eq!(overlap[0].end.quantity(), Day::new(5.0));
     }
 
     #[test]
@@ -1027,12 +1027,12 @@ mod tests {
         // below_max (complement): [0,2), [4,7), [8,10)
         // intersection: [1,2), [5,7), [8,9)
         assert_eq!(between.len(), 3);
-        assert_eq!(between[0].start.quantity(), Days::new(1.0));
-        assert_eq!(between[0].end.quantity(), Days::new(2.0));
-        assert_eq!(between[1].start.quantity(), Days::new(5.0));
-        assert_eq!(between[1].end.quantity(), Days::new(7.0));
-        assert_eq!(between[2].start.quantity(), Days::new(8.0));
-        assert_eq!(between[2].end.quantity(), Days::new(9.0));
+        assert_eq!(between[0].start.quantity(), Day::new(1.0));
+        assert_eq!(between[0].end.quantity(), Day::new(2.0));
+        assert_eq!(between[1].start.quantity(), Day::new(5.0));
+        assert_eq!(between[1].end.quantity(), Day::new(7.0));
+        assert_eq!(between[2].start.quantity(), Day::new(8.0));
+        assert_eq!(between[2].end.quantity(), Day::new(9.0));
     }
 
     // ── New coverage tests ────────────────────────────────────────────
@@ -1098,8 +1098,8 @@ mod tests {
         let a = Period::new(ModifiedJulianDate::new(2.0), ModifiedJulianDate::new(8.0));
         let b = Period::new(ModifiedJulianDate::new(0.0), ModifiedJulianDate::new(5.0));
         let overlap = a.intersection(&b).expect("should overlap");
-        assert_eq!(overlap.start.quantity(), Days::new(2.0));
-        assert_eq!(overlap.end.quantity(), Days::new(5.0));
+        assert_eq!(overlap.start.quantity(), Day::new(2.0));
+        assert_eq!(overlap.end.quantity(), Day::new(5.0));
     }
 
     #[test]

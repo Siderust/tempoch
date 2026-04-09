@@ -14,7 +14,7 @@ use crate::carriers::{
 use crate::catch_panic;
 use crate::error::TempochStatus;
 use chrono::{NaiveDate, Utc};
-use qtty::Days;
+use qtty::Day;
 use qtty_ffi::{QttyQuantity, UnitId};
 use tempoch::{JulianDate, UniversalTime, UT};
 
@@ -67,10 +67,10 @@ impl TempochUtc {
 }
 
 #[inline]
-fn days_from_qty(duration: QttyQuantity) -> Result<Days, TempochStatus> {
+fn days_from_qty(duration: QttyQuantity) -> Result<Day, TempochStatus> {
     duration
         .convert_to(UnitId::Day)
-        .map(|q| Days::new(q.value))
+        .map(|q| Day::new(q.value))
         .ok_or(TempochStatus::InvalidDurationUnit)
 }
 
@@ -198,7 +198,7 @@ pub extern "C" fn tempoch_jd_difference(jd1: f64, jd2: f64) -> f64 {
 /// Add a duration in days to a Julian Date.
 #[no_mangle]
 pub extern "C" fn tempoch_jd_add_days(jd: f64, days: f64) -> f64 {
-    time_add_days_value(jd, Days::new(days), TempochScaleId::JD)
+    time_add_days_value(jd, Day::new(days), TempochScaleId::JD)
 }
 
 /// Compute the difference between two Modified Julian Dates in days (mjd1 − mjd2).
@@ -210,7 +210,7 @@ pub extern "C" fn tempoch_mjd_difference(mjd1: f64, mjd2: f64) -> f64 {
 /// Add a duration in days to a Modified Julian Date.
 #[no_mangle]
 pub extern "C" fn tempoch_mjd_add_days(mjd: f64, days: f64) -> f64 {
-    time_add_days_value(mjd, Days::new(days), TempochScaleId::MJD)
+    time_add_days_value(mjd, Day::new(days), TempochScaleId::MJD)
 }
 
 /// Compute Julian centuries since J2000 for a given Julian Date.
@@ -555,7 +555,7 @@ pub unsafe extern "C" fn tempoch_time_add_days(
             Ok(scale) => scale,
             Err(status) => return status,
         };
-        unsafe { *out = time_add_days_value(value, Days::new(days), scale) };
+        unsafe { *out = time_add_days_value(value, Day::new(days), scale) };
         TempochStatus::Ok
     })
 }
@@ -973,7 +973,7 @@ mod tests {
             )
         };
         assert_eq!(status, TempochStatus::Ok);
-        assert_eq!(out.unit, UnitId::Day);
+        assert_eq!(out.unit, UnitId::Day as u32);
         assert!((out.value - 1.0).abs() < 1e-12);
     }
 

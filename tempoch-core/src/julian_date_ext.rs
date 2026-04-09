@@ -14,42 +14,30 @@ impl Time<JD> {
     pub const J2000: Self = Self::new(2_451_545.0);
 
     /// One Julian year expressed in days.
-    pub const JULIAN_YEAR: Days = Days::new(365.25);
+    pub const JULIAN_YEAR: Day = Day::new(365.25);
 
     /// One Julian century expressed in days.
-    pub const JULIAN_CENTURY: Days = Days::new(36_525.0);
+    pub const JULIAN_CENTURY: Day = Day::new(36_525.0);
 
     /// One Julian millennium expressed in days.
-    pub const JULIAN_MILLENNIUM: Days = Days::new(365_250.0);
+    pub const JULIAN_MILLENNIUM: Day = Day::new(365_250.0);
 
     /// Julian millennia since J2000.0 (used by VSOP87).
     #[inline]
-    pub fn julian_millennias(&self) -> Millennia {
-        Millennia::new(
-            ((*self - Self::J2000) / Self::JULIAN_MILLENNIUM)
-                .simplify()
-                .value(),
-        )
+    pub fn julian_millennias(&self) -> Millennium {
+        Millennium::new(((*self - Self::J2000) / Self::JULIAN_MILLENNIUM).value())
     }
 
     /// Julian centuries since J2000.0 (used by nutation, precession, sidereal time).
     #[inline]
-    pub fn julian_centuries(&self) -> Centuries {
-        Centuries::new(
-            ((*self - Self::J2000) / Self::JULIAN_CENTURY)
-                .simplify()
-                .value(),
-        )
+    pub fn julian_centuries(&self) -> Century {
+        Century::new(((*self - Self::J2000) / Self::JULIAN_CENTURY).value())
     }
 
     /// Julian years since J2000.0.
     #[inline]
-    pub fn julian_years(&self) -> JulianYears {
-        JulianYears::new(
-            ((*self - Self::J2000) / Self::JULIAN_YEAR)
-                .simplify()
-                .value(),
-        )
+    pub fn julian_years(&self) -> JulianYear {
+        JulianYear::new(((*self - Self::J2000) / Self::JULIAN_YEAR).value())
     }
 
     /// Converts JD(TT) → JD(TDB) using the Fairhead & Bretagnon (1990)
@@ -81,47 +69,47 @@ impl Time<JD> {
 
 // ── From / Into conversions for qtty time quantities (on JD only) ────────
 
-impl Add<Years> for Time<JD> {
+impl Add<Year> for Time<JD> {
     type Output = Self;
-    fn add(self, years: Years) -> Self {
-        // Treat `Years` here as Julian years for JD arithmetic stability.
-        self + Days::new(years.value() * Self::JULIAN_YEAR.value())
+    fn add(self, years: Year) -> Self {
+        // Treat `Year` here as Julian years for JD arithmetic stability.
+        self + Day::new(years.value() * Self::JULIAN_YEAR.value())
     }
 }
 
-impl From<JulianYears> for Time<JD> {
-    fn from(years: JulianYears) -> Self {
-        Self::J2000 + years.to::<Day>()
+impl From<JulianYear> for Time<JD> {
+    fn from(years: JulianYear) -> Self {
+        Self::J2000 + years.to::<qtty::unit::Day>()
     }
 }
 
-impl From<Time<JD>> for JulianYears {
+impl From<Time<JD>> for JulianYear {
     fn from(jd: Time<JD>) -> Self {
         jd.julian_years()
     }
 }
 
-impl From<Centuries> for Time<JD> {
-    fn from(centuries: Centuries) -> Self {
-        // `Centuries` are interpreted as Julian centuries relative to J2000.
-        Self::J2000 + Days::new(centuries.value() * Self::JULIAN_CENTURY.value())
+impl From<Century> for Time<JD> {
+    fn from(centuries: Century) -> Self {
+        // `Century` are interpreted as Julian centuries relative to J2000.
+        Self::J2000 + Day::new(centuries.value() * Self::JULIAN_CENTURY.value())
     }
 }
 
-impl From<Time<JD>> for Centuries {
+impl From<Time<JD>> for Century {
     fn from(jd: Time<JD>) -> Self {
         jd.julian_centuries()
     }
 }
 
-impl From<Millennia> for Time<JD> {
-    fn from(millennia: Millennia) -> Self {
-        // `Millennia` are interpreted as Julian millennia relative to J2000.
-        Self::J2000 + Days::new(millennia.value() * Self::JULIAN_MILLENNIUM.value())
+impl From<Millennium> for Time<JD> {
+    fn from(millennia: Millennium) -> Self {
+        // `Millennium` are interpreted as Julian millennia relative to J2000.
+        Self::J2000 + Day::new(millennia.value() * Self::JULIAN_MILLENNIUM.value())
     }
 }
 
-impl From<Time<JD>> for Millennia {
+impl From<Time<JD>> for Millennium {
     fn from(jd: Time<JD>) -> Self {
         jd.julian_millennias()
     }

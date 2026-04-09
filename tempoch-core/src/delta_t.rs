@@ -53,15 +53,15 @@
 use super::instant::Time;
 use super::scales::UT;
 use super::JulianDate;
-use qtty::{Days, Seconds, Simplify};
+use qtty::{Day, Second};
 
 /// Total number of tabulated terms (biennial 1620–1992).
 const TERMS: usize = 187;
 
 /// Biennial ΔT table from 1620 to 1992 (in seconds), compiled by J. Meeus.
 #[rustfmt::skip]
-const DELTA_T: [Seconds; TERMS] = qtty::qtty_vec!(
-    Seconds;
+const DELTA_T: [Second; TERMS] = qtty::qtty_vec!(
+    Second;
     124.0,115.0,106.0, 98.0, 91.0, 85.0, 79.0, 74.0, 70.0, 65.0,
      62.0, 58.0, 55.0, 53.0, 50.0, 48.0, 46.0, 44.0, 42.0, 40.0,
      37.0, 35.0, 33.0, 31.0, 28.0, 26.0, 24.0, 22.0, 20.0, 18.0,
@@ -94,8 +94,8 @@ const OBSERVED_TERMS: usize = 34;
 const OBSERVED_START_YEAR: f64 = 1992.0;
 
 #[rustfmt::skip]
-const OBSERVED_DT: [Seconds; OBSERVED_TERMS] = qtty::qtty_vec!(
-    Seconds;
+const OBSERVED_DT: [Second; OBSERVED_TERMS] = qtty::qtty_vec!(
+    Second;
     // 1992  1993   1994   1995   1996   1997   1998   1999
     58.31, 59.12, 59.98, 60.78, 61.63, 62.30, 62.97, 63.47,
     // 2000  2001   2002   2003   2004   2005   2006   2007
@@ -119,43 +119,43 @@ const EXTRAPOLATION_RATE: f64 = 0.02;
 // ΔT Approximation Sections by Time Interval
 // ------------------------------------------------------------------------------------
 
-/// **Years < 948 CE**
+/// **Year < 948 CE**
 /// Quadratic formula from Stephenson & Houlden (1986).
 #[inline]
-fn delta_t_ancient(jd: JulianDate) -> Seconds {
-    const DT_A0_S: Seconds = Seconds::new(1_830.0);
-    const DT_A1_S: Seconds = Seconds::new(-405.0);
-    const DT_A2_S: Seconds = Seconds::new(46.5);
+fn delta_t_ancient(jd: JulianDate) -> Second {
+    const DT_A0_S: Second = Second::new(1_830.0);
+    const DT_A1_S: Second = Second::new(-405.0);
+    const DT_A2_S: Second = Second::new(46.5);
     const JD_EPOCH_948_UT: JulianDate = JulianDate::new(2_067_314.5);
     let c = days_ratio(jd - JD_EPOCH_948_UT, JulianDate::JULIAN_CENTURY);
     DT_A0_S + DT_A1_S * c + DT_A2_S * c * c
 }
 
-/// **Years 948–1600 CE**
+/// **Year 948–1600 CE**
 /// Second polynomial from Stephenson & Houlden (1986).
 #[inline]
-fn delta_t_medieval(jd: JulianDate) -> Seconds {
+fn delta_t_medieval(jd: JulianDate) -> Second {
     const JD_EPOCH_1850_UT: JulianDate = JulianDate::new(2_396_758.5);
-    const DT_A2_S: Seconds = Seconds::new(22.5);
+    const DT_A2_S: Second = Second::new(22.5);
 
     let c = days_ratio(jd - JD_EPOCH_1850_UT, JulianDate::JULIAN_CENTURY);
     DT_A2_S * c * c
 }
 
-/// **Years 1600–1992**
+/// **Year 1600–1992**
 /// Bicubic interpolation from the biennial `DELTA_T` table.
 #[inline]
-fn delta_t_table(jd: JulianDate) -> Seconds {
+fn delta_t_table(jd: JulianDate) -> Second {
     const JD_TABLE_START_1620: JulianDate = JulianDate::new(2_312_752.5);
-    const BIENNIAL_STEP_D: Days = Days::new(730.5);
+    const BIENNIAL_STEP_D: Day = Day::new(730.5);
 
     let mut i = days_ratio(jd - JD_TABLE_START_1620, BIENNIAL_STEP_D) as usize;
     if i > TERMS - 3 {
         i = TERMS - 3;
     }
-    let a: Seconds = DELTA_T[i + 1] - DELTA_T[i];
-    let b: Seconds = DELTA_T[i + 2] - DELTA_T[i + 1];
-    let c: Seconds = a - b;
+    let a: Second = DELTA_T[i + 1] - DELTA_T[i];
+    let b: Second = DELTA_T[i + 2] - DELTA_T[i + 1];
+    let c: Second = a - b;
     let n = days_ratio(
         jd - (JD_TABLE_START_1620 + BIENNIAL_STEP_D * i as f64),
         BIENNIAL_STEP_D,
@@ -163,10 +163,10 @@ fn delta_t_table(jd: JulianDate) -> Seconds {
     DELTA_T[i + 1] + n / 2.0 * (a + b + n * c)
 }
 
-/// **Years 1992–2026**
+/// **Year 1992–2026**
 /// Linear interpolation from annual IERS/USNO observed ΔT values.
 #[inline]
-fn delta_t_observed(jd: JulianDate) -> Seconds {
+fn delta_t_observed(jd: JulianDate) -> Second {
     // Convert JD to fractional year
     let year = 2000.0 + (jd - JulianDate::J2000).value() / 365.25;
     let idx_f = year - OBSERVED_START_YEAR;
@@ -182,23 +182,23 @@ fn delta_t_observed(jd: JulianDate) -> Seconds {
     OBSERVED_DT[idx] + frac * (OBSERVED_DT[idx + 1] - OBSERVED_DT[idx])
 }
 
-/// **Years > 2026**
+/// **Year > 2026**
 /// Linear extrapolation from the last observed value at the current rate.
 ///
 /// The observed ΔT trend 2019–2025 is nearly flat (~+0.02 s/yr), which is
 /// far more accurate than the Meeus quadratic that predicted ~121 s for 2020
 /// vs the observed ~69.36 s.
 #[inline]
-fn delta_t_extrapolated(jd: JulianDate) -> Seconds {
+fn delta_t_extrapolated(jd: JulianDate) -> Second {
     let year = 2000.0 + (jd - JulianDate::J2000).value() / 365.25;
     let dt_last = OBSERVED_DT[OBSERVED_TERMS - 1];
     let years_past = year - OBSERVED_END_YEAR;
-    dt_last + Seconds::new(EXTRAPOLATION_RATE * years_past)
+    dt_last + Second::new(EXTRAPOLATION_RATE * years_past)
 }
 
 #[inline]
-fn days_ratio(num: Days, den: Days) -> f64 {
-    (num / den).simplify().value()
+fn days_ratio(num: Day, den: Day) -> f64 {
+    (num / den).value()
 }
 
 /// JD boundary: start of year 1992.0
@@ -209,7 +209,7 @@ const JD_2026: JulianDate = JulianDate::new(2_461_041.5);
 
 /// Returns **ΔT** in seconds for a Julian Day on the **UT** axis.
 #[inline]
-pub(crate) fn delta_t_seconds_from_ut(jd_ut: JulianDate) -> Seconds {
+pub(crate) fn delta_t_seconds_from_ut(jd_ut: JulianDate) -> Second {
     match jd_ut {
         jd if jd < JulianDate::new(2_067_314.5) => delta_t_ancient(jd),
         jd if jd < JulianDate::new(2_305_447.5) => delta_t_medieval(jd),
@@ -227,7 +227,7 @@ impl Time<UT> {
     /// This is a convenience accessor; the same correction is applied
     /// automatically when converting to any TT-based scale (`.to::<JD>()`).
     #[inline]
-    pub fn delta_t(&self) -> Seconds {
+    pub fn delta_t(&self) -> Second {
         delta_t_seconds_from_ut(JulianDate::from_days(self.quantity()))
     }
 }
@@ -235,30 +235,30 @@ impl Time<UT> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use qtty::{Day, Days};
+    use qtty::Day;
 
     #[test]
     fn delta_t_ancient_sample() {
         let dt = delta_t_seconds_from_ut(JulianDate::new(2_000_000.0));
-        assert!((dt - Seconds::new(2_734.342_214_024_879_5)).abs() < Seconds::new(1e-6));
+        assert!((dt - Second::new(2_734.342_214_024_879_5)).abs() < Second::new(1e-6));
     }
 
     #[test]
     fn delta_t_medieval_sample() {
         let dt = delta_t_seconds_from_ut(JulianDate::new(2_100_000.0));
-        assert!((dt - Seconds::new(1_485.280_240_204_242_3)).abs() < Seconds::new(1e-6));
+        assert!((dt - Second::new(1_485.280_240_204_242_3)).abs() < Second::new(1e-6));
     }
 
     #[test]
     fn delta_t_table_sample() {
         let dt = delta_t_seconds_from_ut(JulianDate::new(2_312_752.5));
-        assert!((dt - Seconds::new(115.0)).abs() < Seconds::new(1e-6));
+        assert!((dt - Second::new(115.0)).abs() < Second::new(1e-6));
     }
 
     #[test]
     fn delta_t_table_upper_clip() {
         let dt = delta_t_table(JulianDate::new(2_449_356.0));
-        assert!((dt - Seconds::new(59.3)).abs() < Seconds::new(1e-6));
+        assert!((dt - Second::new(59.3)).abs() < Second::new(1e-6));
     }
 
     #[test]
@@ -266,7 +266,7 @@ mod tests {
         // IERS observed value: 63.83 s
         let dt = delta_t_seconds_from_ut(JulianDate::J2000);
         assert!(
-            (dt - Seconds::new(63.83)).abs() < Seconds::new(0.1),
+            (dt - Second::new(63.83)).abs() < Second::new(0.1),
             "ΔT at J2000 = {dt}, expected 63.83 s"
         );
     }
@@ -277,7 +277,7 @@ mod tests {
         // JD 2455197.5 ≈ 2010-01-01
         let dt = delta_t_seconds_from_ut(JulianDate::new(2_455_197.5));
         assert!(
-            (dt - Seconds::new(66.07)).abs() < Seconds::new(0.5),
+            (dt - Second::new(66.07)).abs() < Second::new(0.5),
             "ΔT at 2010. = {dt}, expected ~66.07 s"
         );
     }
@@ -289,7 +289,7 @@ mod tests {
         // JD for 2020-01-01 ≈ 2458849.5
         let dt = delta_t_seconds_from_ut(JulianDate::new(2_458_849.5));
         assert!(
-            (dt - Seconds::new(69.36)).abs() < Seconds::new(0.5),
+            (dt - Second::new(69.36)).abs() < Second::new(0.5),
             "ΔT at 2020.0 = {dt}, expected ~69.36 s"
         );
     }
@@ -300,7 +300,7 @@ mod tests {
         // JD for 2025-01-01 ≈ 2460676.5
         let dt = delta_t_seconds_from_ut(JulianDate::new(2_460_676.5));
         assert!(
-            (dt - Seconds::new(69.36)).abs() < Seconds::new(0.5),
+            (dt - Second::new(69.36)).abs() < Second::new(0.5),
             "ΔT at 2025.0 = {dt}, expected ~69.36 s"
         );
     }
@@ -312,11 +312,11 @@ mod tests {
         let jd_2030 = JulianDate::new(2_462_502.5);
         let dt = delta_t_seconds_from_ut(jd_2030);
         assert!(
-            (dt - Seconds::new(69.44)).abs() < Seconds::new(1.0),
+            (dt - Second::new(69.44)).abs() < Second::new(1.0),
             "ΔT at 2030. = {dt}, expected ~69.44 s"
         );
         // Must NOT be the old ~135+ s value
-        assert!(dt < Seconds::new(75.0), "ΔT at 2030 is too large: {dt}");
+        assert!(dt < Second::new(75.0), "ΔT at 2030 is too large: {dt}");
     }
 
     #[test]
@@ -324,8 +324,8 @@ mod tests {
         let ut = Time::<UT>::new(2_451_545.0);
         let jd_tt = ut.to::<crate::JD>();
         let offset = jd_tt - JulianDate::new(2_451_545.0);
-        let expected = delta_t_seconds_from_ut(JulianDate::new(2_451_545.0)).to::<Day>();
-        assert!((offset - expected).abs() < Days::new(1e-9));
+        let expected = delta_t_seconds_from_ut(JulianDate::new(2_451_545.0)).to::<qtty::unit::Day>();
+        assert!((offset - expected).abs() < Day::new(1e-9));
     }
 
     #[test]
@@ -333,13 +333,13 @@ mod tests {
         let jd_tt = JulianDate::new(2_451_545.0);
         let ut: Time<UT> = jd_tt.to::<UT>();
         let back: JulianDate = ut.to::<crate::JD>();
-        assert!((back - jd_tt).abs() < Days::new(1e-12));
+        assert!((back - jd_tt).abs() < Day::new(1e-12));
     }
 
     #[test]
     fn delta_t_convenience_method() {
         let ut = Time::<UT>::new(2_451_545.0);
         let dt = ut.delta_t();
-        assert!((dt - Seconds::new(63.83)).abs() < Seconds::new(0.5));
+        assert!((dt - Second::new(63.83)).abs() < Second::new(0.5));
     }
 }

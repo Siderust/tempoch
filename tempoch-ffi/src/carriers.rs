@@ -195,7 +195,7 @@ pub(crate) fn time_difference_days_value(lhs: f64, rhs: f64, scale: TempochScale
 }
 
 /// Add a duration in days in the native scale and return the resulting scalar.
-pub(crate) fn time_add_days_value(value: f64, days: qtty::Days, scale: TempochScaleId) -> f64 {
+pub(crate) fn time_add_days_value(value: f64, days: qtty::Day, scale: TempochScaleId) -> f64 {
     match scale {
         TempochScaleId::JD => Time::<JD>::new(value).add_duration(days).value(),
         TempochScaleId::MJD => Time::<MJD>::new(value).add_duration(days).value(),

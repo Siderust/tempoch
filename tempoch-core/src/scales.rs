@@ -14,7 +14,7 @@
 //! | [`JD`] | Julian Date | 0.0 |
 //! | [`JDE`] | Julian Ephemeris Day | 0.0 |
 //! | [`MJD`] | Modified Julian Date | 2 400 000.5 |
-//! | [`UnixTime`] | Seconds since 1970-01-01 | 2 440 587.5 |
+//! | [`UnixTime`] | Second since 1970-01-01 | 2 440 587.5 |
 //! | [`GPS`] | GPS Time (days) | 2 444 244.5 |
 //!
 //! # Physical / relativistic scales
@@ -28,7 +28,7 @@
 //! | [`TCB`] | Barycentric Coordinate Time (IAU 2006) |
 
 use super::instant::TimeScale;
-use qtty::Days;
+use qtty::Day;
 
 // ---------------------------------------------------------------------------
 // Epoch counters
@@ -44,12 +44,12 @@ impl TimeScale for JD {
     const LABEL: &'static str = "Julian Day:";
 
     #[inline(always)]
-    fn to_jd_tt(value: Days) -> Days {
+    fn to_jd_tt(value: Day) -> Day {
         value
     }
 
     #[inline(always)]
-    fn from_jd_tt(jd_tt: Days) -> Days {
+    fn from_jd_tt(jd_tt: Day) -> Day {
         jd_tt
     }
 }
@@ -65,12 +65,12 @@ impl TimeScale for JDE {
     const LABEL: &'static str = "JDE";
 
     #[inline(always)]
-    fn to_jd_tt(value: Days) -> Days {
+    fn to_jd_tt(value: Day) -> Day {
         value
     }
 
     #[inline(always)]
-    fn from_jd_tt(jd_tt: Days) -> Days {
+    fn from_jd_tt(jd_tt: Day) -> Day {
         jd_tt
     }
 }
@@ -80,18 +80,18 @@ impl TimeScale for JDE {
 pub struct MJD;
 
 /// The constant offset between JD and MJD: `JD = MJD + MJD_EPOCH`.
-const MJD_EPOCH: Days = Days::new(2_400_000.5);
+const MJD_EPOCH: Day = Day::new(2_400_000.5);
 
 impl TimeScale for MJD {
     const LABEL: &'static str = "MJD";
 
     #[inline(always)]
-    fn to_jd_tt(value: Days) -> Days {
+    fn to_jd_tt(value: Day) -> Day {
         value + MJD_EPOCH
     }
 
     #[inline(always)]
-    fn from_jd_tt(jd_tt: Days) -> Days {
+    fn from_jd_tt(jd_tt: Day) -> Day {
         jd_tt - MJD_EPOCH
     }
 }
@@ -118,7 +118,7 @@ pub struct TDB;
 /// Compute TDB − TT in days using the Fairhead & Bretagnon (1990) 4-term
 /// expression.  Accuracy: better than 30 μs for |t| < 100 centuries.
 #[inline]
-pub(crate) fn tdb_minus_tt_days(jd_tt: Days) -> Days {
+pub(crate) fn tdb_minus_tt_days(jd_tt: Day) -> Day {
     // Julian centuries from J2000.0 on the TT axis
     let t = (jd_tt.value() - 2_451_545.0) / 36_525.0;
 
@@ -138,14 +138,14 @@ pub(crate) fn tdb_minus_tt_days(jd_tt: Days) -> Days {
         + 0.000_005 * m_j.sin()
         + 0.000_005 * om.sin();
 
-    Days::new(dt_sec / 86_400.0)
+    Day::new(dt_sec / 86_400.0)
 }
 
 impl TimeScale for TDB {
     const LABEL: &'static str = "TDB";
 
     #[inline]
-    fn to_jd_tt(tdb_value: Days) -> Days {
+    fn to_jd_tt(tdb_value: Day) -> Day {
         // JD(TT) = JD(TDB) - (TDB - TT)
         // First approximation: use tdb_value as TT to compute the correction.
         // The correction is < 2 ms so one iteration is sufficient for f64.
@@ -153,7 +153,7 @@ impl TimeScale for TDB {
     }
 
     #[inline]
-    fn from_jd_tt(jd_tt: Days) -> Days {
+    fn from_jd_tt(jd_tt: Day) -> Day {
         // JD(TDB) = JD(TT) + (TDB - TT)
         jd_tt + tdb_minus_tt_days(jd_tt)
     }
@@ -170,12 +170,12 @@ impl TimeScale for TT {
     const LABEL: &'static str = "TT";
 
     #[inline(always)]
-    fn to_jd_tt(value: Days) -> Days {
+    fn to_jd_tt(value: Day) -> Day {
         value // value is already JD(TT)
     }
 
     #[inline(always)]
-    fn from_jd_tt(jd_tt: Days) -> Days {
+    fn from_jd_tt(jd_tt: Day) -> Day {
         jd_tt
     }
 }
@@ -187,19 +187,19 @@ impl TimeScale for TT {
 pub struct TAI;
 
 /// `TT = TAI + 32.184 s` expressed in days.
-const TT_MINUS_TAI: Days = Days::new(32.184 / 86_400.0);
+const TT_MINUS_TAI: Day = Day::new(32.184 / 86_400.0);
 
 impl TimeScale for TAI {
     const LABEL: &'static str = "TAI";
 
     #[inline(always)]
-    fn to_jd_tt(value: Days) -> Days {
+    fn to_jd_tt(value: Day) -> Day {
         // TAI → TT: add 32.184 s
         value + TT_MINUS_TAI
     }
 
     #[inline(always)]
-    fn from_jd_tt(jd_tt: Days) -> Days {
+    fn from_jd_tt(jd_tt: Day) -> Day {
         // TT → TAI: subtract 32.184 s
         jd_tt - TT_MINUS_TAI
     }
@@ -248,18 +248,18 @@ impl TimeScale for TCG {
     const LABEL: &'static str = "TCG";
 
     #[inline]
-    fn to_jd_tt(tcg_value: Days) -> Days {
+    fn to_jd_tt(tcg_value: Day) -> Day {
         // TT = TCG − L_G × (JD_TCG − T₀)
         let jd_tcg = tcg_value.value();
-        Days::new(jd_tcg - L_G * (jd_tcg - TCG_EPOCH_T0))
+        Day::new(jd_tcg - L_G * (jd_tcg - TCG_EPOCH_T0))
     }
 
     #[inline]
-    fn from_jd_tt(jd_tt: Days) -> Days {
+    fn from_jd_tt(jd_tt: Day) -> Day {
         // JD_TCG = (JD_TT + L_G × T₀) / (1 − L_G)
         //        ≈ JD_TT + L_G × (JD_TT − T₀)   (first-order, adequate for f64)
         let tt = jd_tt.value();
-        Days::new(tt + L_G * (tt - TCG_EPOCH_T0) / (1.0 - L_G))
+        Day::new(tt + L_G * (tt - TCG_EPOCH_T0) / (1.0 - L_G))
     }
 }
 
@@ -296,20 +296,20 @@ impl TimeScale for TCB {
     const LABEL: &'static str = "TCB";
 
     #[inline]
-    fn to_jd_tt(tcb_value: Days) -> Days {
+    fn to_jd_tt(tcb_value: Day) -> Day {
         // TDB = TCB − L_B × (JD_TCB − T₀)
         // Treating TDB ≈ TT (periodic ≈1.7 ms difference handled separately).
         // Matches SOFA iauTcbtdb.
         let jd_tcb = tcb_value.value();
-        Days::new(jd_tcb - L_B * (jd_tcb - TCG_EPOCH_T0))
+        Day::new(jd_tcb - L_B * (jd_tcb - TCG_EPOCH_T0))
     }
 
     #[inline]
-    fn from_jd_tt(jd_tt: Days) -> Days {
+    fn from_jd_tt(jd_tt: Day) -> Day {
         // JD_TCB = JD_TDB + L_B × (JD_TDB − T₀)
         // Matches SOFA iauTdbtcb.
         let tt = jd_tt.value();
-        Days::new(tt + L_B * (tt - TCG_EPOCH_T0))
+        Day::new(tt + L_B * (tt - TCG_EPOCH_T0))
     }
 }
 
@@ -326,18 +326,18 @@ pub struct GPS;
 /// JD(TT) of the GPS epoch (1980-01-06T00:00:00 UTC).
 /// GPS = TAI − 19s, and TT = TAI + 32.184s, so TT = GPS + 51.184s.
 /// GPS epoch in JD(TT): JD 2444244.5 + 51.184/86400.
-const GPS_EPOCH_JD_TT: Days = Days::new(2_444_244.5 + 51.184 / 86_400.0);
+const GPS_EPOCH_JD_TT: Day = Day::new(2_444_244.5 + 51.184 / 86_400.0);
 
 impl TimeScale for GPS {
     const LABEL: &'static str = "GPS";
 
     #[inline(always)]
-    fn to_jd_tt(value: Days) -> Days {
+    fn to_jd_tt(value: Day) -> Day {
         value + GPS_EPOCH_JD_TT
     }
 
     #[inline(always)]
-    fn from_jd_tt(jd_tt: Days) -> Days {
+    fn from_jd_tt(jd_tt: Day) -> Day {
         jd_tt - GPS_EPOCH_JD_TT
     }
 }
@@ -357,7 +357,7 @@ impl TimeScale for GPS {
 pub struct UnixTime;
 
 /// JD of the Unix epoch (1970-01-01T00:00:00Z).
-const UNIX_EPOCH_JD: Days = Days::new(2_440_587.5);
+const UNIX_EPOCH_JD: Day = Day::new(2_440_587.5);
 
 /// Leap-second table: (JD of leap-second insertion, cumulative TAI−UTC after).
 /// Source: IERS Bulletin C. Entries are the JD of 00:00:00 UTC on the day
@@ -437,22 +437,22 @@ impl TimeScale for UnixTime {
     const LABEL: &'static str = "Unix";
 
     #[inline]
-    fn to_jd_tt(value: Days) -> Days {
+    fn to_jd_tt(value: Day) -> Day {
         // value is Unix days (days since 1970-01-01 on the UTC axis)
         let jd_utc = value.value() + UNIX_EPOCH_JD.value();
         let ls = tai_minus_utc(jd_utc);
         // JD(TT) = JD(UTC) + (TAI−UTC + 32.184) / 86400
-        Days::new(jd_utc + (ls + TT_MINUS_TAI_SECS) / 86_400.0)
+        Day::new(jd_utc + (ls + TT_MINUS_TAI_SECS) / 86_400.0)
     }
 
     #[inline]
-    fn from_jd_tt(jd_tt: Days) -> Days {
+    fn from_jd_tt(jd_tt: Day) -> Day {
         // Approximate JD(UTC) by subtracting the largest plausible offset,
         // then refine with the correct leap-second count.
         let approx_utc = jd_tt.value() - (37.0 + TT_MINUS_TAI_SECS) / 86_400.0;
         let ls = tai_minus_utc(approx_utc);
         let jd_utc = jd_tt.value() - (ls + TT_MINUS_TAI_SECS) / 86_400.0;
-        Days::new(jd_utc - UNIX_EPOCH_JD.value())
+        Day::new(jd_utc - UNIX_EPOCH_JD.value())
     }
 }
 
@@ -477,20 +477,20 @@ impl TimeScale for UT {
     const LABEL: &'static str = "UT";
 
     #[inline]
-    fn to_jd_tt(ut_value: Days) -> Days {
+    fn to_jd_tt(ut_value: Day) -> Day {
         let jd_ut = super::instant::Time::<JD>::from_days(ut_value);
         let dt_secs = super::delta_t::delta_t_seconds_from_ut(jd_ut);
-        ut_value + dt_secs.to::<qtty::Day>()
+        ut_value + dt_secs.to::<qtty::unit::Day>()
     }
 
     #[inline]
-    fn from_jd_tt(jd_tt: Days) -> Days {
+    fn from_jd_tt(jd_tt: Day) -> Day {
         // Solve ut + ΔT(ut)/86400 = tt via fixed-point iteration.
         // dΔT/dJD ≈ 3×10⁻⁸, so convergence is immediate.
         let mut ut = jd_tt;
         for _ in 0..3 {
             let jd_ut = super::instant::Time::<JD>::from_days(ut);
-            let dt_days = super::delta_t::delta_t_seconds_from_ut(jd_ut).to::<qtty::Day>();
+            let dt_days = super::delta_t::delta_t_seconds_from_ut(jd_ut).to::<qtty::unit::Day>();
             ut = jd_tt - dt_days;
         }
         ut
@@ -534,24 +534,24 @@ impl_time_conversions!(JD, JDE, MJD, TDB, TT, TAI, TCG, TCB, GPS, UnixTime, UT);
 mod tests {
     use super::super::instant::Time;
     use super::*;
-    use qtty::{Day, Second, Seconds};
+    use qtty::{Day, Second};
 
     #[test]
     fn jd_mjd_roundtrip() {
         let jd = Time::<JD>::new(2_451_545.0);
         let mjd: Time<MJD> = jd.to::<MJD>();
-        assert!((mjd.quantity() - Days::new(51_544.5)).abs() < Days::new(1e-10));
+        assert!((mjd.quantity() - Day::new(51_544.5)).abs() < Day::new(1e-10));
         let back: Time<JD> = mjd.to::<JD>();
-        assert!((back.quantity() - Days::new(2_451_545.0)).abs() < Days::new(1e-10));
+        assert!((back.quantity() - Day::new(2_451_545.0)).abs() < Day::new(1e-10));
     }
 
     #[test]
     fn jd_mjd_from_into() {
         let jd = Time::<JD>::new(2_451_545.0);
         let mjd: Time<MJD> = jd.into();
-        assert!((mjd.quantity() - Days::new(51_544.5)).abs() < Days::new(1e-10));
+        assert!((mjd.quantity() - Day::new(51_544.5)).abs() < Day::new(1e-10));
         let back: Time<JD> = Time::from(mjd);
-        assert!((back.quantity() - Days::new(2_451_545.0)).abs() < Days::new(1e-10));
+        assert!((back.quantity() - Day::new(2_451_545.0)).abs() < Day::new(1e-10));
     }
 
     #[test]
@@ -559,8 +559,8 @@ mod tests {
         // TT = TAI + 32.184s
         let tai = Time::<TAI>::new(2_451_545.0);
         let tt: Time<TT> = tai.to::<TT>();
-        let expected_offset = Seconds::new(32.184).to::<Day>();
-        assert!((tt.quantity() - (tai.quantity() + expected_offset)).abs() < Days::new(1e-15));
+        let expected_offset = Second::new(32.184).to::<qtty::unit::Day>();
+        assert!((tt.quantity() - (tai.quantity() + expected_offset)).abs() < Day::new(1e-15));
     }
 
     #[test]
@@ -568,8 +568,8 @@ mod tests {
         // GPS epoch is JD 2444244.5 (in UTC); in TT it is shifted by 51.184s
         let gps_zero = Time::<GPS>::new(0.0);
         let jd: Time<JD> = gps_zero.to::<JD>();
-        let expected = Days::new(2_444_244.5) + Seconds::new(51.184).to::<Day>();
-        assert!((jd.quantity() - expected).abs() < Days::new(1e-12));
+        let expected = Day::new(2_444_244.5) + Second::new(51.184).to::<qtty::unit::Day>();
+        assert!((jd.quantity() - expected).abs() < Day::new(1e-12));
     }
 
     #[test]
@@ -577,9 +577,9 @@ mod tests {
         // Unix epoch (1970-01-01) has 10 s TAI−UTC and 32.184 s TT−TAI = 42.184 s TT−UTC
         let unix_zero = Time::<UnixTime>::new(0.0);
         let jd: Time<JD> = unix_zero.to::<JD>();
-        let expected = Days::new(2_440_587.5) + Seconds::new(42.184).to::<Day>();
+        let expected = Day::new(2_440_587.5) + Second::new(42.184).to::<qtty::unit::Day>();
         assert!(
-            (jd.quantity() - expected).abs() < Days::new(1e-10),
+            (jd.quantity() - expected).abs() < Day::new(1e-10),
             "Unix epoch JD(TT) = {}, expected {}",
             jd.quantity(),
             expected
@@ -593,9 +593,9 @@ mod tests {
         // Unix days = 2458849.5 - 2440587.5 = 18262.0
         let unix_2020 = Time::<UnixTime>::new(18262.0);
         let jd: Time<JD> = unix_2020.to::<JD>();
-        let expected = Days::new(2_458_849.5) + Seconds::new(69.184).to::<Day>();
+        let expected = Day::new(2_458_849.5) + Second::new(69.184).to::<qtty::unit::Day>();
         assert!(
-            (jd.quantity() - expected).abs() < Days::new(1e-10),
+            (jd.quantity() - expected).abs() < Day::new(1e-10),
             "2020 Unix JD(TT) = {}, expected {}",
             jd.quantity(),
             expected
@@ -608,10 +608,10 @@ mod tests {
         // At J2000.0 t=0, the correction should be small but non-zero.
         let jd = Time::<JD>::new(2_451_545.0);
         let tdb: Time<TDB> = jd.to::<TDB>();
-        let offset_secs = (tdb.quantity() - jd.quantity()).to::<Second>();
+        let offset_secs = (tdb.quantity() - jd.quantity()).to::<qtty::unit::Second>();
         // Should be within ±2 ms
         assert!(
-            offset_secs.abs() < Seconds::new(0.002),
+            offset_secs.abs() < Second::new(0.002),
             "TDB−TT offset at J2000 = {} s, expected < 2 ms",
             offset_secs
         );
@@ -623,7 +623,7 @@ mod tests {
         let tdb: Time<TDB> = jd.to::<TDB>();
         let back: Time<JD> = tdb.to::<JD>();
         assert!(
-            (back.quantity() - jd.quantity()).abs() < Days::new(1e-14),
+            (back.quantity() - jd.quantity()).abs() < Day::new(1e-14),
             "TDB→TT roundtrip error: {} days",
             (back.quantity() - jd.quantity()).abs()
         );
@@ -638,10 +638,10 @@ mod tests {
         let tt = Time::<TT>::new(2_451_545.0);
         let tcg: Time<TCG> = tt.to::<TCG>();
         let offset_days = tcg.quantity() - tt.quantity();
-        let offset_secs = offset_days.to::<Second>();
+        let offset_secs = offset_days.to::<qtty::unit::Second>();
         // TCG should be ahead of TT by ~0.506 s at J2000
         assert!(
-            (offset_secs - Seconds::new(0.506)).abs() < Seconds::new(0.01),
+            (offset_secs - Second::new(0.506)).abs() < Second::new(0.01),
             "TCG−TT offset at J2000 = {} s, expected ~0.506 s",
             offset_secs
         );
@@ -653,7 +653,7 @@ mod tests {
         let tcg: Time<TCG> = tt.to::<TCG>();
         let back: Time<TT> = tcg.to::<TT>();
         assert!(
-            (back.quantity() - tt.quantity()).abs() < Days::new(1e-12),
+            (back.quantity() - tt.quantity()).abs() < Day::new(1e-12),
             "TCG→TT roundtrip error: {} days",
             (back.quantity() - tt.quantity()).abs()
         );
@@ -667,10 +667,10 @@ mod tests {
         let tt = Time::<TT>::new(2_451_545.0);
         let tcb: Time<TCB> = tt.to::<TCB>();
         let offset_days = tcb.quantity() - tt.quantity();
-        let offset_secs = offset_days.to::<Second>();
+        let offset_secs = offset_days.to::<qtty::unit::Second>();
         // TCB should be ahead of TT/TDB by ~11.25 s at J2000
         assert!(
-            (offset_secs - Seconds::new(11.25)).abs() < Seconds::new(0.5),
+            (offset_secs - Second::new(11.25)).abs() < Second::new(0.5),
             "TCB−TT offset at J2000 = {} s, expected ~11.25 s",
             offset_secs
         );
@@ -682,7 +682,7 @@ mod tests {
         let tcb: Time<TCB> = tt.to::<TCB>();
         let back: Time<TT> = tcb.to::<TT>();
         assert!(
-            (back.quantity() - tt.quantity()).abs() < Days::new(1e-10),
+            (back.quantity() - tt.quantity()).abs() < Day::new(1e-10),
             "TCB→TT roundtrip error: {} days",
             (back.quantity() - tt.quantity()).abs()
         );
@@ -693,9 +693,9 @@ mod tests {
         let ut = Time::<UT>::new(2_451_545.0);
         let jd: Time<JD> = ut.to::<JD>();
         // ΔT at J2000 ≈ 63.83 s
-        let offset_secs = (jd.quantity() - ut.quantity()).to::<Second>();
+        let offset_secs = (jd.quantity() - ut.quantity()).to::<qtty::unit::Second>();
         assert!(
-            (offset_secs - Seconds::new(63.83)).abs() < Seconds::new(1.0),
+            (offset_secs - Second::new(63.83)).abs() < Second::new(1.0),
             "UT→JD offset = {} s, expected ~63.83 s",
             offset_secs
         );
@@ -707,7 +707,7 @@ mod tests {
         let ut: Time<UT> = jd.to::<UT>();
         let back: Time<JD> = ut.to::<JD>();
         assert!(
-            (back.quantity() - jd.quantity()).abs() < Days::new(1e-12),
+            (back.quantity() - jd.quantity()).abs() < Day::new(1e-12),
             "roundtrip error: {} days",
             (back.quantity() - jd.quantity()).abs()
         );
@@ -718,7 +718,7 @@ mod tests {
         let ut = Time::<UT>::new(2_451_545.0);
         let jd: Time<JD> = ut.into();
         let back: Time<UT> = jd.into();
-        assert!((back.quantity() - ut.quantity()).abs() < Days::new(1e-12));
+        assert!((back.quantity() - ut.quantity()).abs() < Day::new(1e-12));
     }
 
     // ── New coverage tests ────────────────────────────────────────────
@@ -728,9 +728,9 @@ mod tests {
         // JDE is numerically identical to JD; test both conversion directions.
         let jde = Time::<JDE>::new(2_451_545.0);
         let jd: Time<JD> = jde.to::<JD>();
-        assert!((jd.quantity() - Days::new(2_451_545.0)).abs() < Days::new(1e-10));
+        assert!((jd.quantity() - Day::new(2_451_545.0)).abs() < Day::new(1e-10));
         let back: Time<JDE> = jd.to::<JDE>();
-        assert!((back.quantity() - jde.quantity()).abs() < Days::new(1e-10));
+        assert!((back.quantity() - jde.quantity()).abs() < Day::new(1e-10));
     }
 
     #[test]
@@ -742,7 +742,7 @@ mod tests {
         // Round-trip: TAI → TT should recover the original TT value.
         let back: Time<TT> = tai.to::<TT>();
         assert!(
-            (back.quantity() - tt.quantity()).abs() < Days::new(1e-15),
+            (back.quantity() - tt.quantity()).abs() < Day::new(1e-15),
             "TT → TAI → TT roundtrip error: {}",
             (back.quantity() - tt.quantity()).abs()
         );
@@ -754,7 +754,7 @@ mod tests {
         let gps_zero = Time::<GPS>::new(0.0);
         let jd: Time<JD> = gps_zero.to::<JD>();
         let back: Time<GPS> = jd.to::<GPS>();
-        assert!((back.quantity() - gps_zero.quantity()).abs() < Days::new(1e-12));
+        assert!((back.quantity() - gps_zero.quantity()).abs() < Day::new(1e-12));
     }
 
     #[test]
@@ -764,7 +764,7 @@ mod tests {
         let jd: Time<JD> = unix_2020.to::<JD>();
         let back: Time<UnixTime> = jd.to::<UnixTime>();
         assert!(
-            (back.quantity() - unix_2020.quantity()).abs() < Days::new(1e-10),
+            (back.quantity() - unix_2020.quantity()).abs() < Day::new(1e-10),
             "UnixTime roundtrip error: {} days",
             (back.quantity() - unix_2020.quantity()).abs()
         );
