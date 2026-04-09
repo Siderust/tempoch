@@ -37,9 +37,11 @@
 //! # ΔT (Delta T)
 //!
 //! The difference **ΔT = TT − UT** is applied automatically by the
-//! [`UT`] time scale.  Use `Time::<UT>::new(jd_ut)` for UT-based values,
-//! or construct any scale via `from_utc()` which routes through `UT` internally.
+//! [`UT`] time scale.  Use `Time::<UT>::new(jd_ut)` for UT-based values.
 //! The raw ΔT value (in seconds) is available via [`Time::<UT>::delta_t()`](Time::delta_t).
+//!
+//! Note: `from_utc()` / `to_utc()` use the compiled UTC/TAI history
+//! (`UTC → TAI → TT`) and do **not** go through the ΔT / `UT` scale.
 
 pub use tempoch_core::{
     complement_within, intersect_periods, normalize_periods, tai_minus_utc, validate_period_list,

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Automated time-data refresh tooling via `scripts/update_time_data.py` and a scheduled GitHub Actions workflow.
+
+### Changed
+
+- `tempoch-core` now compiles generated UTC-TAI history and modern Delta T tables from official upstream sources instead of relying on hand-maintained constants.
+- `tai_minus_utc()` now uses the official pre-1972 UTC frequency-offset history from 1961 onward, while preserving the legacy 10 s fallback for earlier dates.
+
 ## [0.4.1 - 2026-03-31]
 
 ### Changed

@@ -6,12 +6,11 @@
 //! This module implements a piecewise model for **ΔT = TT − UT** combining:
 //!
 //! * **Pre-1620**: Stephenson & Houlden (1986) quadratic approximations.
-//! * **1620–1992**: Biennial interpolation table (Meeus ch. 9).
-//! * **1992–2025**: Annual observed ΔT values from IERS/USNO (Bulletin A).
-//! * **Post-2025**: Linear extrapolation at the current observed rate
-//!   (~+0.1 s/yr), far more accurate than the Meeus quadratic formula
-//!   which diverges to ~120 s by 2020. The IERS-observed value for 2025
-//!   is ~69.36 s.
+//! * **1620–1973**: Biennial interpolation table (Meeus ch. 9).
+//! * **1973 onward**: generated modern data from USNO monthly determinations
+//!   plus the published long-term prediction table compiled into the crate.
+//! * **Beyond the last published prediction**: linear extrapolation using the
+//!   last two generated future points.
 //!
 //! ## Integration with Time Scales
 //!
@@ -20,9 +19,9 @@
 //! (`.to::<JD>()`, `.to::<MJD>()`, etc.), `UT::to_jd_tt` adds ΔT.
 //! The inverse (`UT::from_jd_tt`) uses a three-iteration fixed-point solver.
 //!
-//! [`Time::from_utc`](super::Time::from_utc) creates a `Time<UT>` internally
-//! and then converts to the target scale, so external callers get the ΔT
-//! correction without calling any function from this module.
+//! Note: [`Time::from_utc`](super::Time::from_utc) uses the leap-second table
+//! (`UTC → TAI → TT`), **not** the ΔT model.  The ΔT / UT scale is only used
+//! when you explicitly construct `Time<UT>` values.
 //!
 //! ## Quick Example
 //! ```rust
@@ -42,17 +41,21 @@
 //! ## Scientific References
 //! * Stephenson & Houlden (1986): *Atlas of Historical Eclipse Maps*.
 //! * Morrison & Stephenson (2004): "Historical values of the Earth's clock error".
-//! * IERS Conventions (2020): official ΔT data tables.
-//! * IERS Bulletin A (2025): observed ΔT values.
+//! * USNO/IERS monthly Delta T determinations (`deltat.data`).
+//! * USNO long-term Delta T predictions (`deltat.preds`).
 //!
 //! ## Valid Time Range
-//! The algorithm is valid from ancient times through approximately 2035, with
-//! typical uncertainties ≤ ±2 s before 1800 CE, ≤ ±0.5 s since 1900, and
-//! ≤ ±0.1 s for 2000–2025 (observed data).
+//! The historical model is valid from ancient times onward. Modern dates use
+//! the generated USNO data compiled into the crate; the effective prediction
+//! horizon is the last generated point in `deltat.preds`, after which a local
+//! linear extrapolation is used.
 
 use super::instant::Time;
 use super::scales::UT;
 use super::JulianDate;
+use crate::generated::time_data::{
+    MODERN_DELTA_T_END_MJD, MODERN_DELTA_T_POINTS, MODERN_DELTA_T_START_MJD,
+};
 use qtty::{Day, Second};
 
 /// Total number of tabulated terms (biennial 1620–1992).
@@ -82,38 +85,6 @@ const DELTA_T: [Second; TERMS] = qtty::qtty_vec!(
      33.1, 34.0, 35.0, 36.5, 38.3, 40.2, 42.2, 44.5, 46.5, 48.5,
      50.5, 52.2, 53.8, 54.9, 55.8, 56.9, 58.3,
 );
-
-// ------------------------------------------------------------------------------------
-// Annual observed ΔT table 1992–2025 (IERS/USNO Bulletin A)
-// ------------------------------------------------------------------------------------
-
-/// Annual ΔT values (seconds) from IERS/USNO observations, 1992.0–2025.0.
-/// Index 0 = year 1992, index 33 = year 2025.
-/// Source: IERS Bulletin A, USNO finals2000A data.
-const OBSERVED_TERMS: usize = 34;
-const OBSERVED_START_YEAR: f64 = 1992.0;
-
-#[rustfmt::skip]
-const OBSERVED_DT: [Second; OBSERVED_TERMS] = qtty::qtty_vec!(
-    Second;
-    // 1992  1993   1994   1995   1996   1997   1998   1999
-    58.31, 59.12, 59.98, 60.78, 61.63, 62.30, 62.97, 63.47,
-    // 2000  2001   2002   2003   2004   2005   2006   2007
-    63.83, 64.09, 64.30, 64.47, 64.57, 64.69, 64.85, 65.15,
-    // 2008  2009   2010   2011   2012   2013   2014   2015
-    65.46, 65.78, 66.07, 66.32, 66.60, 66.91, 67.28, 67.64,
-    // 2016  2017   2018   2019   2020   2021   2022   2023
-    68.10, 68.59, 68.97, 69.22, 69.36, 69.36, 69.29, 69.18,
-    // 2024  2025
-    69.09, 69.36,
-);
-
-/// The year after the last observed data point. Beyond this we extrapolate.
-const OBSERVED_END_YEAR: f64 = OBSERVED_START_YEAR + OBSERVED_TERMS as f64;
-
-/// Last observed ΔT rate (seconds/year). Computed from the last 5 years of
-/// observed data. The rate has been nearly flat 2019–2025 (~+0.02 s/yr).
-const EXTRAPOLATION_RATE: f64 = 0.02;
 
 // ------------------------------------------------------------------------------------
 // ΔT Approximation Sections by Time Interval
@@ -163,37 +134,57 @@ fn delta_t_table(jd: JulianDate) -> Second {
     DELTA_T[i + 1] + n / 2.0 * (a + b + n * c)
 }
 
-/// **Year 1992–2026**
-/// Linear interpolation from annual IERS/USNO observed ΔT values.
+/// Linearly interpolate a generated modern Delta T series in MJD.
 #[inline]
-fn delta_t_observed(jd: JulianDate) -> Second {
-    // Convert JD to fractional year
-    let year = 2000.0 + (jd - JulianDate::J2000).value() / 365.25;
-    let idx_f = year - OBSERVED_START_YEAR;
-    let idx = idx_f as usize;
-
-    if idx + 1 >= OBSERVED_TERMS {
-        // At the very end of the table, return the last value
-        return OBSERVED_DT[OBSERVED_TERMS - 1];
+fn interpolate_modern_delta_t(mjd: f64) -> Option<Second> {
+    if mjd < MODERN_DELTA_T_START_MJD || mjd > MODERN_DELTA_T_END_MJD {
+        return None;
     }
 
-    // Linear interpolation between annual values
-    let frac = idx_f - idx as f64;
-    OBSERVED_DT[idx] + frac * (OBSERVED_DT[idx + 1] - OBSERVED_DT[idx])
+    let mut lo = 0usize;
+    let mut hi = MODERN_DELTA_T_POINTS.len() - 1;
+    while lo + 1 < hi {
+        let mid = lo + (hi - lo) / 2;
+        if MODERN_DELTA_T_POINTS[mid].0 <= mjd {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+
+    let (mjd0, dt0) = MODERN_DELTA_T_POINTS[lo];
+    if (mjd - mjd0).abs() < f64::EPSILON {
+        return Some(Second::new(dt0));
+    }
+
+    let (mjd1, dt1) = MODERN_DELTA_T_POINTS[hi];
+    if (mjd - mjd1).abs() < f64::EPSILON {
+        return Some(Second::new(dt1));
+    }
+
+    Some(Second::new(
+        dt0 + (mjd - mjd0) * (dt1 - dt0) / (mjd1 - mjd0),
+    ))
 }
 
-/// **Year > 2026**
-/// Linear extrapolation from the last observed value at the current rate.
-///
-/// The observed ΔT trend 2019–2025 is nearly flat (~+0.02 s/yr), which is
-/// far more accurate than the Meeus quadratic that predicted ~121 s for 2020
-/// vs the observed ~69.36 s.
+/// **Year >= 1973**
+/// Interpolation through the compiled modern Delta T series.
+#[inline]
+fn delta_t_modern_series(jd: JulianDate) -> Second {
+    let mjd = jd.value() - 2_400_000.5;
+    interpolate_modern_delta_t(mjd).expect("modern Delta T interpolation requires in-range MJD")
+}
+
+/// **Year > generated prediction horizon**
+/// Linear extrapolation using the slope implied by the last two generated
+/// future points.
 #[inline]
 fn delta_t_extrapolated(jd: JulianDate) -> Second {
-    let year = 2000.0 + (jd - JulianDate::J2000).value() / 365.25;
-    let dt_last = OBSERVED_DT[OBSERVED_TERMS - 1];
-    let years_past = year - OBSERVED_END_YEAR;
-    dt_last + Second::new(EXTRAPOLATION_RATE * years_past)
+    let mjd = jd.value() - 2_400_000.5;
+    let (mjd0, dt0) = MODERN_DELTA_T_POINTS[MODERN_DELTA_T_POINTS.len() - 2];
+    let (mjd1, dt1) = MODERN_DELTA_T_POINTS[MODERN_DELTA_T_POINTS.len() - 1];
+    let slope = (dt1 - dt0) / (mjd1 - mjd0);
+    Second::new(dt1 + (mjd - mjd1) * slope)
 }
 
 #[inline]
@@ -201,20 +192,16 @@ fn days_ratio(num: Day, den: Day) -> f64 {
     (num / den).value()
 }
 
-/// JD boundary: start of year 1992.0
-const JD_1992: JulianDate = JulianDate::new(2_448_622.5);
-
-/// JD boundary: start of year 2026.0
-const JD_2026: JulianDate = JulianDate::new(2_461_041.5);
-
 /// Returns **ΔT** in seconds for a Julian Day on the **UT** axis.
 #[inline]
 pub(crate) fn delta_t_seconds_from_ut(jd_ut: JulianDate) -> Second {
     match jd_ut {
         jd if jd < JulianDate::new(2_067_314.5) => delta_t_ancient(jd),
         jd if jd < JulianDate::new(2_305_447.5) => delta_t_medieval(jd),
-        jd if jd < JD_1992 => delta_t_table(jd),
-        jd if jd < JD_2026 => delta_t_observed(jd),
+        jd if jd < JulianDate::new(MODERN_DELTA_T_START_MJD + 2_400_000.5) => delta_t_table(jd),
+        jd if jd <= JulianDate::new(MODERN_DELTA_T_END_MJD + 2_400_000.5) => {
+            delta_t_modern_series(jd)
+        }
         _ => delta_t_extrapolated(jd_ut),
     }
 }
@@ -235,6 +222,7 @@ impl Time<UT> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::generated::time_data::MODERN_DELTA_T_POINTS;
     use qtty::Day;
 
     #[test]
@@ -295,28 +283,27 @@ mod tests {
     }
 
     #[test]
-    fn delta_t_2025() {
-        // IERS observed value for 2025.0: ~69.36 s
-        // JD for 2025-01-01 ≈ 2460676.5
-        let dt = delta_t_seconds_from_ut(JulianDate::new(2_460_676.5));
-        assert!(
-            (dt - Second::new(69.36)).abs() < Second::new(0.5),
-            "ΔT at 2025.0 = {dt}, expected ~69.36 s"
-        );
+    fn delta_t_modern_series_matches_generated_endpoints() {
+        let first = MODERN_DELTA_T_POINTS[0];
+        let last = MODERN_DELTA_T_POINTS[MODERN_DELTA_T_POINTS.len() - 1];
+        for (mjd, expected_seconds) in [first, last] {
+            let jd = JulianDate::new(mjd + 2_400_000.5);
+            let dt = delta_t_seconds_from_ut(jd);
+            assert!((dt - Second::new(expected_seconds)).abs() < Second::new(1e-9));
+        }
     }
 
     #[test]
-    fn delta_t_extrapolated_near_future() {
-        // Beyond 2026, linear extrapolation at ~0.02 s/yr
-        // At 2030.0 (4 yr past end), ΔT ≈ 69.36 + 0.02*4 ≈ 69.44
-        let jd_2030 = JulianDate::new(2_462_502.5);
-        let dt = delta_t_seconds_from_ut(jd_2030);
+    fn delta_t_extrapolated_uses_last_generated_slope() {
+        let (mjd0, dt0) = MODERN_DELTA_T_POINTS[MODERN_DELTA_T_POINTS.len() - 2];
+        let (mjd1, dt1) = MODERN_DELTA_T_POINTS[MODERN_DELTA_T_POINTS.len() - 1];
+        let future_mjd = mjd1 + (mjd1 - mjd0);
+        let expected = dt1 + (dt1 - dt0);
+        let dt = delta_t_seconds_from_ut(JulianDate::new(future_mjd + 2_400_000.5));
         assert!(
-            (dt - Second::new(69.44)).abs() < Second::new(1.0),
-            "ΔT at 2030. = {dt}, expected ~69.44 s"
+            (dt - Second::new(expected)).abs() < Second::new(1e-9),
+            "ΔT extrapolation = {dt}, expected {expected} s"
         );
-        // Must NOT be the old ~135+ s value
-        assert!(dt < Second::new(75.0), "ΔT at 2030 is too large: {dt}");
     }
 
     #[test]

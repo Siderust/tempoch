@@ -9,7 +9,9 @@
 //! implementation.
 
 use chrono::{DateTime, Utc};
-use tempoch::{JulianDate, Time, TimeInstant, GPS, JD, JDE, MJD, TAI, TCB, TCG, TDB, TT, UT};
+use tempoch::{
+    JulianDate, Time, TimeInstant, UnixTime, GPS, JD, JDE, MJD, TAI, TCB, TCG, TDB, TT, UT,
+};
 
 /// Time scale identifier for generic dispatch functions.
 ///
@@ -100,7 +102,7 @@ pub(crate) fn jd_to_scale_value(jd: f64, scale: TempochScaleId) -> f64 {
         TempochScaleId::GPS => t.to::<GPS>().value(),
         TempochScaleId::UT => t.to::<UT>().value(),
         TempochScaleId::JDE => t.to::<JDE>().value(),
-        TempochScaleId::UnixTime => t.to_utc().map(utc_to_unix_seconds).unwrap_or(f64::NAN),
+        TempochScaleId::UnixTime => t.to::<UnixTime>().value() * 86_400.0,
     }
 }
 
@@ -117,9 +119,10 @@ pub(crate) fn scale_value_to_jd(value: f64, scale: TempochScaleId) -> f64 {
         TempochScaleId::GPS => Time::<GPS>::new(value).to::<JD>().value(),
         TempochScaleId::UT => Time::<UT>::new(value).to::<JD>().value(),
         TempochScaleId::JDE => Time::<JDE>::new(value).to::<JD>().value(),
-        TempochScaleId::UnixTime => unix_seconds_to_utc(value)
-            .map(|dt| Time::<JD>::from_utc(dt).value())
-            .unwrap_or(f64::NAN),
+        TempochScaleId::UnixTime => {
+            // value is Unix seconds; core UnixTime stores days
+            Time::<UnixTime>::new(value / 86_400.0).to::<JD>().value()
+        }
     }
 }
 

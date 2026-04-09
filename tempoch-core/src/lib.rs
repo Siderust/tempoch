@@ -37,11 +37,14 @@
 //! # ΔT (Delta T)
 //!
 //! The difference **ΔT = TT − UT** is applied automatically by the
-//! [`UT`] time scale.  Use `Time::<UT>::new(jd_ut)` for UT-based values,
-//! or construct any scale via `from_utc()` which routes through `UT` internally.
+//! [`UT`] time scale.  Use `Time::<UT>::new(jd_ut)` for UT-based values.
 //! The raw ΔT value (in seconds) is available via [`Time::<UT>::delta_t()`](Time::delta_t).
+//!
+//! Note: `from_utc()` / `to_utc()` use the leap-second table
+//! (`UTC → TAI → TT`) and do **not** go through the ΔT / `UT` scale.
 
 mod delta_t;
+pub(crate) mod generated;
 pub(crate) mod instant;
 mod julian_date_ext;
 mod period;

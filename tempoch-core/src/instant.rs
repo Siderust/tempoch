@@ -200,15 +200,19 @@ impl<S: TimeScale> Time<S> {
 
     /// Convert to a `chrono::DateTime<Utc>`.
     ///
-    /// Inverts the ΔT correction to recover the UTC / UT timestamp.
+    /// Uses the leap-second table to invert the `UTC → TAI → TT` chain:
+    /// `JD(UTC) = JD(TT) − (TAI−UTC + 32.184 s) / 86 400`.
     /// Returns `None` if the value falls outside chrono's representable range.
     pub fn to_utc(&self) -> Option<DateTime<Utc>> {
-        use super::scales::UT;
+        use super::scales::tai_minus_utc;
         const UNIX_EPOCH_JD: f64 = 2_440_587.5;
-        let jd_ut = self.to::<UT>().quantity();
-        let seconds_since_epoch = (jd_ut - Day::new(UNIX_EPOCH_JD))
-            .to::<qtty::unit::Second>()
-            .value();
+        const TT_MINUS_TAI_SECS: f64 = 32.184;
+        let jd_tt = S::to_jd_tt(self.quantity).value();
+        // First approximation of JD(UTC) for leap-second lookup
+        let approx_utc = jd_tt - (37.0 + TT_MINUS_TAI_SECS) / 86_400.0;
+        let ls = tai_minus_utc(approx_utc);
+        let jd_utc = jd_tt - (ls + TT_MINUS_TAI_SECS) / 86_400.0;
+        let seconds_since_epoch = (jd_utc - UNIX_EPOCH_JD) * 86_400.0;
         let secs = seconds_since_epoch.floor() as i64;
         let nanos = ((seconds_since_epoch - secs as f64) * 1e9) as u32;
         DateTime::<Utc>::from_timestamp(secs, nanos)
@@ -216,16 +220,19 @@ impl<S: TimeScale> Time<S> {
 
     /// Build an instant from a `chrono::DateTime<Utc>`.
     ///
-    /// The UTC timestamp is interpreted as Universal Time (≈ UT1) and the
-    /// epoch-dependent **ΔT** correction is applied automatically, so the
-    /// resulting `Time<S>` is on the target scale's axis.
+    /// The UTC timestamp is converted to TT via the `UTC → TAI → TT` chain
+    /// using the crate's leap-second table:
+    /// `JD(TT) = JD(UTC) + (TAI−UTC + 32.184 s) / 86 400`.
     pub fn from_utc(datetime: DateTime<Utc>) -> Self {
-        use super::scales::UT;
+        use super::scales::tai_minus_utc;
         const UNIX_EPOCH_JD: f64 = 2_440_587.5;
-        let seconds_since_epoch = Second::new(datetime.timestamp() as f64);
-        let nanos = Second::new(datetime.timestamp_subsec_nanos() as f64 / 1e9);
-        let jd_ut = Day::new(UNIX_EPOCH_JD) + (seconds_since_epoch + nanos).to::<qtty::unit::Day>();
-        Time::<UT>::from_days(jd_ut).to::<S>()
+        const TT_MINUS_TAI_SECS: f64 = 32.184;
+        let unix_secs =
+            datetime.timestamp() as f64 + datetime.timestamp_subsec_nanos() as f64 / 1e9;
+        let jd_utc = UNIX_EPOCH_JD + unix_secs / 86_400.0;
+        let ls = tai_minus_utc(jd_utc);
+        let jd_tt = jd_utc + (ls + TT_MINUS_TAI_SECS) / 86_400.0;
+        Self::from_julian_day(Day::new(jd_tt))
     }
 
     // ── min / max ─────────────────────────────────────────────────────
@@ -467,7 +474,8 @@ mod tests {
 
     #[test]
     fn test_jd_utc_roundtrip() {
-        // from_utc applies ΔT (UT→TT); to_utc inverts it (TT→UT).
+        // from_utc applies UTC→TAI→TT (leap seconds + 32.184 s);
+        // to_utc inverts it.
         let datetime = DateTime::from_timestamp(946_728_000, 0).unwrap();
         let jd = Time::<JD>::from_utc(datetime);
         let back = jd.to_utc().expect("to_utc");
@@ -477,15 +485,16 @@ mod tests {
     }
 
     #[test]
-    fn test_from_utc_applies_delta_t() {
-        // 2000-01-01 12:00:00 UTC → JD(UT)=2451545.0; ΔT≈63.83 s
+    fn test_from_utc_applies_leap_seconds() {
+        // 2000-01-01 12:00:00 UTC → JD(UTC) = 2451545.0
+        // TAI−UTC = 32 s at J2000, TT = TAI + 32.184 s → TT−UTC = 64.184 s
         let datetime = DateTime::from_timestamp(946_728_000, 0).unwrap();
         let jd = Time::<JD>::from_utc(datetime);
-        let delta_t_secs = (jd.quantity() - Day::new(2_451_545.0)).to::<qtty::unit::Second>();
+        let offset_secs = (jd.quantity() - Day::new(2_451_545.0)).to::<qtty::unit::Second>();
         assert!(
-            (delta_t_secs - Second::new(63.83)).abs() < Second::new(1.0),
-            "ΔT correction = {} s, expected ~63.83 s",
-            delta_t_secs
+            (offset_secs - Second::new(64.184)).abs() < Second::new(0.001),
+            "TT−UTC offset = {} s, expected 64.184 s",
+            offset_secs
         );
     }
 

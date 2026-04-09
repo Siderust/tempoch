@@ -28,6 +28,9 @@
 //! | [`TCB`] | Barycentric Coordinate Time (IAU 2006) |
 
 use super::instant::TimeScale;
+use crate::generated::time_data::{
+    PRE_1961_TAI_MINUS_UTC_APPROX, UTC_TAI_HISTORY_START_MJD, UTC_TAI_SEGMENTS,
+};
 use qtty::Day;
 
 // ---------------------------------------------------------------------------
@@ -292,24 +295,30 @@ pub struct TCB;
 /// `TDB = TCB − L_B × (JD_TCB − T₀) + TDB₀`.
 const L_B: f64 = 1.550_519_768e-8;
 
+/// TDB₀ — IAU 2006 Resolution B3 epoch offset, in days.
+///
+/// `TDB₀ = −6.55 × 10⁻⁵ s = −6.55e-5 / 86 400 d`.
+const TDB0_DAYS: f64 = -6.55e-5 / 86_400.0;
+
 impl TimeScale for TCB {
     const LABEL: &'static str = "TCB";
 
     #[inline]
     fn to_jd_tt(tcb_value: Day) -> Day {
-        // TDB = TCB − L_B × (JD_TCB − T₀)
+        // TDB = TCB − L_B × (JD_TCB − T₀) + TDB₀
         // Treating TDB ≈ TT (periodic ≈1.7 ms difference handled separately).
         // Matches SOFA iauTcbtdb.
         let jd_tcb = tcb_value.value();
-        Day::new(jd_tcb - L_B * (jd_tcb - TCG_EPOCH_T0))
+        Day::new(jd_tcb - L_B * (jd_tcb - TCG_EPOCH_T0) + TDB0_DAYS)
     }
 
     #[inline]
     fn from_jd_tt(jd_tt: Day) -> Day {
-        // JD_TCB = JD_TDB + L_B × (JD_TDB − T₀)
+        // JD_TCB = (JD_TDB − TDB₀ − L_B × T₀) / (1 − L_B)
+        //        = (JD_TDB − L_B × T₀ − TDB₀) / (1 − L_B)
         // Matches SOFA iauTdbtcb.
         let tt = jd_tt.value();
-        Day::new(tt + L_B * (tt - TCG_EPOCH_T0))
+        Day::new((tt - L_B * TCG_EPOCH_T0 - TDB0_DAYS) / (1.0 - L_B))
     }
 }
 
@@ -344,11 +353,13 @@ impl TimeScale for GPS {
 
 /// Unix Time — seconds since 1970-01-01T00:00:00 UTC, stored as **days**.
 ///
-/// This scale applies the cumulative leap-second offset from IERS Bulletin C
-/// to convert between UTC-epoch Unix timestamps and the uniform TT axis.
-/// The leap-second table covers 1972–2017 (28 insertions). Prior to 1972
-/// (before the leap-second system) the offset is fixed at 10 s (the initial
-/// TAI − UTC value adopted on 1972-01-01).
+/// This scale applies the compiled UTC-to-TAI history to convert between
+/// UTC-epoch Unix timestamps and the uniform TT axis.
+///
+/// The generated table covers the official UTC-TAI history from 1961 onward,
+/// including the pre-1972 frequency-offset era and all later integral leap
+/// seconds published in the IERS/BIPM history file. Dates before 1961 fall
+/// back to a fixed 10 s approximation.
 ///
 /// ## References
 /// * IERS Bulletin C (leap second announcements)
@@ -359,74 +370,37 @@ pub struct UnixTime;
 /// JD of the Unix epoch (1970-01-01T00:00:00Z).
 const UNIX_EPOCH_JD: Day = Day::new(2_440_587.5);
 
-/// Leap-second table: (JD of leap-second insertion, cumulative TAI−UTC after).
-/// Source: IERS Bulletin C. Entries are the JD of 00:00:00 UTC on the day
-/// the leap second takes effect (i.e. the second is inserted at the end
-/// of the previous day).
-///
-/// TAI = UTC + leap_seconds (for times at or after each entry).
-/// TT = TAI + 32.184 s.
-const LEAP_SECONDS: [(f64, f64); 28] = [
-    (2_441_317.5, 10.0), // 1972-01-01
-    (2_441_499.5, 11.0), // 1972-07-01
-    (2_441_683.5, 12.0), // 1973-01-01
-    (2_442_048.5, 13.0), // 1974-01-01
-    (2_442_413.5, 14.0), // 1975-01-01
-    (2_442_778.5, 15.0), // 1976-01-01
-    (2_443_144.5, 16.0), // 1977-01-01
-    (2_443_509.5, 17.0), // 1978-01-01
-    (2_443_874.5, 18.0), // 1979-01-01
-    (2_444_239.5, 19.0), // 1980-01-01
-    (2_444_786.5, 20.0), // 1981-07-01
-    (2_445_151.5, 21.0), // 1982-07-01
-    (2_445_516.5, 22.0), // 1983-07-01
-    (2_446_247.5, 23.0), // 1985-07-01
-    (2_447_161.5, 24.0), // 1988-01-01
-    (2_447_892.5, 25.0), // 1990-01-01
-    (2_448_257.5, 26.0), // 1991-01-01
-    (2_448_804.5, 27.0), // 1992-07-01
-    (2_449_169.5, 28.0), // 1993-07-01
-    (2_449_534.5, 29.0), // 1994-07-01
-    (2_450_083.5, 30.0), // 1996-01-01
-    (2_450_630.5, 31.0), // 1997-07-01
-    (2_451_179.5, 32.0), // 1999-01-01
-    (2_453_736.5, 33.0), // 2006-01-01
-    (2_454_832.5, 34.0), // 2009-01-01
-    (2_456_109.5, 35.0), // 2012-07-01
-    (2_457_204.5, 36.0), // 2015-07-01
-    (2_457_754.5, 37.0), // 2017-01-01
-];
-
 /// Look up cumulative TAI−UTC (leap seconds) for a JD on the UTC axis.
 ///
 /// Returns the number of leap seconds (TAI − UTC) in effect at the given
-/// Julian Date on the UTC time axis.  The table covers 1972–2017
-/// (28 insertions).  Before 1972 the conventional initial offset of 10 s
-/// is returned.
+/// Julian Date on the UTC time axis. The compiled history covers the official
+/// UTC-TAI relations from 1961 onward. Dates before that fall back to a fixed
+/// 10 s approximation for backward compatibility.
 ///
 /// # Arguments
 ///
 /// * `jd_utc` - Julian Date number on the UTC axis.
 #[inline]
 pub fn tai_minus_utc(jd_utc: f64) -> f64 {
-    // Binary search for the last entry <= jd_utc
+    let mjd_utc = jd_utc - 2_400_000.5;
+    if mjd_utc < UTC_TAI_HISTORY_START_MJD as f64 {
+        return PRE_1961_TAI_MINUS_UTC_APPROX;
+    }
+
+    // Binary search for the last segment start <= mjd_utc.
     let mut lo = 0usize;
-    let mut hi = LEAP_SECONDS.len();
+    let mut hi = UTC_TAI_SEGMENTS.len();
     while lo < hi {
         let mid = lo + (hi - lo) / 2;
-        if LEAP_SECONDS[mid].0 <= jd_utc {
+        if UTC_TAI_SEGMENTS[mid].start_mjd as f64 <= mjd_utc {
             lo = mid + 1;
         } else {
             hi = mid;
         }
     }
-    if lo == 0 {
-        // Before 1972-01-01: use the initial offset of 10 s
-        // (this is an approximation; pre-1972 UTC had fractional offsets)
-        10.0
-    } else {
-        LEAP_SECONDS[lo - 1].1
-    }
+
+    let segment = UTC_TAI_SEGMENTS[lo - 1];
+    segment.base_seconds + (mjd_utc - segment.reference_mjd) * segment.slope_seconds_per_day
 }
 
 /// TT = TAI + 32.184 s, and TAI = UTC + leap_seconds.
@@ -468,8 +442,10 @@ impl TimeScale for UnixTime {
 /// ch. 9, and the inverse uses a three-iteration fixed-point solver
 /// with sub-microsecond accuracy.
 ///
-/// [`Time::from_utc`](super::instant::Time::from_utc) routes through this
-/// scale automatically, so callers rarely need to construct `Time<UT>` directly.
+/// Note: [`Time::from_utc`](super::instant::Time::from_utc) uses the
+/// leap-second table (`UTC → TAI → TT`) and does **not** route through
+/// this scale.  Construct `Time<UT>` explicitly only when working with
+/// UT1-based values.
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub struct UT;
 
@@ -574,10 +550,15 @@ mod tests {
 
     #[test]
     fn unix_epoch_roundtrip() {
-        // Unix epoch (1970-01-01) has 10 s TAI−UTC and 32.184 s TT−TAI = 42.184 s TT−UTC
+        // Unix epoch (1970-01-01) falls in the pre-1972 UTC frequency-offset era.
+        // The official UTC-TAI history gives:
+        // TAI-UTC = 4.2131700 + (40587 - 39126) * 0.002592 = 8.000082 s.
+        // Therefore TT-UTC = (TAI-UTC) + 32.184 = 40.184082 s.
         let unix_zero = Time::<UnixTime>::new(0.0);
         let jd: Time<JD> = unix_zero.to::<JD>();
-        let expected = Day::new(2_440_587.5) + Second::new(42.184).to::<qtty::unit::Day>();
+        let tai_minus_utc = 4.213_170_0 + (40_587.0 - 39_126.0) * 0.002_592;
+        let expected =
+            Day::new(2_440_587.5) + Second::new(tai_minus_utc + 32.184).to::<qtty::unit::Day>();
         assert!(
             (jd.quantity() - expected).abs() < Day::new(1e-10),
             "Unix epoch JD(TT) = {}, expected {}",
@@ -771,9 +752,17 @@ mod tests {
     }
 
     #[test]
-    fn tai_minus_utc_pre_1972_returns_10() {
-        // Before 1972-01-01 (JD 2 441 317.5) the leap-second table has no
-        // applicable entry, so the conventional initial 10 s offset is returned.
+    fn tai_minus_utc_1969_uses_frequency_adjusted_history() {
+        // 1969-01-01 00:00:00 UTC corresponds to MJD 40222.
+        // The official UTC-TAI history gives:
+        // TAI-UTC = 4.2131700 + (MJD - 39126) * 0.002592.
+        let jd_utc = 2_440_222.5;
+        let expected = 4.213_170_0 + (40_222.0 - 39_126.0) * 0.002_592;
+        assert!((tai_minus_utc(jd_utc) - expected).abs() < 1e-9);
+    }
+
+    #[test]
+    fn tai_minus_utc_pre_1961_uses_legacy_approximation() {
         assert_eq!(tai_minus_utc(2_400_000.0), 10.0);
     }
 }

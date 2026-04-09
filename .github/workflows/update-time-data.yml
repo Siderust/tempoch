@@ -1,0 +1,49 @@
+name: Update Time Data
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 5 * * 1"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-time-data
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    name: Refresh generated time data
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Regenerate compiled time data
+        run: python3 scripts/update_time_data.py
+
+      - name: Validate generated data
+        run: cargo test --all-features
+
+      - name: Open pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: automation/update-time-data
+          commit-message: "chore: refresh generated time data"
+          title: "chore: refresh generated time data"
+          body: |
+            Automated refresh of the compiled UTC-TAI and Delta T tables.
+
+            This workflow runs `scripts/update_time_data.py`, validates the crate
+            with `cargo test --all-features`, and opens a PR only when the
+            generated Rust tables change.
+          labels: chore, automation
+          delete-branch: true

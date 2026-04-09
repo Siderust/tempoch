@@ -1,0 +1,327 @@
+#!/usr/bin/env python3
+"""Refresh generated time-data tables from official sources."""
+
+from __future__ import annotations
+
+import argparse
+from dataclasses import dataclass
+from datetime import date
+from pathlib import Path
+import re
+import sys
+import urllib.request
+
+
+ROOT = Path(__file__).resolve().parents[1]
+OUTPUT = ROOT / "tempoch-core" / "src" / "generated" / "time_data.rs"
+
+UTC_TAI_HISTORY_URL = "https://hpiers.obspm.fr/eoppc/bul/bulc/UTC-TAI.history"
+DELTA_T_OBSERVED_URL = "https://maia.usno.navy.mil/ser7/deltat.data"
+DELTA_T_PREDICTIONS_URL = "https://maia.usno.navy.mil/ser7/deltat.preds"
+
+PRE_1961_TAI_MINUS_UTC_APPROX = 10.0
+
+MJD_EPOCH = date(1858, 11, 17)
+
+MONTHS = {
+    "jan": 1,
+    "january": 1,
+    "feb": 2,
+    "february": 2,
+    "mar": 3,
+    "march": 3,
+    "apr": 4,
+    "april": 4,
+    "may": 5,
+    "jun": 6,
+    "june": 6,
+    "jul": 7,
+    "july": 7,
+    "aug": 8,
+    "august": 8,
+    "sep": 9,
+    "sept": 9,
+    "september": 9,
+    "oct": 10,
+    "october": 10,
+    "nov": 11,
+    "november": 11,
+    "dec": 12,
+    "december": 12,
+}
+
+
+@dataclass(frozen=True)
+class UtcTaiSegment:
+    start_mjd: int
+    end_mjd: int | None
+    base_seconds: float
+    reference_mjd: float
+    slope_seconds_per_day: float
+
+
+def fetch_text(url: str) -> str:
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": "tempoch-time-data-updater/1.0"},
+    )
+    with urllib.request.urlopen(request, timeout=60) as response:
+        return response.read().decode("utf-8")
+
+
+def mjd_from_date(value: date) -> int:
+    return (value - MJD_EPOCH).days
+
+
+def normalize_whitespace(value: str) -> str:
+    return " ".join(value.replace("\t", " ").split())
+
+
+def parse_month(token: str) -> int:
+    key = re.sub(r"[^a-z]", "", token.lower())
+    if key not in MONTHS:
+        raise ValueError(f"unknown month token: {token!r}")
+    return MONTHS[key]
+
+
+def parse_date_fragment(fragment: str, default_year: int | None) -> date:
+    normalized = normalize_whitespace(fragment).rstrip(".")
+    match = re.fullmatch(r"(?:(\d{4})\s+)?([A-Za-z.]+)\s+(\d+)", normalized)
+    if not match:
+        raise ValueError(f"unable to parse date fragment: {fragment!r}")
+
+    year_text, month_text, day_text = match.groups()
+    year = int(year_text) if year_text is not None else default_year
+    if year is None:
+        raise ValueError(f"missing year for fragment: {fragment!r}")
+    month = parse_month(month_text)
+    day = int(day_text)
+    return date(year, month, day)
+
+
+def compact_number(value: str) -> float:
+    return float(value.replace(" ", ""))
+
+
+def parse_utc_tai_segments(text: str) -> list[UtcTaiSegment]:
+    segments: list[UtcTaiSegment] = []
+    previous_end: date | None = None
+    previous_reference_mjd: float | None = None
+    previous_slope: float | None = None
+
+    for raw_line in text.splitlines():
+        line = raw_line.rstrip()
+        if "-" not in line or "UTC-TAI.history" in line or "Limits of validity" in line:
+            continue
+        if not re.search(r"\d", line):
+            continue
+
+        left, right = line.split("-", 1)
+        if not re.search(r"[A-Za-z]", left):
+            continue
+
+        default_start_year = previous_end.year if previous_end is not None else None
+        start_date = parse_date_fragment(left, default_start_year)
+
+        right_normalized = normalize_whitespace(right)
+        end_match = re.match(r"^(?:(\d{4})\s+)?([A-Za-z.]+)\s+(\d+)\s+(.*)$", right_normalized)
+        if end_match:
+            end_year_text, end_month_text, end_day_text, formula = end_match.groups()
+            end_year = int(end_year_text) if end_year_text is not None else start_date.year
+            end_date: date | None = date(end_year, parse_month(end_month_text), int(end_day_text))
+        else:
+            end_date = None
+            formula = right_normalized
+
+        base_match = re.search(r"([0-9][0-9.\s]*)s", formula)
+        if base_match is None:
+            raise ValueError(f"unable to parse TAI-UTC base from {formula!r}")
+        base_seconds = compact_number(base_match.group(1))
+
+        slope_match = re.search(r"\(MJD\s*-\s*([0-9\s]+)\)\s*x\s*([0-9.\s]+)s", formula)
+        if slope_match is not None:
+            reference_mjd = compact_number(slope_match.group(1))
+            slope_seconds_per_day = compact_number(slope_match.group(2))
+        elif '""' in formula:
+            if previous_reference_mjd is None or previous_slope is None:
+                raise ValueError(f"repeated UTC formula without previous state: {formula!r}")
+            reference_mjd = previous_reference_mjd
+            slope_seconds_per_day = previous_slope
+        else:
+            reference_mjd = float(mjd_from_date(start_date))
+            slope_seconds_per_day = 0.0
+
+        segments.append(
+            UtcTaiSegment(
+                start_mjd=mjd_from_date(start_date),
+                end_mjd=mjd_from_date(end_date) if end_date is not None else None,
+                base_seconds=base_seconds,
+                reference_mjd=reference_mjd,
+                slope_seconds_per_day=slope_seconds_per_day,
+            )
+        )
+
+        previous_end = end_date
+        previous_reference_mjd = reference_mjd
+        previous_slope = slope_seconds_per_day
+
+    if not segments:
+        raise ValueError("UTC-TAI history parsing produced no segments")
+
+    return segments
+
+
+def parse_delta_t_observed(text: str) -> list[tuple[float, float]]:
+    points: list[tuple[float, float]] = []
+    for raw_line in text.splitlines():
+        parts = raw_line.split()
+        if len(parts) != 4 or not parts[0].isdigit():
+            continue
+        year, month, day = (int(parts[0]), int(parts[1]), int(parts[2]))
+        delta_t_seconds = float(parts[3])
+        points.append((float(mjd_from_date(date(year, month, day))), delta_t_seconds))
+
+    if not points:
+        raise ValueError("observed Delta T parsing produced no points")
+
+    return points
+
+
+def parse_delta_t_predictions(text: str) -> list[tuple[float, float]]:
+    points: list[tuple[float, float]] = []
+    for raw_line in text.splitlines():
+        parts = raw_line.split()
+        if not parts or parts[0] == "MJD":
+            continue
+        if len(parts) < 3:
+            continue
+        points.append((float(parts[0]), float(parts[2])))
+
+    if not points:
+        raise ValueError("predicted Delta T parsing produced no points")
+
+    return points
+
+
+def build_modern_delta_t_points(
+    observed_points: list[tuple[float, float]],
+    predicted_points: list[tuple[float, float]],
+) -> list[tuple[float, float]]:
+    last_observed_mjd = observed_points[-1][0]
+    future_predictions = [point for point in predicted_points if point[0] > last_observed_mjd]
+    combined = observed_points + future_predictions
+    if len(combined) < 2:
+        raise ValueError("modern Delta T series must contain at least two points")
+    return combined
+
+
+def render_segments(segments: list[UtcTaiSegment]) -> str:
+    rendered = []
+    for segment in segments:
+        end_value = "None" if segment.end_mjd is None else f"Some({segment.end_mjd})"
+        rendered.append(
+            "    UtcTaiSegment {\n"
+            f"        start_mjd: {segment.start_mjd},\n"
+            f"        end_mjd: {end_value},\n"
+            f"        base_seconds: {segment.base_seconds:.7f},\n"
+            f"        reference_mjd: {segment.reference_mjd:.1f},\n"
+            f"        slope_seconds_per_day: {segment.slope_seconds_per_day:.7f},\n"
+            "    },"
+        )
+    return "\n".join(rendered)
+
+
+def render_points(points: list[tuple[float, float]]) -> str:
+    return "\n".join(f"    ({mjd:.3f}, {delta_t:.4f})," for mjd, delta_t in points)
+
+
+def render_generated_module(
+    utc_tai_segments: list[UtcTaiSegment],
+    modern_delta_t_points: list[tuple[float, float]],
+) -> str:
+    utc_history_start = utc_tai_segments[0].start_mjd
+    modern_delta_t_start = modern_delta_t_points[0][0]
+    modern_delta_t_end = modern_delta_t_points[-1][0]
+
+    return f"""// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Valles Puig, Ramon
+//
+// @generated by scripts/update_time_data.py
+// Do not edit this file manually.
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct UtcTaiSegment {{
+    pub start_mjd: i32,
+    pub end_mjd: Option<i32>,
+    pub base_seconds: f64,
+    pub reference_mjd: f64,
+    pub slope_seconds_per_day: f64,
+}}
+
+pub(crate) const PRE_1961_TAI_MINUS_UTC_APPROX: f64 = {PRE_1961_TAI_MINUS_UTC_APPROX:.1f};
+pub(crate) const UTC_TAI_HISTORY_URL: &str = "{UTC_TAI_HISTORY_URL}";
+pub(crate) const DELTA_T_OBSERVED_URL: &str = "{DELTA_T_OBSERVED_URL}";
+pub(crate) const DELTA_T_PREDICTIONS_URL: &str = "{DELTA_T_PREDICTIONS_URL}";
+pub(crate) const UTC_TAI_HISTORY_START_MJD: i32 = {utc_history_start};
+pub(crate) const MODERN_DELTA_T_START_MJD: f64 = {modern_delta_t_start:.3f};
+pub(crate) const MODERN_DELTA_T_END_MJD: f64 = {modern_delta_t_end:.3f};
+
+#[rustfmt::skip]
+pub(crate) const UTC_TAI_SEGMENTS: [UtcTaiSegment; {len(utc_tai_segments)}] = [
+{render_segments(utc_tai_segments)}
+];
+
+#[rustfmt::skip]
+pub(crate) const MODERN_DELTA_T_POINTS: [(f64, f64); {len(modern_delta_t_points)}] = [
+{render_points(modern_delta_t_points)}
+];
+"""
+
+
+def write_output(contents: str) -> bool:
+    existing = OUTPUT.read_text(encoding="utf-8") if OUTPUT.exists() else None
+    if existing == contents:
+        return False
+    OUTPUT.write_text(contents, encoding="utf-8")
+    return True
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="exit non-zero if the generated file is stale",
+    )
+    args = parser.parse_args(argv)
+
+    utc_tai_history = fetch_text(UTC_TAI_HISTORY_URL)
+    delta_t_observed = fetch_text(DELTA_T_OBSERVED_URL)
+    delta_t_predictions = fetch_text(DELTA_T_PREDICTIONS_URL)
+
+    utc_tai_segments = parse_utc_tai_segments(utc_tai_history)
+    modern_delta_t_points = build_modern_delta_t_points(
+        parse_delta_t_observed(delta_t_observed),
+        parse_delta_t_predictions(delta_t_predictions),
+    )
+    rendered = render_generated_module(utc_tai_segments, modern_delta_t_points)
+
+    if args.check:
+        current = OUTPUT.read_text(encoding="utf-8") if OUTPUT.exists() else ""
+        if current != rendered:
+            print(f"{OUTPUT} is out of date", file=sys.stderr)
+            return 1
+        print(f"{OUTPUT} is up to date")
+        return 0
+
+    changed = write_output(rendered)
+    status = "updated" if changed else "already current"
+    print(
+        f"{OUTPUT} {status} "
+        f"(UTC-TAI segments={len(utc_tai_segments)}, modern Delta T points={len(modern_delta_t_points)})"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

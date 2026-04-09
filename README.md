@@ -11,6 +11,7 @@ Typed astronomical time primitives for Rust.
 - Generic `Time<S>` instants parameterized by time-scale markers (`JD`, `MJD`, `TT`, `UT`, `TAI`, `GPS`, `UnixTime`, ...).
 - Built-in UTC conversion through `chrono`.
 - Automatic `ΔT = TT - UT` handling for the `UT` scale.
+- Compiled time-data tables generated from official UTC-TAI and Delta T sources.
 - Generic intervals with `Interval<T>` and scale-aware alias `Period<S>`.
 - Utility operations like period intersection and complement.
 
@@ -65,6 +66,19 @@ assert_eq!(gaps.len(), 3);
 
 - `cargo run --example quickstart`
 - `cargo run --example periods`
+
+## Time Data Updates
+
+The crate compiles generated time-data tables into `tempoch-core`, rather than
+fetching them at runtime. To refresh the checked-in data locally:
+
+```bash
+python3 scripts/update_time_data.py
+cargo test --all-features
+```
+
+A scheduled GitHub Actions workflow also runs this refresh automatically and
+opens a pull request when the generated tables change.
 
 ## Tests and Coverage
 
