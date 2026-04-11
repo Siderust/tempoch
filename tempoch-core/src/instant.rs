@@ -338,9 +338,27 @@ impl<S: TimeScale> Time<S> {
 
     /// Convert to a `chrono::DateTime<Utc>`.
     ///
-    /// This exact conversion is available only where the compiled UTC-TAI
-    /// history is defined, starting at 1961-01-01 UTC. Leap-second labels are
-    /// preserved using chrono's native leap-second representation.
+    /// The precision of this conversion depends on the time scale `S`:
+    ///
+    /// * **TAI-adjacent scales** (`TT`, `TAI`, `JD`, `MJD`, `JDE`, `GPS`,
+    ///   `UnixTime`): the conversion is an exact table inversion of the
+    ///   compiled UTC-TAI history starting at 1961-01-01.  Precision is
+    ///   limited only by the `f64` storage floor (≈40 μs at J2000; one ULP
+    ///   at JD 2 451 545.0 ≈ 4.66 × 10⁻¹⁰ d).  Leap-second labels are
+    ///   preserved using chrono's native leap-second representation.
+    ///
+    /// * **`UT` (UT1)**: the conversion first applies the piecewise ΔT model
+    ///   to reach TT, then does the exact UTC-TAI table inversion.  Accuracy
+    ///   is limited by the ΔT model, not the table lookup.  Beyond the
+    ///   compiled prediction horizon (MJD 63871, 2033-10-01) the ΔT
+    ///   correction is a quadratic extrapolation; uncertainty grows without
+    ///   bound past that date.
+    ///
+    /// * **`TDB`, `TCB`, `TCG`**: the conversion first applies a periodic
+    ///   (Fairhead & Bretagnon 1990) or linear IAU model to reach TT, then
+    ///   does the exact UTC-TAI table inversion.  Accuracy is limited by the
+    ///   model formula (TDB/TCB: <30 μs; TCG: negligible beyond f64 floor)
+    ///   and the f64 storage floor (≈40 μs at J2000).
     ///
     /// Returns `None` if the instant falls outside the supported UTC history
     /// or outside chrono's representable range.
@@ -349,6 +367,8 @@ impl<S: TimeScale> Time<S> {
     }
 
     /// Convert to UTC, preserving leap-second labels when present.
+    ///
+    /// See [`to_utc`](Self::to_utc) for precision notes per scale.
     pub fn try_to_utc(&self) -> Result<DateTime<Utc>, UtcConversionError> {
         utc_from_tt_exact(S::to_jd_tt(self.quantity).value())
     }

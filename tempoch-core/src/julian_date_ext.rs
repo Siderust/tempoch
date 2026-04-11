@@ -44,11 +44,15 @@ impl Time<JD> {
     /// expression for `TDB − TT`.
     ///
     /// The dominant term has an amplitude of ≈1.658 ms. This implementation
-    /// includes the four largest periodic terms plus a secular component,
-    /// matching the formula recommended by USNO Circular 179 (Kaplan 2005)
-    /// and consistent with IAU 2006 Resolution B3.
+    /// includes the four largest periodic terms (all harmonic sine terms;
+    /// no secular polynomial component), matching the formula recommended by
+    /// USNO Circular 179 (Kaplan 2005) and consistent with IAU 2006
+    /// Resolution B3.
     ///
-    /// Accuracy: better than 30 μs for dates within ±10 000 years of J2000.
+    /// **Accuracy note:** The formula is accurate to better than 30 μs for
+    /// dates within ±10 000 years of J2000. However, the `f64` storage floor
+    /// at J2000 is ≈40 μs (one ULP ≈ 4.66 × 10⁻¹⁰ d), so the effective
+    /// combined precision is **≈40 μs**, not better.
     ///
     /// ## References
     /// * Fairhead & Bretagnon (1990), A&A 229, 240

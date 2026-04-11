@@ -59,6 +59,6 @@ pub use tempoch_core::{
     complement_within, intersect_periods, normalize_periods, tai_minus_utc, validate_period_list,
     ConversionError, Interval, InvalidIntervalError, JulianDate, JulianEphemerisDay,
     ModifiedJulianDate, NonFiniteTimeError, Period, PeriodListError, Time, TimeInstant, TimeScale,
-    UniversalTime, UnixTime, UtcConversionError, UtcPeriod, GPS, JD, JDE, MJD, TAI, TCB, TCG, TDB,
-    TT, UT,
+    UniversalTime, UnixTime, UtcConversionError, UtcPeriod, DELTA_T_PREDICTION_HORIZON_MJD, GPS,
+    JD, JDE, MJD, TAI, TCB, TCG, TDB, TT, UT,
 };

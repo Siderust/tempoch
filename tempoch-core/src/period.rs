@@ -356,6 +356,24 @@ impl<T: TimeInstant<Duration = Day>> Interval<T> {
     /// This method is available for time instants with `Day` as their duration type
     /// (e.g., `JulianDate` and `ModifiedJulianDate`).
     ///
+    /// **Scale semantics of the returned `Day` value:**
+    ///
+    /// * For **TAI-adjacent scales** (`TT`, `TAI`, `JD`, `MJD`, `JDE`, `GPS`):
+    ///   the returned `Day` represents a uniform coordinate-time interval
+    ///   (SI-like).
+    ///
+    /// * For **`UT` (UT1)**: the returned `Day` is an Earth-rotation-time
+    ///   interval, not an SI-second interval.  Equal `Day` values in `UT` do
+    ///   not correspond to equal elapsed SI seconds.
+    ///
+    /// * For **`UnixTime`**: a "day" spanning a positive leap-second
+    ///   insertion is 86 401 SI seconds long, but this method still returns
+    ///   `Day::new(1.0)`.  The `Day` value does not capture the extra second.
+    ///
+    /// * For **`TDB`, `TCB`, `TCG`**: the returned `Day` is a barycentric or
+    ///   geocentric coordinate-time interval, which differs from TT by at
+    ///   most a few milliseconds per day.
+    ///
     /// # Examples
     ///
     /// ```

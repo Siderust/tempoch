@@ -107,9 +107,13 @@ impl TimeScale for MJD {
 ///
 /// TDB differs from TT by a periodic correction of ≈1.7 ms amplitude
 /// (Fairhead & Bretagnon 1990).  This implementation applies the four
-/// largest periodic terms automatically in `to_jd_tt` / `from_jd_tt`,
-/// achieving accuracy better than 30 μs for dates within ±10 000 years
-/// of J2000.
+/// largest periodic terms automatically in `to_jd_tt` / `from_jd_tt`.
+///
+/// **Accuracy note:** The Fairhead & Bretagnon formula is accurate to better
+/// than 30 μs for dates within ±10 000 years of J2000. However, the
+/// underlying `f64` storage has a precision floor of ≈40 μs at J2000
+/// (one ULP at JD 2 451 545.0 ≈ 4.66 × 10⁻¹⁰ d ≈ 40 μs). The effective
+/// combined precision is therefore **≈40 μs**, not better.
 ///
 /// ## References
 /// * Fairhead & Bretagnon (1990), A&A 229, 240
@@ -119,7 +123,8 @@ impl TimeScale for MJD {
 pub struct TDB;
 
 /// Compute TDB − TT in days using the Fairhead & Bretagnon (1990) 4-term
-/// expression.  Accuracy: better than 30 μs for |t| < 100 centuries.
+/// expression.  Accuracy: formula better than 30 μs for |t| < 100 centuries;
+/// effective precision limited by `f64` storage floor ≈40 μs at J2000.
 #[inline]
 pub(crate) fn tdb_minus_tt_days(jd_tt: Day) -> Day {
     // Julian centuries from J2000.0 on the TT axis
@@ -265,7 +270,7 @@ impl TimeScale for TCG {
 
     #[inline]
     fn from_jd_tt(jd_tt: Day) -> Day {
-        // JD_TCG = (JD_TT + L_G × T₀) / (1 − L_G)
+        // JD_TCG = (JD_TT − L_G × T₀) / (1 − L_G)
         //        ≈ JD_TT + L_G × (JD_TT − T₀)   (first-order, adequate for f64)
         let tt = jd_tt.value();
         Day::new(tt + L_G * (tt - IAU_TIME_EPOCH_T0) / (1.0 - L_G))
@@ -470,10 +475,20 @@ impl TimeScale for UnixTime {
 ///
 /// Unlike [`JD`], [`JDE`], and [`TT`] (which all live on the uniform TT
 /// axis), `UT` encodes a Julian Day on the **UT** axis.  The conversion
-/// to JD(TT) adds the epoch-dependent **ΔT** correction from Meeus (1998)
-/// ch. 9, and the inverse uses a three-iteration fixed-point solver
-/// with sub-microsecond accuracy.
+/// to JD(TT) adds the epoch-dependent **ΔT** correction from a piecewise
+/// model, and the inverse uses a three-iteration fixed-point solver.
 /// `ΔT` is defined as `TT − UT1`; it is not `TT − UTC`.
+///
+/// **Accuracy note:** Conversions to/from TT are model-limited.  The fixed-
+/// point solver converges well within the `f64` storage floor (≈40 μs at
+/// J2000); the dominant source of error is the ΔT model itself.
+///
+/// **Prediction horizon:** The compiled ΔT data covers observed and predicted
+/// values through MJD 63871 (2033-10-01).  Beyond that date the crate
+/// automatically falls back to a quadratic continuation of the last 12
+/// prediction points.  Extrapolation uncertainty grows without bound; use
+/// [`Time::<UT>::is_within_delta_t_horizon`] to check whether a given epoch
+/// is within the compiled data.
 ///
 /// Note: [`Time::from_utc`](super::instant::Time::from_utc) uses the
 /// leap-second table (`UTC → TAI → TT`) and does **not** route through

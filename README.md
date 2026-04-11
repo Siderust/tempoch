@@ -9,7 +9,9 @@ Typed astronomical time primitives for Rust.
 `tempoch` provides:
 
 - Generic `Time<S>` instants parameterized by time-scale markers (`JD`, `MJD`, `TT`, `UT`, `TAI`, `GPS`, `UnixTime`, ...).
-- Built-in UTC conversion through `chrono`, exact from 1961 onward and leap-second aware.
+- UTC conversion through `chrono`, exact from 1961 onward for TAI-adjacent scales (TT, TAI, JD,
+  MJD, JDE, GPS, UnixTime); model-limited for UT (ΔT model) and TDB/TCB/TCG (periodic
+  approximation).  All conversions are leap-second aware.
 - Automatic `ΔT = TT - UT1` handling for the `UT` scale.
 - Standard Unix/POSIX timestamps via `UnixTime`, mapped to physical instants through `UTC -> TAI -> TT`.
 - Compiled time-data tables generated from official UTC-TAI and Delta T sources.
@@ -21,11 +23,22 @@ instants. When converted to physical scales, it is mapped through the compiled
 `UTC -> TAI -> TT` history, so equal Unix increments are not guaranteed to
 equal elapsed SI seconds across leap-second insertions.
 
-Exact `from_utc()` / `to_utc()` conversions are supported from 1961 onward.
-The low-level `tai_minus_utc()` helper still falls back to a fixed 10 s
-approximation earlier for backward compatibility. The compiled modern ΔT series
-runs through MJD 63871 (`2033-10-01`) and uses a quadratic continuation of the
-official prediction tail after that point.
+`from_utc()` / `to_utc()` conversions are exact (table inversion) from 1961
+onward for TAI-adjacent scales.  For `UT` they are limited by the ΔT model
+accuracy; for `TDB`/`TCB`/`TCG` they are limited by the periodic
+approximation (Fairhead & Bretagnon 1990, formula accuracy <30 μs).
+
+**Precision floor:** `Time<S>` stores a single `f64` Julian Day.  Near J2000,
+one `f64` ULP at JD 2 451 545.0 ≈ 4.66 × 10⁻¹⁰ d ≈ 40 μs.  All scales share
+this storage-precision ceiling; claims of "sub-microsecond" or
+"nanosecond-level" precision do not apply to the current representation.
+
+The compiled modern ΔT series runs through MJD 63871 (`2033-10-01`).  Beyond
+that date a quadratic continuation of the official prediction tail is used
+automatically; extrapolation uncertainty grows without bound.  Call
+`Time::<UT>::is_within_delta_t_horizon()` to check whether an epoch is covered
+by compiled data, and use the exported `DELTA_T_PREDICTION_HORIZON_MJD`
+constant to reference the boundary programmatically.
 
 ## Installation
 

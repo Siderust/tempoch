@@ -138,7 +138,7 @@ fn delta_t_table(jd: JulianDate) -> Second {
 /// Linearly interpolate a generated modern Delta T series in MJD.
 #[inline]
 fn interpolate_modern_delta_t(mjd: f64) -> Option<Second> {
-    if mjd < MODERN_DELTA_T_START_MJD || mjd > MODERN_DELTA_T_END_MJD {
+    if !(MODERN_DELTA_T_START_MJD..=MODERN_DELTA_T_END_MJD).contains(&mjd) {
         return None;
     }
 
@@ -188,8 +188,7 @@ const DELTA_T_EXTRAPOLATION_TAIL_POINTS: usize = 12;
 fn quadratic_tail_fit_delta_t_seconds(mjd: f64) -> f64 {
     let tail_len = MODERN_DELTA_T_POINTS
         .len()
-        .min(DELTA_T_EXTRAPOLATION_TAIL_POINTS)
-        .max(3);
+        .clamp(3, DELTA_T_EXTRAPOLATION_TAIL_POINTS);
     let tail = &MODERN_DELTA_T_POINTS[MODERN_DELTA_T_POINTS.len() - tail_len..];
     let origin = tail[tail.len() - 1].0;
 
@@ -223,17 +222,18 @@ fn quadratic_tail_fit_delta_t_seconds(mjd: f64) -> f64 {
         }
 
         let pivot_value = system[pivot][pivot];
-        for column in pivot..4 {
-            system[pivot][column] /= pivot_value;
+        for value in system[pivot].iter_mut().skip(pivot) {
+            *value /= pivot_value;
         }
 
-        for row in 0..3 {
+        let pivot_row_values = system[pivot];
+        for (row, row_values) in system.iter_mut().enumerate() {
             if row == pivot {
                 continue;
             }
-            let factor = system[row][pivot];
-            for column in pivot..4 {
-                system[row][column] -= factor * system[pivot][column];
+            let factor = row_values[pivot];
+            for (column, value) in row_values.iter_mut().enumerate().skip(pivot) {
+                *value -= factor * pivot_row_values[column];
             }
         }
     }
@@ -272,6 +272,14 @@ pub(crate) fn delta_t_seconds_from_ut(jd_ut: JulianDate) -> Second {
 
 // ── Time<UT> convenience method ───────────────────────────────────────────
 
+/// The MJD of the last compiled ΔT prediction point (currently 2033-10-01).
+///
+/// Beyond this date, [`Time::<UT>`] conversions fall back to a quadratic
+/// continuation of the published prediction tail.  Use
+/// [`Time::<UT>::is_within_delta_t_horizon`] to check whether a given epoch
+/// is covered by compiled data.
+pub const DELTA_T_PREDICTION_HORIZON_MJD: f64 = MODERN_DELTA_T_END_MJD;
+
 impl Time<UT> {
     /// Returns **ΔT = TT − UT1** in seconds for this UT epoch.
     ///
@@ -280,6 +288,19 @@ impl Time<UT> {
     #[inline]
     pub fn delta_t(&self) -> Second {
         delta_t_seconds_from_ut(JulianDate::from_days(self.quantity()))
+    }
+
+    /// Returns `true` if this epoch is within the compiled ΔT prediction data.
+    ///
+    /// The compiled data covers observed and official USNO-predicted ΔT values
+    /// through MJD [`DELTA_T_PREDICTION_HORIZON_MJD`] (currently 2033-10-01).
+    /// For epochs beyond this horizon, [`delta_t`](Self::delta_t) and all
+    /// scale conversions use a quadratic extrapolation of the last 12
+    /// prediction points; extrapolation uncertainty grows without bound past
+    /// the horizon.
+    #[inline]
+    pub fn is_within_delta_t_horizon(&self) -> bool {
+        self.quantity().value() <= MODERN_DELTA_T_END_MJD + 2_400_000.5
     }
 }
 
@@ -292,8 +313,7 @@ mod tests {
     fn quadratic_tail_fit_expected(mjd: f64) -> f64 {
         let tail_len = MODERN_DELTA_T_POINTS
             .len()
-            .min(DELTA_T_EXTRAPOLATION_TAIL_POINTS)
-            .max(3);
+            .clamp(3, DELTA_T_EXTRAPOLATION_TAIL_POINTS);
         let tail = &MODERN_DELTA_T_POINTS[MODERN_DELTA_T_POINTS.len() - tail_len..];
         let origin = tail[tail.len() - 1].0;
 
@@ -327,17 +347,18 @@ mod tests {
             }
 
             let pivot_value = system[pivot][pivot];
-            for column in pivot..4 {
-                system[pivot][column] /= pivot_value;
+            for value in system[pivot].iter_mut().skip(pivot) {
+                *value /= pivot_value;
             }
 
-            for row in 0..3 {
+            let pivot_row_values = system[pivot];
+            for (row, row_values) in system.iter_mut().enumerate() {
                 if row == pivot {
                     continue;
                 }
-                let factor = system[row][pivot];
-                for column in pivot..4 {
-                    system[row][column] -= factor * system[pivot][column];
+                let factor = row_values[pivot];
+                for (column, value) in row_values.iter_mut().enumerate().skip(pivot) {
+                    *value -= factor * pivot_row_values[column];
                 }
             }
         }

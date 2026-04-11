@@ -64,6 +64,7 @@ mod scales;
 
 // ── Re-exports ────────────────────────────────────────────────────────────
 
+pub use delta_t::DELTA_T_PREDICTION_HORIZON_MJD;
 pub use instant::{NonFiniteTimeError, Time, TimeInstant, TimeScale, UtcConversionError};
 pub use period::{
     complement_within, intersect_periods, normalize_periods, validate_period_list, ConversionError,
