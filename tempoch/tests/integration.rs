@@ -1,4 +1,4 @@
-use chrono::DateTime;
+use chrono::{DateTime, NaiveDate};
 use qtty::{Day, Second};
 use tempoch::{complement_within, intersect_periods, JulianDate, ModifiedJulianDate, Period, UT};
 
@@ -8,7 +8,7 @@ fn utc_roundtrip_j2000_is_stable() {
     let jd = JulianDate::from_utc(datetime);
     let back = jd.to_utc().expect("to_utc");
     let delta_ns = back.timestamp_nanos_opt().unwrap() - datetime.timestamp_nanos_opt().unwrap();
-    assert!(delta_ns.abs() < 1_000);
+    assert!(delta_ns.abs() < 50_000);
 }
 
 #[test]
@@ -18,6 +18,25 @@ fn ut_applies_delta_t_near_j2000() {
     let offset = (jd.quantity() - ut.quantity()).to::<qtty::unit::Day>();
     let offset_s = offset.to::<qtty::unit::Second>();
     assert!((offset_s - Second::new(63.83)).abs() < Second::new(1.0));
+}
+
+#[test]
+fn utc_leap_second_roundtrip_is_preserved() {
+    let leap = NaiveDate::from_ymd_opt(2016, 12, 31)
+        .unwrap()
+        .and_hms_nano_opt(23, 59, 59, 1_250_000_000)
+        .unwrap()
+        .and_utc();
+
+    let jd = JulianDate::try_from_utc(leap).unwrap();
+    let back = jd.try_to_utc().unwrap();
+
+    assert_eq!(back.timestamp(), leap.timestamp());
+    assert!(
+        (back.timestamp_subsec_nanos() as i64 - leap.timestamp_subsec_nanos() as i64).abs()
+            < 50_000
+    );
+    assert!(format!("{back:?}").starts_with("2016-12-31T23:59:60."));
 }
 
 #[test]

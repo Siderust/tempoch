@@ -9,11 +9,23 @@ Typed astronomical time primitives for Rust.
 `tempoch` provides:
 
 - Generic `Time<S>` instants parameterized by time-scale markers (`JD`, `MJD`, `TT`, `UT`, `TAI`, `GPS`, `UnixTime`, ...).
-- Built-in UTC conversion through `chrono`.
-- Automatic `ΔT = TT - UT` handling for the `UT` scale.
+- Built-in UTC conversion through `chrono`, exact from 1961 onward and leap-second aware.
+- Automatic `ΔT = TT - UT1` handling for the `UT` scale.
+- Standard Unix/POSIX timestamps via `UnixTime`, mapped to physical instants through `UTC -> TAI -> TT`.
 - Compiled time-data tables generated from official UTC-TAI and Delta T sources.
 - Generic intervals with `Interval<T>` and scale-aware alias `Period<S>`.
 - Utility operations like period intersection and complement.
+
+`UnixTime` keeps the usual Unix/POSIX timestamp contract for representable UTC
+instants. When converted to physical scales, it is mapped through the compiled
+`UTC -> TAI -> TT` history, so equal Unix increments are not guaranteed to
+equal elapsed SI seconds across leap-second insertions.
+
+Exact `from_utc()` / `to_utc()` conversions are supported from 1961 onward.
+The low-level `tai_minus_utc()` helper still falls back to a fixed 10 s
+approximation earlier for backward compatibility. The compiled modern ΔT series
+runs through MJD 63871 (`2033-10-01`) and uses a quadratic continuation of the
+official prediction tail after that point.
 
 ## Installation
 

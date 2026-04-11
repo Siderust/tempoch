@@ -18,6 +18,8 @@ use qtty::*;
 use std::marker::PhantomData;
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
+use crate::generated::time_data::{UtcTaiSegment, UTC_TAI_SEGMENTS};
+
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -34,8 +36,11 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 ///    (in [`Day`]) and **Julian Date in TT** (JD(TT)) — the canonical
 ///    internal representation used throughout the crate.
 ///
-/// For pure *epoch counters* (JD, MJD, Unix Time, GPS) the conversions are
+/// For pure *epoch counters* such as JD, MJD, and GPS the conversions are
 /// trivial constant offsets that the compiler will inline and fold away.
+/// `UnixTime` is also an epoch-style scalar, but it maps standard Unix
+/// timestamps to physical instants through the compiled `UTC → TAI → TT`
+/// history.
 ///
 /// For *physical scales* (TT, TDB, TAI) the conversions may include
 /// function-based corrections (e.g. the ≈1.7 ms TDB↔TT periodic term).
@@ -69,6 +74,139 @@ impl std::fmt::Display for NonFiniteTimeError {
 }
 
 impl std::error::Error for NonFiniteTimeError {}
+
+/// Error returned when an exact UTC conversion cannot be performed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UtcConversionError {
+    /// The instant lies before the official UTC-TAI history starts on 1961-01-01.
+    UnsupportedUtcHistory,
+    /// The input encodes a leap second that is not present in the compiled UTC history.
+    InvalidLeapSecond,
+    /// The resulting UTC instant falls outside chrono's representable range.
+    OutOfRange,
+}
+
+impl std::fmt::Display for UtcConversionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UtcConversionError::UnsupportedUtcHistory => {
+                write!(
+                    f,
+                    "exact UTC conversions are only supported from 1961-01-01 onward"
+                )
+            }
+            UtcConversionError::InvalidLeapSecond => {
+                write!(
+                    f,
+                    "UTC leap-second label is not present in the compiled history"
+                )
+            }
+            UtcConversionError::OutOfRange => {
+                write!(f, "UTC instant is outside chrono's representable range")
+            }
+        }
+    }
+}
+
+impl std::error::Error for UtcConversionError {}
+
+const TT_MINUS_TAI_SECS: f64 = 32.184;
+const SECONDS_PER_DAY: f64 = 86_400.0;
+const NANOS_PER_SECOND: f64 = 1_000_000_000.0;
+const JD_MINUS_MJD: f64 = 2_400_000.5;
+const UNIX_EPOCH_JD: f64 = 2_440_587.5;
+const UNIX_EPOCH_MJD: f64 = UNIX_EPOCH_JD - JD_MINUS_MJD;
+const UTC_INTERVAL_EPS_DAYS: f64 = 1e-15;
+
+#[inline]
+fn utc_offset_seconds_in_segment(mjd_utc: f64, segment: UtcTaiSegment) -> f64 {
+    segment.base_seconds + (mjd_utc - segment.reference_mjd) * segment.slope_seconds_per_day
+}
+
+#[inline]
+fn utc_mjd_to_tt_mjd_in_segment(mjd_utc: f64, segment: UtcTaiSegment) -> f64 {
+    mjd_utc
+        + (utc_offset_seconds_in_segment(mjd_utc, segment) + TT_MINUS_TAI_SECS) / SECONDS_PER_DAY
+}
+
+#[inline]
+fn tt_mjd_to_utc_mjd_in_segment(mjd_tt: f64, segment: UtcTaiSegment) -> f64 {
+    let scale = 1.0 + segment.slope_seconds_per_day / SECONDS_PER_DAY;
+    let offset_days = (segment.base_seconds
+        - segment.slope_seconds_per_day * segment.reference_mjd
+        + TT_MINUS_TAI_SECS)
+        / SECONDS_PER_DAY;
+    (mjd_tt - offset_days) / scale
+}
+
+#[inline]
+fn datetime_from_seconds_since_epoch(seconds_since_epoch: f64) -> Option<DateTime<Utc>> {
+    if !seconds_since_epoch.is_finite() {
+        return None;
+    }
+
+    let mut secs = seconds_since_epoch.floor();
+    let mut nanos = ((seconds_since_epoch - secs) * NANOS_PER_SECOND).round();
+
+    if nanos >= NANOS_PER_SECOND {
+        secs += 1.0;
+        nanos -= NANOS_PER_SECOND;
+    } else if nanos < 0.0 {
+        secs -= 1.0;
+        nanos += NANOS_PER_SECOND;
+    }
+
+    DateTime::<Utc>::from_timestamp(secs as i64, nanos as u32)
+}
+
+#[inline]
+fn datetime_from_utc_mjd(mjd_utc: f64) -> Option<DateTime<Utc>> {
+    datetime_from_seconds_since_epoch((mjd_utc - UNIX_EPOCH_MJD) * SECONDS_PER_DAY)
+}
+
+fn utc_from_tt_exact(jd_tt: f64) -> Result<DateTime<Utc>, UtcConversionError> {
+    let mjd_tt = jd_tt - JD_MINUS_MJD;
+    let first_start_tt =
+        utc_mjd_to_tt_mjd_in_segment(UTC_TAI_SEGMENTS[0].start_mjd as f64, UTC_TAI_SEGMENTS[0]);
+    if mjd_tt < first_start_tt - UTC_INTERVAL_EPS_DAYS {
+        return Err(UtcConversionError::UnsupportedUtcHistory);
+    }
+
+    for window in UTC_TAI_SEGMENTS.windows(2) {
+        let segment = window[0];
+        let next = window[1];
+        let end_mjd = segment
+            .end_mjd
+            .expect("all non-terminal UTC-TAI segments must have an end");
+        let end_tt = utc_mjd_to_tt_mjd_in_segment(end_mjd as f64, segment);
+        if mjd_tt < end_tt - UTC_INTERVAL_EPS_DAYS {
+            let mjd_utc = tt_mjd_to_utc_mjd_in_segment(mjd_tt, segment);
+            return datetime_from_utc_mjd(mjd_utc).ok_or(UtcConversionError::OutOfRange);
+        }
+
+        let next_start_tt = utc_mjd_to_tt_mjd_in_segment(next.start_mjd as f64, next);
+        if mjd_tt < next_start_tt - UTC_INTERVAL_EPS_DAYS {
+            let boundary =
+                datetime_from_utc_mjd(end_mjd as f64).ok_or(UtcConversionError::OutOfRange)?;
+            let base_secs = boundary.timestamp() - 1;
+            let leap_nanos =
+                1_000_000_000.0 + (mjd_tt - end_tt) * SECONDS_PER_DAY * NANOS_PER_SECOND;
+            let window_nanos = ((next_start_tt - end_tt) * SECONDS_PER_DAY * NANOS_PER_SECOND)
+                .round()
+                .max(1.0);
+            let max_nanos = 1_000_000_000.0 + window_nanos - 1.0;
+            let nanos = leap_nanos.round().clamp(1_000_000_000.0, max_nanos);
+            return DateTime::<Utc>::from_timestamp(base_secs, nanos as u32)
+                .ok_or(UtcConversionError::OutOfRange);
+        }
+    }
+
+    let last = *UTC_TAI_SEGMENTS
+        .last()
+        .expect("UTC-TAI history must contain at least one segment");
+    let mjd_utc = tt_mjd_to_utc_mjd_in_segment(mjd_tt, last);
+    datetime_from_utc_mjd(mjd_utc).ok_or(UtcConversionError::OutOfRange)
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Time<S> — the generic instant
@@ -200,39 +338,59 @@ impl<S: TimeScale> Time<S> {
 
     /// Convert to a `chrono::DateTime<Utc>`.
     ///
-    /// Uses the leap-second table to invert the `UTC → TAI → TT` chain:
-    /// `JD(UTC) = JD(TT) − (TAI−UTC + 32.184 s) / 86 400`.
-    /// Returns `None` if the value falls outside chrono's representable range.
+    /// This exact conversion is available only where the compiled UTC-TAI
+    /// history is defined, starting at 1961-01-01 UTC. Leap-second labels are
+    /// preserved using chrono's native leap-second representation.
+    ///
+    /// Returns `None` if the instant falls outside the supported UTC history
+    /// or outside chrono's representable range.
     pub fn to_utc(&self) -> Option<DateTime<Utc>> {
-        use super::scales::tai_minus_utc;
-        const UNIX_EPOCH_JD: f64 = 2_440_587.5;
-        const TT_MINUS_TAI_SECS: f64 = 32.184;
-        let jd_tt = S::to_jd_tt(self.quantity).value();
-        // First approximation of JD(UTC) for leap-second lookup
-        let approx_utc = jd_tt - (37.0 + TT_MINUS_TAI_SECS) / 86_400.0;
-        let ls = tai_minus_utc(approx_utc);
-        let jd_utc = jd_tt - (ls + TT_MINUS_TAI_SECS) / 86_400.0;
-        let seconds_since_epoch = (jd_utc - UNIX_EPOCH_JD) * 86_400.0;
-        let secs = seconds_since_epoch.floor() as i64;
-        let nanos = ((seconds_since_epoch - secs as f64) * 1e9) as u32;
-        DateTime::<Utc>::from_timestamp(secs, nanos)
+        self.try_to_utc().ok()
+    }
+
+    /// Convert to UTC, preserving leap-second labels when present.
+    pub fn try_to_utc(&self) -> Result<DateTime<Utc>, UtcConversionError> {
+        utc_from_tt_exact(S::to_jd_tt(self.quantity).value())
     }
 
     /// Build an instant from a `chrono::DateTime<Utc>`.
     ///
     /// The UTC timestamp is converted to TT via the `UTC → TAI → TT` chain
-    /// using the crate's leap-second table:
-    /// `JD(TT) = JD(UTC) + (TAI−UTC + 32.184 s) / 86 400`.
+    /// using the crate's compiled UTC-TAI history. Leap-second inputs are
+    /// validated against the actual leap-second boundaries present in that
+    /// history.
+    pub fn try_from_utc(datetime: DateTime<Utc>) -> Result<Self, UtcConversionError> {
+        use super::scales::try_tai_minus_utc;
+
+        let base_jd_utc = UNIX_EPOCH_JD + datetime.timestamp() as f64 / SECONDS_PER_DAY;
+        let tai_minus_utc =
+            try_tai_minus_utc(base_jd_utc).ok_or(UtcConversionError::UnsupportedUtcHistory)?;
+        let subsec_nanos = datetime.timestamp_subsec_nanos();
+
+        if subsec_nanos >= 1_000_000_000 {
+            let next_tai_minus_utc = try_tai_minus_utc(base_jd_utc + 1.0 / SECONDS_PER_DAY)
+                .ok_or(UtcConversionError::InvalidLeapSecond)?;
+            if next_tai_minus_utc - tai_minus_utc < 0.5 {
+                return Err(UtcConversionError::InvalidLeapSecond);
+            }
+        }
+
+        let jd_tt = base_jd_utc
+            + (tai_minus_utc + subsec_nanos as f64 / NANOS_PER_SECOND + TT_MINUS_TAI_SECS)
+                / SECONDS_PER_DAY;
+        Ok(Self::from_julian_day(Day::new(jd_tt)))
+    }
+
+    /// Build an instant from a `chrono::DateTime<Utc>`.
+    ///
+    /// This is a convenience wrapper over [`try_from_utc`](Self::try_from_utc).
+    /// It panics for UTC dates before 1961-01-01 or for invalid leap-second
+    /// labels not present in the compiled UTC history.
+    #[track_caller]
     pub fn from_utc(datetime: DateTime<Utc>) -> Self {
-        use super::scales::tai_minus_utc;
-        const UNIX_EPOCH_JD: f64 = 2_440_587.5;
-        const TT_MINUS_TAI_SECS: f64 = 32.184;
-        let unix_secs =
-            datetime.timestamp() as f64 + datetime.timestamp_subsec_nanos() as f64 / 1e9;
-        let jd_utc = UNIX_EPOCH_JD + unix_secs / 86_400.0;
-        let ls = tai_minus_utc(jd_utc);
-        let jd_tt = jd_utc + (ls + TT_MINUS_TAI_SECS) / 86_400.0;
-        Self::from_julian_day(Day::new(jd_tt))
+        Self::try_from_utc(datetime).expect(
+            "UTC conversion failed; use try_from_utc for unsupported history or leap-second inputs",
+        )
     }
 
     // ── min / max ─────────────────────────────────────────────────────
@@ -464,7 +622,9 @@ impl TimeInstant for DateTime<Utc> {
 mod tests {
     use super::super::scales::{JD, MJD};
     use super::*;
-    use chrono::TimeZone;
+    use chrono::{NaiveDate, TimeZone};
+
+    const UTC_ROUNDTRIP_TOLERANCE_NS: i64 = 50_000;
 
     #[test]
     fn test_julian_day_creation() {
@@ -481,7 +641,11 @@ mod tests {
         let back = jd.to_utc().expect("to_utc");
         let delta_ns =
             back.timestamp_nanos_opt().unwrap() - datetime.timestamp_nanos_opt().unwrap();
-        assert!(delta_ns.abs() < 1_000, "roundtrip error: {} ns", delta_ns);
+        assert!(
+            delta_ns.abs() < UTC_ROUNDTRIP_TOLERANCE_NS,
+            "roundtrip error: {} ns",
+            delta_ns
+        );
     }
 
     #[test]
@@ -607,18 +771,94 @@ mod tests {
         let back = mjd.to_utc().expect("to_utc");
         let delta_ns =
             back.timestamp_nanos_opt().unwrap() - datetime.timestamp_nanos_opt().unwrap();
-        assert!(delta_ns.abs() < 1_000, "roundtrip error: {} ns", delta_ns);
+        assert!(
+            delta_ns.abs() < UTC_ROUNDTRIP_TOLERANCE_NS,
+            "roundtrip error: {} ns",
+            delta_ns
+        );
     }
 
     #[test]
-    fn test_mjd_from_utc_applies_delta_t() {
-        // MJD epoch is JD − 2400000.5; ΔT should shift value by ~63.83/86400 days
+    fn test_try_from_utc_rejects_pre_1961() {
+        let before_history = Utc.with_ymd_and_hms(1960, 12, 31, 23, 59, 59).unwrap();
+        assert_eq!(
+            Time::<JD>::try_from_utc(before_history),
+            Err(UtcConversionError::UnsupportedUtcHistory)
+        );
+    }
+
+    #[test]
+    fn test_try_from_utc_rejects_invalid_leap_second() {
+        let invalid = NaiveDate::from_ymd_opt(2016, 7, 1)
+            .unwrap()
+            .and_hms_nano_opt(12, 0, 59, 1_000_000_000)
+            .unwrap()
+            .and_utc();
+        assert_eq!(
+            Time::<JD>::try_from_utc(invalid),
+            Err(UtcConversionError::InvalidLeapSecond)
+        );
+    }
+
+    #[test]
+    fn test_utc_leap_second_roundtrip() {
+        let leap = NaiveDate::from_ymd_opt(2016, 12, 31)
+            .unwrap()
+            .and_hms_nano_opt(23, 59, 59, 1_500_000_000)
+            .unwrap()
+            .and_utc();
+
+        let jd = Time::<JD>::try_from_utc(leap).expect("valid leap second");
+        let back = jd.try_to_utc().expect("to_utc");
+
+        assert_eq!(back.timestamp(), leap.timestamp());
+        assert!(
+            (back.timestamp_subsec_nanos() as i64 - leap.timestamp_subsec_nanos() as i64).abs()
+                < UTC_ROUNDTRIP_TOLERANCE_NS,
+            "roundtrip leap-second error: {} ns",
+            back.timestamp_subsec_nanos() as i64 - leap.timestamp_subsec_nanos() as i64
+        );
+        assert!(format!("{back:?}").starts_with("2016-12-31T23:59:60."));
+    }
+
+    #[test]
+    fn test_utc_roundtrip_after_2015_leap_boundary() {
+        let after_boundary = DateTime::from_timestamp(1_435_708_800, 123_456_789).unwrap();
+        let jd = Time::<JD>::from_utc(after_boundary);
+        let back = jd.try_to_utc().expect("to_utc");
+        let delta_ns =
+            back.timestamp_nanos_opt().unwrap() - after_boundary.timestamp_nanos_opt().unwrap();
+        assert!(
+            delta_ns.abs() < UTC_ROUNDTRIP_TOLERANCE_NS,
+            "roundtrip error: {} ns",
+            delta_ns
+        );
+    }
+
+    #[test]
+    fn test_utc_roundtrip_after_1972_leap_boundary() {
+        let after_boundary = DateTime::from_timestamp(78_796_805, 0).unwrap();
+        let jd = Time::<JD>::from_utc(after_boundary);
+        let back = jd.try_to_utc().expect("to_utc");
+        let delta_ns =
+            back.timestamp_nanos_opt().unwrap() - after_boundary.timestamp_nanos_opt().unwrap();
+        assert!(
+            delta_ns.abs() < UTC_ROUNDTRIP_TOLERANCE_NS,
+            "roundtrip error: {} ns",
+            delta_ns
+        );
+    }
+
+    #[test]
+    fn test_mjd_from_utc_applies_tt_minus_utc() {
+        // MJD epoch is JD − 2400000.5; UTC→TT should shift the value by
+        // TT−UTC ≈ 63.83/86400 days at 2000-01-01T00:00:00Z.
         let datetime = DateTime::from_timestamp(946_728_000, 0).unwrap();
         let mjd = Time::<MJD>::from_utc(datetime);
         let delta_t_secs = (mjd.quantity() - Day::new(51_544.5)).to::<qtty::unit::Second>();
         assert!(
             (delta_t_secs - Second::new(63.83)).abs() < Second::new(1.0),
-            "ΔT correction = {} s, expected ~63.83 s",
+            "TT−UTC correction = {} s, expected ~63.83 s",
             delta_t_secs
         );
     }

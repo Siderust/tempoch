@@ -14,7 +14,7 @@
 //! | [`JD`] | Julian Date | 0.0 |
 //! | [`JDE`] | Julian Ephemeris Day | 0.0 |
 //! | [`MJD`] | Modified Julian Date | 2 400 000.5 |
-//! | [`UnixTime`] | Second since 1970-01-01 | 2 440 587.5 |
+//! | [`UnixTime`] | Unix / POSIX timestamp | 2 440 587.5 |
 //! | [`GPS`] | GPS Time (days) | 2 444 244.5 |
 //!
 //! # Physical / relativistic scales
@@ -150,9 +150,13 @@ impl TimeScale for TDB {
     #[inline]
     fn to_jd_tt(tdb_value: Day) -> Day {
         // JD(TT) = JD(TDB) - (TDB - TT)
-        // First approximation: use tdb_value as TT to compute the correction.
-        // The correction is < 2 ms so one iteration is sufficient for f64.
-        tdb_value - tdb_minus_tt_days(tdb_value)
+        // Fixed-point refinement converges immediately because the periodic
+        // term is < 2 ms and its derivative is tiny over the supported range.
+        let mut jd_tt = tdb_value;
+        for _ in 0..2 {
+            jd_tt = tdb_value - tdb_minus_tt_days(jd_tt);
+        }
+        jd_tt
     }
 
     #[inline]
@@ -214,8 +218,9 @@ impl TimeScale for TAI {
 
 /// Geocentric Coordinate Time — the coordinate time for the GCRS.
 ///
-/// TCG is the proper time experienced by a clock at the geocenter, free from
-/// the gravitational time dilation of the Earth's potential.
+/// TCG is a relativistic coordinate time, not the proper time of a physical
+/// clock. TT is defined as a linear scaling of TCG chosen to remain close to
+/// proper time on the geoid.
 ///
 /// The defining relation (IAU 2000 Resolution B1.9) is:
 ///
@@ -230,7 +235,8 @@ impl TimeScale for TAI {
 /// TT = TCG − L_G × (JD_TCG − T₀)
 /// ```
 ///
-/// with **T₀ = 2 443 144.500 372 5** (JD of 1977 January 1.0 TAI in the TCG scale).
+/// with **T₀ = 2 443 144.500 372 5** (the shared IAU epoch used in the linear
+/// coordinate-time relations).
 ///
 /// ## References
 /// * IAU 2000 Resolution B1.9
@@ -244,8 +250,8 @@ pub struct TCG;
 /// `dTT/dTCG = 1 − L_G`.
 const L_G: f64 = 6.969_290_134e-10;
 
-/// TCG epoch T₀: JD(TCG) of 1977 January 1.0 TAI.
-const TCG_EPOCH_T0: f64 = 2_443_144.500_372_5;
+/// Shared IAU epoch T₀ used in the linear TCG and TCB/TDB relations.
+const IAU_TIME_EPOCH_T0: f64 = 2_443_144.500_372_5;
 
 impl TimeScale for TCG {
     const LABEL: &'static str = "TCG";
@@ -254,7 +260,7 @@ impl TimeScale for TCG {
     fn to_jd_tt(tcg_value: Day) -> Day {
         // TT = TCG − L_G × (JD_TCG − T₀)
         let jd_tcg = tcg_value.value();
-        Day::new(jd_tcg - L_G * (jd_tcg - TCG_EPOCH_T0))
+        Day::new(jd_tcg - L_G * (jd_tcg - IAU_TIME_EPOCH_T0))
     }
 
     #[inline]
@@ -262,14 +268,14 @@ impl TimeScale for TCG {
         // JD_TCG = (JD_TT + L_G × T₀) / (1 − L_G)
         //        ≈ JD_TT + L_G × (JD_TT − T₀)   (first-order, adequate for f64)
         let tt = jd_tt.value();
-        Day::new(tt + L_G * (tt - TCG_EPOCH_T0) / (1.0 - L_G))
+        Day::new(tt + L_G * (tt - IAU_TIME_EPOCH_T0) / (1.0 - L_G))
     }
 }
 
 /// Barycentric Coordinate Time — the coordinate time for the BCRS.
 ///
 /// TCB is the time coordinate complementary to barycentric spatial coordinates.
-/// It relates to TDB via a linear drift:
+/// It relates linearly to TDB:
 ///
 /// ```text
 /// TDB = TCB − L_B × (JD_TCB − T₀) + TDB₀
@@ -280,8 +286,11 @@ impl TimeScale for TCG {
 /// * **TDB₀ = −6.55 × 10⁻⁵ s** (IAU 2006 Resolution B3)
 /// * **T₀ = 2 443 144.500 372 5** (JD of 1977 January 1.0 TAI)
 ///
-/// Since TDB ≈ TT for route-through-JD(TT) purposes (the ≈1.7 ms periodic
-/// difference is handled separately), we use the TDB relation directly.
+/// In this crate the canonical intermediate is JD(TT), so TCB conversions
+/// compose this linear TCB↔TDB relation with the periodic TDB↔TT correction
+/// implemented by [`TDB`]. This preserves the existing trait contract while
+/// avoiding the millisecond-scale drift that appears if the periodic term is
+/// silently dropped.
 ///
 /// ## References
 /// * IAU 2006 Resolution B3
@@ -300,25 +309,35 @@ const L_B: f64 = 1.550_519_768e-8;
 /// `TDB₀ = −6.55 × 10⁻⁵ s = −6.55e-5 / 86 400 d`.
 const TDB0_DAYS: f64 = -6.55e-5 / 86_400.0;
 
+/// Convert a TCB Julian day value to the corresponding TDB value using the
+/// linear IAU 2006 relation.
+#[inline]
+fn linear_tcb_to_tdb(tcb_value: Day) -> Day {
+    let delta_from_t0 = tcb_value.value() - IAU_TIME_EPOCH_T0;
+    Day::new(IAU_TIME_EPOCH_T0 + (1.0 - L_B) * delta_from_t0 + TDB0_DAYS)
+}
+
+/// Convert a TDB Julian day value to the corresponding TCB value using the
+/// inverse of the linear IAU 2006 relation.
+#[inline]
+fn linear_tdb_to_tcb(tdb_value: Day) -> Day {
+    let delta_from_t0 = tdb_value.value() - IAU_TIME_EPOCH_T0 - TDB0_DAYS;
+    Day::new(IAU_TIME_EPOCH_T0 + delta_from_t0 / (1.0 - L_B))
+}
+
 impl TimeScale for TCB {
     const LABEL: &'static str = "TCB";
 
     #[inline]
     fn to_jd_tt(tcb_value: Day) -> Day {
-        // TDB = TCB − L_B × (JD_TCB − T₀) + TDB₀
-        // Treating TDB ≈ TT (periodic ≈1.7 ms difference handled separately).
-        // Matches SOFA iauTcbtdb.
-        let jd_tcb = tcb_value.value();
-        Day::new(jd_tcb - L_B * (jd_tcb - TCG_EPOCH_T0) + TDB0_DAYS)
+        // Compose the linear TCB→TDB mapping with the periodic TDB→TT step.
+        TDB::to_jd_tt(linear_tcb_to_tdb(tcb_value))
     }
 
     #[inline]
     fn from_jd_tt(jd_tt: Day) -> Day {
-        // JD_TCB = (JD_TDB − TDB₀ − L_B × T₀) / (1 − L_B)
-        //        = (JD_TDB − L_B × T₀ − TDB₀) / (1 − L_B)
-        // Matches SOFA iauTdbtcb.
-        let tt = jd_tt.value();
-        Day::new((tt - L_B * TCG_EPOCH_T0 - TDB0_DAYS) / (1.0 - L_B))
+        // Compose the periodic TT→TDB step with the linear TDB→TCB mapping.
+        linear_tdb_to_tcb(TDB::from_jd_tt(jd_tt))
     }
 }
 
@@ -351,10 +370,13 @@ impl TimeScale for GPS {
     }
 }
 
-/// Unix Time — seconds since 1970-01-01T00:00:00 UTC, stored as **days**.
+/// Unix Time — standard Unix / POSIX timestamps stored as **days**.
 ///
-/// This scale applies the compiled UTC-to-TAI history to convert between
-/// UTC-epoch Unix timestamps and the uniform TT axis.
+/// This scale maps ordinary Unix / POSIX timestamps to physical instants
+/// through the compiled `UTC → TAI → TT` history. It therefore round-trips
+/// with representable UTC instants and standard Unix timestamps, but equal
+/// Unix increments are not guaranteed to equal elapsed SI seconds across
+/// leap-second insertions.
 ///
 /// The generated table covers the official UTC-TAI history from 1961 onward,
 /// including the pre-1972 frequency-offset era and all later integral leap
@@ -370,21 +392,23 @@ pub struct UnixTime;
 /// JD of the Unix epoch (1970-01-01T00:00:00Z).
 const UNIX_EPOCH_JD: Day = Day::new(2_440_587.5);
 
-/// Look up cumulative TAI−UTC (leap seconds) for a JD on the UTC axis.
+/// Look up cumulative TAI−UTC for a Julian Date interpreted on the UTC axis.
 ///
 /// Returns the number of leap seconds (TAI − UTC) in effect at the given
 /// Julian Date on the UTC time axis. The compiled history covers the official
 /// UTC-TAI relations from 1961 onward. Dates before that fall back to a fixed
-/// 10 s approximation for backward compatibility.
+/// 10 s approximation for backward compatibility. Passing a JD on any other
+/// axis (TT, TAI, TDB, ...) asks about the wrong civil epoch near leap-second
+/// boundaries and in the pre-1972 frequency-offset era.
 ///
 /// # Arguments
 ///
 /// * `jd_utc` - Julian Date number on the UTC axis.
 #[inline]
-pub fn tai_minus_utc(jd_utc: f64) -> f64 {
+pub(crate) fn try_tai_minus_utc(jd_utc: f64) -> Option<f64> {
     let mjd_utc = jd_utc - 2_400_000.5;
     if mjd_utc < UTC_TAI_HISTORY_START_MJD as f64 {
-        return PRE_1961_TAI_MINUS_UTC_APPROX;
+        return None;
     }
 
     // Binary search for the last segment start <= mjd_utc.
@@ -400,7 +424,12 @@ pub fn tai_minus_utc(jd_utc: f64) -> f64 {
     }
 
     let segment = UTC_TAI_SEGMENTS[lo - 1];
-    segment.base_seconds + (mjd_utc - segment.reference_mjd) * segment.slope_seconds_per_day
+    Some(segment.base_seconds + (mjd_utc - segment.reference_mjd) * segment.slope_seconds_per_day)
+}
+
+#[inline]
+pub fn tai_minus_utc(jd_utc: f64) -> f64 {
+    try_tai_minus_utc(jd_utc).unwrap_or(PRE_1961_TAI_MINUS_UTC_APPROX)
 }
 
 /// TT = TAI + 32.184 s, and TAI = UTC + leap_seconds.
@@ -412,7 +441,8 @@ impl TimeScale for UnixTime {
 
     #[inline]
     fn to_jd_tt(value: Day) -> Day {
-        // value is Unix days (days since 1970-01-01 on the UTC axis)
+        // Interpret the Unix / POSIX timestamp on the UTC civil axis, then
+        // map that physical instant through UTC→TAI→TT.
         let jd_utc = value.value() + UNIX_EPOCH_JD.value();
         let ls = tai_minus_utc(jd_utc);
         // JD(TT) = JD(UTC) + (TAI−UTC + 32.184) / 86400
@@ -421,11 +451,13 @@ impl TimeScale for UnixTime {
 
     #[inline]
     fn from_jd_tt(jd_tt: Day) -> Day {
-        // Approximate JD(UTC) by subtracting the largest plausible offset,
-        // then refine with the correct leap-second count.
-        let approx_utc = jd_tt.value() - (37.0 + TT_MINUS_TAI_SECS) / 86_400.0;
-        let ls = tai_minus_utc(approx_utc);
-        let jd_utc = jd_tt.value() - (ls + TT_MINUS_TAI_SECS) / 86_400.0;
+        // Recover the UTC civil instant first, then express it as a standard
+        // Unix / POSIX timestamp.
+        let mut jd_utc = jd_tt.value() - (37.0 + TT_MINUS_TAI_SECS) / 86_400.0;
+        for _ in 0..3 {
+            let ls = tai_minus_utc(jd_utc);
+            jd_utc = jd_tt.value() - (ls + TT_MINUS_TAI_SECS) / 86_400.0;
+        }
         Day::new(jd_utc - UNIX_EPOCH_JD.value())
     }
 }
@@ -434,13 +466,14 @@ impl TimeScale for UnixTime {
 // Universal Time (Earth-rotation based)
 // ---------------------------------------------------------------------------
 
-/// Universal Time — the civil time scale tied to Earth's rotation.
+/// Universal Time UT1 — the time scale tied to Earth's rotation.
 ///
 /// Unlike [`JD`], [`JDE`], and [`TT`] (which all live on the uniform TT
 /// axis), `UT` encodes a Julian Day on the **UT** axis.  The conversion
 /// to JD(TT) adds the epoch-dependent **ΔT** correction from Meeus (1998)
 /// ch. 9, and the inverse uses a three-iteration fixed-point solver
 /// with sub-microsecond accuracy.
+/// `ΔT` is defined as `TT − UT1`; it is not `TT − UTC`.
 ///
 /// Note: [`Time::from_utc`](super::instant::Time::from_utc) uses the
 /// leap-second table (`UTC → TAI → TT`) and does **not** route through
@@ -510,6 +543,7 @@ impl_time_conversions!(JD, JDE, MJD, TDB, TT, TAI, TCG, TCB, GPS, UnixTime, UT);
 mod tests {
     use super::super::instant::Time;
     use super::*;
+    use chrono::{DateTime, Utc};
     use qtty::{Day, Second};
 
     #[test]
@@ -550,10 +584,8 @@ mod tests {
 
     #[test]
     fn unix_epoch_roundtrip() {
-        // Unix epoch (1970-01-01) falls in the pre-1972 UTC frequency-offset era.
-        // The official UTC-TAI history gives:
-        // TAI-UTC = 4.2131700 + (40587 - 39126) * 0.002592 = 8.000082 s.
-        // Therefore TT-UTC = (TAI-UTC) + 32.184 = 40.184082 s.
+        // UnixTime keeps the standard Unix epoch scalar, then maps the
+        // corresponding UTC instant through UTC→TAI→TT.
         let unix_zero = Time::<UnixTime>::new(0.0);
         let jd: Time<JD> = unix_zero.to::<JD>();
         let tai_minus_utc = 4.213_170_0 + (40_587.0 - 39_126.0) * 0.002_592;
@@ -569,9 +601,8 @@ mod tests {
 
     #[test]
     fn unix_2020_leap_seconds() {
-        // 2020-01-01 00:00:00 UTC: TAI−UTC = 37 s, TT−UTC = 69.184 s
-        // JD(UTC) of 2020-01-01 = 2458849.5
-        // Unix days = 2458849.5 - 2440587.5 = 18262.0
+        // Standard Unix/POSIX timestamp at 2020-01-01T00:00:00 UTC mapped
+        // through UTC→TAI→TT.
         let unix_2020 = Time::<UnixTime>::new(18262.0);
         let jd: Time<JD> = unix_2020.to::<JD>();
         let expected = Day::new(2_458_849.5) + Second::new(69.184).to::<qtty::unit::Day>();
@@ -642,17 +673,16 @@ mod tests {
 
     #[test]
     fn tcb_tdb_offset_at_j2000() {
-        // TCB runs significantly ahead of TDB.
-        // Offset ≈ L_B × (2451545 − 2443144.5) × 86400 s
-        //        ≈ 1.55e-8 × 8400.5 × 86400 ≈ 11.25 s
+        // The dominant TCB−TDB secular drift at J2000 is about 11.25 s; the
+        // smaller periodic TDB−TT term is already composed in the conversion.
         let tt = Time::<TT>::new(2_451_545.0);
-        let tcb: Time<TCB> = tt.to::<TCB>();
-        let offset_days = tcb.quantity() - tt.quantity();
+        let tdb: Time<TDB> = tt.to::<TDB>();
+        let tcb: Time<TCB> = tdb.to::<TCB>();
+        let offset_days = tcb.quantity() - tdb.quantity();
         let offset_secs = offset_days.to::<qtty::unit::Second>();
-        // TCB should be ahead of TT/TDB by ~11.25 s at J2000
         assert!(
             (offset_secs - Second::new(11.25)).abs() < Second::new(0.5),
-            "TCB−TT offset at J2000 = {} s, expected ~11.25 s",
+            "TCB−TDB offset at J2000 = {} s, expected ~11.25 s",
             offset_secs
         );
     }
@@ -666,6 +696,32 @@ mod tests {
             (back.quantity() - tt.quantity()).abs() < Day::new(1e-10),
             "TCB→TT roundtrip error: {} days",
             (back.quantity() - tt.quantity()).abs()
+        );
+    }
+
+    #[test]
+    fn tdb_tcb_roundtrip_j2000() {
+        // f64 day counts near JD 2.45e6 have ~4.66e-10 d granularity, so use
+        // a tolerance slightly above one ULP.
+        let tdb = Time::<TT>::new(2_451_545.0).to::<TDB>();
+        let tcb: Time<TCB> = tdb.to::<TCB>();
+        let back: Time<TDB> = tcb.to::<TDB>();
+        assert!(
+            (back.quantity() - tdb.quantity()).abs() < Day::new(1e-9),
+            "TDB→TCB→TDB roundtrip error at J2000: {} days",
+            (back.quantity() - tdb.quantity()).abs()
+        );
+    }
+
+    #[test]
+    fn tdb_tcb_roundtrip_future_sample() {
+        let tdb = Time::<TT>::new(2_469_807.5).to::<TDB>();
+        let tcb: Time<TCB> = tdb.to::<TCB>();
+        let back: Time<TDB> = tcb.to::<TDB>();
+        assert!(
+            (back.quantity() - tdb.quantity()).abs() < Day::new(1e-9),
+            "TDB→TCB→TDB roundtrip error at future sample: {} days",
+            (back.quantity() - tdb.quantity()).abs()
         );
     }
 
@@ -752,6 +808,31 @@ mod tests {
     }
 
     #[test]
+    fn unix_time_matches_standard_timestamps_across_leap_boundary() {
+        let before: DateTime<Utc> = DateTime::from_timestamp(1_483_228_799, 0).unwrap();
+        let after: DateTime<Utc> = DateTime::from_timestamp(1_483_228_800, 0).unwrap();
+
+        let before_unix = Time::<UnixTime>::from_utc(before);
+        let after_unix = Time::<UnixTime>::from_utc(after);
+        let before_unix_secs = before_unix.quantity().value() * 86_400.0;
+        let after_unix_secs = after_unix.quantity().value() * 86_400.0;
+        assert!((before_unix_secs - before.timestamp() as f64).abs() < 1e-3);
+        assert!((after_unix_secs - after.timestamp() as f64).abs() < 1e-3);
+
+        let unix_step = (after_unix.quantity() - before_unix.quantity()).to::<qtty::unit::Second>();
+        assert!((unix_step - Second::new(1.0)).abs() < Second::new(1e-3));
+
+        let before_tt = Time::<TT>::from_utc(before);
+        let after_tt = Time::<TT>::from_utc(after);
+        let before_tai = Time::<TAI>::from_utc(before);
+        let after_tai = Time::<TAI>::from_utc(after);
+        let elapsed_tt = (after_tt.quantity() - before_tt.quantity()).to::<qtty::unit::Second>();
+        let elapsed_tai = (after_tai.quantity() - before_tai.quantity()).to::<qtty::unit::Second>();
+        assert!((elapsed_tt - Second::new(2.0)).abs() < Second::new(1e-3));
+        assert!((elapsed_tai - Second::new(2.0)).abs() < Second::new(1e-3));
+    }
+
+    #[test]
     fn tai_minus_utc_1969_uses_frequency_adjusted_history() {
         // 1969-01-01 00:00:00 UTC corresponds to MJD 40222.
         // The official UTC-TAI history gives:
@@ -764,5 +845,15 @@ mod tests {
     #[test]
     fn tai_minus_utc_pre_1961_uses_legacy_approximation() {
         assert_eq!(tai_minus_utc(2_400_000.0), 10.0);
+    }
+
+    #[test]
+    fn tai_minus_utc_requires_utc_axis_jd() {
+        let utc: DateTime<Utc> = DateTime::from_timestamp(1_483_228_770, 0).unwrap();
+        let jd_utc = UNIX_EPOCH_JD.value() + utc.timestamp() as f64 / 86_400.0;
+        let jd_tt = Time::<TT>::from_utc(utc).value();
+
+        assert!((tai_minus_utc(jd_utc) - 36.0).abs() < 1e-12);
+        assert!((tai_minus_utc(jd_tt) - 37.0).abs() < 1e-12);
     }
 }

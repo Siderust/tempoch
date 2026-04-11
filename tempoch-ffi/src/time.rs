@@ -32,7 +32,7 @@ pub struct TempochUtc {
     pub hour: u8,
     /// Minute of the hour (0–59).
     pub minute: u8,
-    /// Second of the minute (0–59).
+    /// Second of the minute (0–60). `60` denotes a positive leap second.
     pub second: u8,
     /// Sub-second component in nanoseconds (0–999_999_999).
     pub nanosecond: u32,
@@ -41,12 +41,13 @@ pub struct TempochUtc {
 impl TempochUtc {
     pub(crate) fn into_chrono(self) -> Option<chrono::DateTime<Utc>> {
         let date = NaiveDate::from_ymd_opt(self.year, self.month as u32, self.day as u32)?;
-        let time = date.and_hms_nano_opt(
-            self.hour.into(),
-            self.minute.into(),
-            self.second.into(),
-            self.nanosecond,
-        )?;
+        let (second, nanosecond) = if self.second == 60 {
+            (59_u32, self.nanosecond.checked_add(1_000_000_000)?)
+        } else {
+            (self.second.into(), self.nanosecond)
+        };
+        let time =
+            date.and_hms_nano_opt(self.hour.into(), self.minute.into(), second, nanosecond)?;
         Some(chrono::DateTime::<Utc>::from_naive_utc_and_offset(
             time, Utc,
         ))
@@ -54,14 +55,19 @@ impl TempochUtc {
 
     pub(crate) fn from_chrono(dt: &chrono::DateTime<Utc>) -> Self {
         use chrono::{Datelike, Timelike};
+        let (second, nanosecond) = if dt.nanosecond() >= 1_000_000_000 {
+            (60_u8, dt.nanosecond() - 1_000_000_000)
+        } else {
+            (dt.second() as u8, dt.nanosecond())
+        };
         Self {
             year: dt.year(),
             month: dt.month() as u8,
             day: dt.day() as u8,
             hour: dt.hour() as u8,
             minute: dt.minute() as u8,
-            second: dt.second() as u8,
-            nanosecond: dt.nanosecond(),
+            second,
+            nanosecond,
         }
     }
 }
@@ -108,10 +114,13 @@ pub unsafe extern "C" fn tempoch_jd_from_utc(utc: TempochUtc, out: *mut f64) -> 
             return TempochStatus::NullPointer;
         }
         match utc.into_chrono() {
-            Some(dt) => {
-                unsafe { *out = time_from_utc_value(dt, TempochScaleId::JD) };
-                TempochStatus::Ok
-            }
+            Some(dt) => match time_from_utc_value(dt, TempochScaleId::JD) {
+                Some(value) => {
+                    unsafe { *out = value };
+                    TempochStatus::Ok
+                }
+                None => TempochStatus::UtcConversionFailed,
+            },
             None => TempochStatus::UtcConversionFailed,
         }
     })
@@ -160,10 +169,13 @@ pub unsafe extern "C" fn tempoch_mjd_from_utc(utc: TempochUtc, out: *mut f64) ->
             return TempochStatus::NullPointer;
         }
         match utc.into_chrono() {
-            Some(dt) => {
-                unsafe { *out = time_from_utc_value(dt, TempochScaleId::MJD) };
-                TempochStatus::Ok
-            }
+            Some(dt) => match time_from_utc_value(dt, TempochScaleId::MJD) {
+                Some(value) => {
+                    unsafe { *out = value };
+                    TempochStatus::Ok
+                }
+                None => TempochStatus::UtcConversionFailed,
+            },
             None => TempochStatus::UtcConversionFailed,
         }
     })
@@ -450,10 +462,13 @@ pub unsafe extern "C" fn tempoch_time_from_utc(
             Err(status) => return status,
         };
         match utc.into_chrono() {
-            Some(dt) => {
-                unsafe { *out = time_from_utc_value(dt, scale) };
-                TempochStatus::Ok
-            }
+            Some(dt) => match time_from_utc_value(dt, scale) {
+                Some(value) => {
+                    unsafe { *out = value };
+                    TempochStatus::Ok
+                }
+                None => TempochStatus::UtcConversionFailed,
+            },
             None => TempochStatus::UtcConversionFailed,
         }
     })
@@ -641,6 +656,22 @@ mod tests {
     }
 
     #[test]
+    fn into_chrono_accepts_leap_second() {
+        let utc = TempochUtc {
+            year: 2016,
+            month: 12,
+            day: 31,
+            hour: 23,
+            minute: 59,
+            second: 60,
+            nanosecond: 500_000_000,
+        };
+        let chrono = utc.into_chrono().expect("valid leap second encoding");
+        assert_eq!(chrono.timestamp(), 1_483_228_799);
+        assert_eq!(chrono.timestamp_subsec_nanos(), 1_500_000_000);
+    }
+
+    #[test]
     fn jd_new_carries_value() {
         assert_eq!(tempoch_jd_new(2_451_545.0), 2_451_545.0);
     }
@@ -677,6 +708,22 @@ mod tests {
     }
 
     #[test]
+    fn jd_from_utc_pre_1961_returns_conversion_failed() {
+        let before_history = TempochUtc {
+            year: 1960,
+            month: 12,
+            day: 31,
+            hour: 23,
+            minute: 59,
+            second: 59,
+            nanosecond: 0,
+        };
+        let mut out = 0.0;
+        let status = unsafe { tempoch_jd_from_utc(before_history, &mut out) };
+        assert_eq!(status, TempochStatus::UtcConversionFailed);
+    }
+
+    #[test]
     fn jd_from_utc_success() {
         let mut out = 0.0;
         let status = unsafe { tempoch_jd_from_utc(utc_j2000(), &mut out) };
@@ -706,6 +753,41 @@ mod tests {
         assert_eq!(out.year, 2000);
         assert_eq!(out.month, 1);
         assert_eq!(out.day, 1);
+    }
+
+    #[test]
+    fn jd_utc_leap_second_roundtrip() {
+        let leap = TempochUtc {
+            year: 2016,
+            month: 12,
+            day: 31,
+            hour: 23,
+            minute: 59,
+            second: 60,
+            nanosecond: 500_000_000,
+        };
+        let mut jd = 0.0;
+        let from_status = unsafe { tempoch_jd_from_utc(leap, &mut jd) };
+        assert_eq!(from_status, TempochStatus::Ok);
+
+        let mut back = TempochUtc {
+            year: 0,
+            month: 0,
+            day: 0,
+            hour: 0,
+            minute: 0,
+            second: 0,
+            nanosecond: 0,
+        };
+        let to_status = unsafe { tempoch_jd_to_utc(jd, &mut back) };
+        assert_eq!(to_status, TempochStatus::Ok);
+        assert_eq!(back.year, 2016);
+        assert_eq!(back.month, 12);
+        assert_eq!(back.day, 31);
+        assert_eq!(back.hour, 23);
+        assert_eq!(back.minute, 59);
+        assert_eq!(back.second, 60);
+        assert!((back.nanosecond as i64 - 500_000_000).abs() < 50_000);
     }
 
     #[test]

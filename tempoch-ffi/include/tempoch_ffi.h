@@ -69,7 +69,7 @@ typedef struct tempoch_utc_t {
   uint8_t hour;
   // Minute of the hour (0–59).
   uint8_t minute;
-  // Second of the minute (0–59).
+  // Second of the minute (0–60). `60` denotes a positive leap second.
   uint8_t second;
   // Sub-second component in nanoseconds (0–999_999_999).
   uint32_t nanosecond;

@@ -15,6 +15,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - `tempoch-core` now compiles generated UTC-TAI history and modern Delta T tables from official upstream sources instead of relying on hand-maintained constants.
 - `tai_minus_utc()` now uses the official pre-1972 UTC frequency-offset history from 1961 onward, while preserving the legacy 10 s fallback for earlier dates.
+- `TCB` conversions now compose the linear `TCB ↔ TDB` relation with the existing periodic `TDB ↔ TT` correction, eliminating the previous millisecond-scale `TDB ↔ TCB` round-trip drift.
+- Clarified `UnixTime` as the standard Unix / POSIX timestamp contract mapped to physical instants through `UTC → TAI → TT`; docs and examples now explicitly note that equal Unix increments are not guaranteed to equal elapsed SI seconds across leap-second insertions.
+- Clarified the public scientific wording for `TCG`, `UT1`, `ΔT`, and `tai_minus_utc()`, and documented the existing modern ΔT horizon at MJD 63871 (`2033-10-01`) plus the pre-1961 `TAI−UTC = 10 s` fallback.
 
 ## [0.4.1 - 2026-03-31]
 

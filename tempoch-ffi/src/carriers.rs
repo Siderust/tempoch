@@ -127,35 +127,35 @@ pub(crate) fn scale_value_to_jd(value: f64, scale: TempochScaleId) -> f64 {
 }
 
 /// Convert a UTC instant to a native scalar in the requested scale.
-pub(crate) fn time_from_utc_value(datetime: DateTime<Utc>, scale: TempochScaleId) -> f64 {
-    match scale {
-        TempochScaleId::JD => Time::<JD>::from_utc(datetime).value(),
-        TempochScaleId::MJD => Time::<MJD>::from_utc(datetime).value(),
-        TempochScaleId::TDB => Time::<TDB>::from_utc(datetime).value(),
-        TempochScaleId::TT => Time::<TT>::from_utc(datetime).value(),
-        TempochScaleId::TAI => Time::<TAI>::from_utc(datetime).value(),
-        TempochScaleId::TCG => Time::<TCG>::from_utc(datetime).value(),
-        TempochScaleId::TCB => Time::<TCB>::from_utc(datetime).value(),
-        TempochScaleId::GPS => Time::<GPS>::from_utc(datetime).value(),
-        TempochScaleId::UT => Time::<UT>::from_utc(datetime).value(),
-        TempochScaleId::JDE => Time::<JDE>::from_utc(datetime).value(),
+pub(crate) fn time_from_utc_value(datetime: DateTime<Utc>, scale: TempochScaleId) -> Option<f64> {
+    Some(match scale {
+        TempochScaleId::JD => Time::<JD>::try_from_utc(datetime).ok()?.value(),
+        TempochScaleId::MJD => Time::<MJD>::try_from_utc(datetime).ok()?.value(),
+        TempochScaleId::TDB => Time::<TDB>::try_from_utc(datetime).ok()?.value(),
+        TempochScaleId::TT => Time::<TT>::try_from_utc(datetime).ok()?.value(),
+        TempochScaleId::TAI => Time::<TAI>::try_from_utc(datetime).ok()?.value(),
+        TempochScaleId::TCG => Time::<TCG>::try_from_utc(datetime).ok()?.value(),
+        TempochScaleId::TCB => Time::<TCB>::try_from_utc(datetime).ok()?.value(),
+        TempochScaleId::GPS => Time::<GPS>::try_from_utc(datetime).ok()?.value(),
+        TempochScaleId::UT => Time::<UT>::try_from_utc(datetime).ok()?.value(),
+        TempochScaleId::JDE => Time::<JDE>::try_from_utc(datetime).ok()?.value(),
         TempochScaleId::UnixTime => utc_to_unix_seconds(datetime),
-    }
+    })
 }
 
 /// Convert a native scalar in the requested scale to UTC.
 pub(crate) fn time_to_utc_value(value: f64, scale: TempochScaleId) -> Option<DateTime<Utc>> {
     match scale {
-        TempochScaleId::JD => Time::<JD>::new(value).to_utc(),
-        TempochScaleId::MJD => Time::<MJD>::new(value).to_utc(),
-        TempochScaleId::TDB => Time::<TDB>::new(value).to_utc(),
-        TempochScaleId::TT => Time::<TT>::new(value).to_utc(),
-        TempochScaleId::TAI => Time::<TAI>::new(value).to_utc(),
-        TempochScaleId::TCG => Time::<TCG>::new(value).to_utc(),
-        TempochScaleId::TCB => Time::<TCB>::new(value).to_utc(),
-        TempochScaleId::GPS => Time::<GPS>::new(value).to_utc(),
-        TempochScaleId::UT => Time::<UT>::new(value).to_utc(),
-        TempochScaleId::JDE => Time::<JDE>::new(value).to_utc(),
+        TempochScaleId::JD => Time::<JD>::new(value).try_to_utc().ok(),
+        TempochScaleId::MJD => Time::<MJD>::new(value).try_to_utc().ok(),
+        TempochScaleId::TDB => Time::<TDB>::new(value).try_to_utc().ok(),
+        TempochScaleId::TT => Time::<TT>::new(value).try_to_utc().ok(),
+        TempochScaleId::TAI => Time::<TAI>::new(value).try_to_utc().ok(),
+        TempochScaleId::TCG => Time::<TCG>::new(value).try_to_utc().ok(),
+        TempochScaleId::TCB => Time::<TCB>::new(value).try_to_utc().ok(),
+        TempochScaleId::GPS => Time::<GPS>::new(value).try_to_utc().ok(),
+        TempochScaleId::UT => Time::<UT>::new(value).try_to_utc().ok(),
+        TempochScaleId::JDE => Time::<JDE>::new(value).try_to_utc().ok(),
         TempochScaleId::UnixTime => unix_seconds_to_utc(value),
     }
 }

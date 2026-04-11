@@ -14,7 +14,8 @@ pub(crate) struct UtcTaiSegment {
 }
 
 pub(crate) const PRE_1961_TAI_MINUS_UTC_APPROX: f64 = 10.0;
-pub(crate) const UTC_TAI_HISTORY_URL: &str = "https://hpiers.obspm.fr/eoppc/bul/bulc/UTC-TAI.history";
+pub(crate) const UTC_TAI_HISTORY_URL: &str =
+    "https://hpiers.obspm.fr/eoppc/bul/bulc/UTC-TAI.history";
 pub(crate) const DELTA_T_OBSERVED_URL: &str = "https://maia.usno.navy.mil/ser7/deltat.data";
 pub(crate) const DELTA_T_PREDICTIONS_URL: &str = "https://maia.usno.navy.mil/ser7/deltat.preds";
 pub(crate) const UTC_TAI_HISTORY_START_MJD: i32 = 37300;

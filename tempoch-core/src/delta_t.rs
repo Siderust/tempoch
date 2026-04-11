@@ -3,14 +3,15 @@
 
 //! # ΔT (Delta T) — UT↔TT Correction Layer
 //!
-//! This module implements a piecewise model for **ΔT = TT − UT** combining:
+//! This module implements a piecewise model for **ΔT = TT − UT1** combining:
 //!
 //! * **Pre-1620**: Stephenson & Houlden (1986) quadratic approximations.
 //! * **1620–1973**: Biennial interpolation table (Meeus ch. 9).
 //! * **1973 onward**: generated modern data from USNO monthly determinations
 //!   plus the published long-term prediction table compiled into the crate.
-//! * **Beyond the last published prediction**: linear extrapolation using the
-//!   last two generated future points.
+//! * **Beyond the last published prediction**: quadratic continuation of the
+//!   official prediction tail using a least-squares fit over the final
+//!   quarterly points.
 //!
 //! ## Integration with Time Scales
 //!
@@ -47,8 +48,8 @@
 //! ## Valid Time Range
 //! The historical model is valid from ancient times onward. Modern dates use
 //! the generated USNO data compiled into the crate; the effective prediction
-//! horizon is the last generated point in `deltat.preds`, after which a local
-//! linear extrapolation is used.
+//! horizon is the last generated point in `deltat.preds`, after which a
+//! quadratic continuation of the official prediction tail is used.
 
 use super::instant::Time;
 use super::scales::UT;
@@ -176,15 +177,78 @@ fn delta_t_modern_series(jd: JulianDate) -> Second {
 }
 
 /// **Year > generated prediction horizon**
-/// Linear extrapolation using the slope implied by the last two generated
-/// future points.
+/// Quadratic continuation of the official prediction tail.
+///
+/// This is still an approximation, but it is materially more stable than a
+/// last-two-points linear continuation because it preserves the smooth
+/// curvature of the published prediction series near the extrapolation
+/// boundary.
+const DELTA_T_EXTRAPOLATION_TAIL_POINTS: usize = 12;
+
+fn quadratic_tail_fit_delta_t_seconds(mjd: f64) -> f64 {
+    let tail_len = MODERN_DELTA_T_POINTS
+        .len()
+        .min(DELTA_T_EXTRAPOLATION_TAIL_POINTS)
+        .max(3);
+    let tail = &MODERN_DELTA_T_POINTS[MODERN_DELTA_T_POINTS.len() - tail_len..];
+    let origin = tail[tail.len() - 1].0;
+
+    let (mut s0, mut s1, mut s2, mut s3, mut s4) = (0.0, 0.0, 0.0, 0.0, 0.0);
+    let (mut t0, mut t1, mut t2) = (0.0, 0.0, 0.0);
+
+    for &(sample_mjd, delta_t) in tail {
+        let x = sample_mjd - origin;
+        let x2 = x * x;
+        s0 += 1.0;
+        s1 += x;
+        s2 += x2;
+        s3 += x2 * x;
+        s4 += x2 * x2;
+        t0 += delta_t;
+        t1 += x * delta_t;
+        t2 += x2 * delta_t;
+    }
+
+    let mut system = [[s0, s1, s2, t0], [s1, s2, s3, t1], [s2, s3, s4, t2]];
+
+    for pivot in 0..3 {
+        let mut pivot_row = pivot;
+        for row in (pivot + 1)..3 {
+            if system[row][pivot].abs() > system[pivot_row][pivot].abs() {
+                pivot_row = row;
+            }
+        }
+        if pivot_row != pivot {
+            system.swap(pivot, pivot_row);
+        }
+
+        let pivot_value = system[pivot][pivot];
+        for column in pivot..4 {
+            system[pivot][column] /= pivot_value;
+        }
+
+        for row in 0..3 {
+            if row == pivot {
+                continue;
+            }
+            let factor = system[row][pivot];
+            for column in pivot..4 {
+                system[row][column] -= factor * system[pivot][column];
+            }
+        }
+    }
+
+    let a = system[0][3];
+    let b = system[1][3];
+    let c = system[2][3];
+    let x = mjd - origin;
+    a + b * x + c * x * x
+}
+
 #[inline]
 fn delta_t_extrapolated(jd: JulianDate) -> Second {
     let mjd = jd.value() - 2_400_000.5;
-    let (mjd0, dt0) = MODERN_DELTA_T_POINTS[MODERN_DELTA_T_POINTS.len() - 2];
-    let (mjd1, dt1) = MODERN_DELTA_T_POINTS[MODERN_DELTA_T_POINTS.len() - 1];
-    let slope = (dt1 - dt0) / (mjd1 - mjd0);
-    Second::new(dt1 + (mjd - mjd1) * slope)
+    Second::new(quadratic_tail_fit_delta_t_seconds(mjd))
 }
 
 #[inline]
@@ -209,7 +273,7 @@ pub(crate) fn delta_t_seconds_from_ut(jd_ut: JulianDate) -> Second {
 // ── Time<UT> convenience method ───────────────────────────────────────────
 
 impl Time<UT> {
-    /// Returns **ΔT = TT − UT** in seconds for this UT epoch.
+    /// Returns **ΔT = TT − UT1** in seconds for this UT epoch.
     ///
     /// This is a convenience accessor; the same correction is applied
     /// automatically when converting to any TT-based scale (`.to::<JD>()`).
@@ -224,6 +288,63 @@ mod tests {
     use super::*;
     use crate::generated::time_data::MODERN_DELTA_T_POINTS;
     use qtty::Day;
+
+    fn quadratic_tail_fit_expected(mjd: f64) -> f64 {
+        let tail_len = MODERN_DELTA_T_POINTS
+            .len()
+            .min(DELTA_T_EXTRAPOLATION_TAIL_POINTS)
+            .max(3);
+        let tail = &MODERN_DELTA_T_POINTS[MODERN_DELTA_T_POINTS.len() - tail_len..];
+        let origin = tail[tail.len() - 1].0;
+
+        let (mut s0, mut s1, mut s2, mut s3, mut s4) = (0.0, 0.0, 0.0, 0.0, 0.0);
+        let (mut t0, mut t1, mut t2) = (0.0, 0.0, 0.0);
+
+        for &(sample_mjd, delta_t) in tail {
+            let x = sample_mjd - origin;
+            let x2 = x * x;
+            s0 += 1.0;
+            s1 += x;
+            s2 += x2;
+            s3 += x2 * x;
+            s4 += x2 * x2;
+            t0 += delta_t;
+            t1 += x * delta_t;
+            t2 += x2 * delta_t;
+        }
+
+        let mut system = [[s0, s1, s2, t0], [s1, s2, s3, t1], [s2, s3, s4, t2]];
+
+        for pivot in 0..3 {
+            let mut pivot_row = pivot;
+            for row in (pivot + 1)..3 {
+                if system[row][pivot].abs() > system[pivot_row][pivot].abs() {
+                    pivot_row = row;
+                }
+            }
+            if pivot_row != pivot {
+                system.swap(pivot, pivot_row);
+            }
+
+            let pivot_value = system[pivot][pivot];
+            for column in pivot..4 {
+                system[pivot][column] /= pivot_value;
+            }
+
+            for row in 0..3 {
+                if row == pivot {
+                    continue;
+                }
+                let factor = system[row][pivot];
+                for column in pivot..4 {
+                    system[row][column] -= factor * system[pivot][column];
+                }
+            }
+        }
+
+        let x = mjd - origin;
+        system[0][3] + system[1][3] * x + system[2][3] * x * x
+    }
 
     #[test]
     fn delta_t_ancient_sample() {
@@ -294,11 +415,9 @@ mod tests {
     }
 
     #[test]
-    fn delta_t_extrapolated_uses_last_generated_slope() {
-        let (mjd0, dt0) = MODERN_DELTA_T_POINTS[MODERN_DELTA_T_POINTS.len() - 2];
-        let (mjd1, dt1) = MODERN_DELTA_T_POINTS[MODERN_DELTA_T_POINTS.len() - 1];
-        let future_mjd = mjd1 + (mjd1 - mjd0);
-        let expected = dt1 + (dt1 - dt0);
+    fn delta_t_extrapolated_matches_quadratic_tail_fit() {
+        let future_mjd = MODERN_DELTA_T_POINTS[MODERN_DELTA_T_POINTS.len() - 1].0 + 365.25;
+        let expected = quadratic_tail_fit_expected(future_mjd);
         let dt = delta_t_seconds_from_ut(JulianDate::new(future_mjd + 2_400_000.5));
         assert!(
             (dt - Second::new(expected)).abs() < Second::new(1e-9),

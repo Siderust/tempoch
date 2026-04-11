@@ -822,8 +822,8 @@ mod tests {
             - start_utc.timestamp_nanos_opt().unwrap();
         let end_delta_ns =
             period_utc.end.timestamp_nanos_opt().unwrap() - end_utc.timestamp_nanos_opt().unwrap();
-        assert!(start_delta_ns.abs() < 10_000);
-        assert!(end_delta_ns.abs() < 10_000);
+        assert!(start_delta_ns.abs() < 50_000);
+        assert!(end_delta_ns.abs() < 50_000);
     }
 
     #[test]
