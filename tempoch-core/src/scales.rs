@@ -31,7 +31,7 @@ use super::instant::TimeScale;
 use crate::generated::time_data::{
     PRE_1961_TAI_MINUS_UTC_APPROX, UTC_TAI_HISTORY_START_MJD, UTC_TAI_SEGMENTS,
 };
-use qtty::Day;
+use qtty::{Day, Second};
 
 // ---------------------------------------------------------------------------
 // Epoch counters
@@ -140,7 +140,7 @@ pub(crate) fn tdb_minus_tt_days(jd_tt: Day) -> Day {
     let om = (125.0445550 - 1934.1362091 * t).to_radians();
 
     // TDB − TT in seconds (Fairhead & Bretagnon largest terms):
-    let dt_sec = 0.001_657 * (m_e + 0.01671 * m_e.sin()).sin()
+    let dt_sec = 0.001_657 * m_e.sin()
         + 0.000_022 * (d - m_e).sin()
         + 0.000_014 * (2.0 * d).sin()
         + 0.000_005 * m_j.sin()
@@ -352,6 +352,12 @@ impl TimeScale for TCB {
 
 /// GPS Time — continuous day count since 1980-01-06T00:00:00 UTC.
 ///
+/// # ⚠ Important: values are in days, not seconds
+///
+/// [`Time::<GPS>::new(1.0)`](super::instant::Time::new) creates an instant
+/// **one day** after the GPS epoch.  If you have a GPS timestamp in seconds,
+/// use [`from_gps_seconds`](super::instant::Time::from_gps_seconds) instead.
+///
 /// GPS time has a fixed offset from TAI: `GPS = TAI − 19 s`.
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub struct GPS;
@@ -376,6 +382,13 @@ impl TimeScale for GPS {
 }
 
 /// Unix Time — standard Unix / POSIX timestamps stored as **days**.
+///
+/// # ⚠ Important: values are in days, not seconds
+///
+/// [`Time::<UnixTime>::new(1.0)`](super::instant::Time::new) creates an
+/// instant **one day** after the Unix epoch, not one second.  If you have
+/// a conventional Unix timestamp in seconds, use
+/// [`from_unix_seconds`](super::instant::Time::from_unix_seconds) instead.
 ///
 /// This scale maps ordinary Unix / POSIX timestamps to physical instants
 /// through the compiled `UTC → TAI → TT` history. It therefore round-trips
@@ -439,7 +452,7 @@ pub fn tai_minus_utc(jd_utc: f64) -> f64 {
 
 /// TT = TAI + 32.184 s, and TAI = UTC + leap_seconds.
 /// So TT = UTC + leap_seconds + 32.184 s.
-const TT_MINUS_TAI_SECS: f64 = 32.184;
+pub(crate) const TT_MINUS_TAI_SECS: f64 = 32.184;
 
 impl TimeScale for UnixTime {
     const LABEL: &'static str = "Unix";
@@ -553,6 +566,105 @@ macro_rules! impl_time_conversions {
 }
 
 impl_time_conversions!(JD, JDE, MJD, TDB, TT, TAI, TCG, TCB, GPS, UnixTime, UT);
+
+// ---------------------------------------------------------------------------
+// UnixTime convenience constructors (seconds ↔ days)
+// ---------------------------------------------------------------------------
+
+impl super::instant::Time<UnixTime> {
+    /// Create from a Unix timestamp expressed in **seconds** since
+    /// 1970-01-01T00:00:00 UTC.
+    ///
+    /// This is the constructor most users expect: it accepts the same kind
+    /// of value returned by C `time()`, Python `time.time()`, or
+    /// JavaScript `Date.now() / 1000`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use tempoch_core as tempoch;
+    /// use tempoch::{Time, UnixTime};
+    /// use qtty::Second;
+    ///
+    /// // One day = 86 400 seconds
+    /// let t = Time::<UnixTime>::from_unix_seconds(Second::new(86_400.0));
+    /// assert!((t.value() - 1.0).abs() < 1e-15);
+    /// ```
+    #[inline]
+    pub fn from_unix_seconds(seconds: Second) -> Self {
+        Self::from_days(seconds.to::<qtty::unit::Day>())
+    }
+
+    /// Create from a Unix timestamp in seconds, rejecting non-finite values.
+    ///
+    /// Returns [`super::instant::NonFiniteTimeError`] if `seconds` is `NaN`,
+    /// `+∞`, or `−∞`.
+    #[inline]
+    pub fn try_from_unix_seconds(
+        seconds: Second,
+    ) -> Result<Self, super::instant::NonFiniteTimeError> {
+        Self::try_from_days(seconds.to::<qtty::unit::Day>())
+    }
+
+    /// Return the stored value as Unix seconds since 1970-01-01T00:00:00 UTC.
+    ///
+    /// This is the inverse of [`from_unix_seconds`](Self::from_unix_seconds).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use tempoch_core as tempoch;
+    /// use tempoch::{Time, UnixTime};
+    /// use qtty::Second;
+    ///
+    /// let t = Time::<UnixTime>::from_unix_seconds(Second::new(1_700_000_000.0));
+    /// assert!((t.to_unix_seconds().value() - 1_700_000_000.0).abs() < 1e-6);
+    /// ```
+    #[inline]
+    pub fn to_unix_seconds(&self) -> Second {
+        self.quantity().to::<qtty::unit::Second>()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// GPS convenience constructors (seconds ↔ days)
+// ---------------------------------------------------------------------------
+
+impl super::instant::Time<GPS> {
+    /// Create from a GPS timestamp expressed in **seconds** since the GPS
+    /// epoch (1980-01-06T00:00:00 UTC).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use tempoch_core as tempoch;
+    /// use tempoch::{Time, GPS};
+    /// use qtty::Second;
+    ///
+    /// let t = Time::<GPS>::from_gps_seconds(Second::new(86_400.0));
+    /// assert!((t.value() - 1.0).abs() < 1e-15);
+    /// ```
+    #[inline]
+    pub fn from_gps_seconds(seconds: Second) -> Self {
+        Self::from_days(seconds.to::<qtty::unit::Day>())
+    }
+
+    /// Create from a GPS timestamp in seconds, rejecting non-finite values.
+    #[inline]
+    pub fn try_from_gps_seconds(
+        seconds: Second,
+    ) -> Result<Self, super::instant::NonFiniteTimeError> {
+        Self::try_from_days(seconds.to::<qtty::unit::Day>())
+    }
+
+    /// Return the stored value as GPS seconds since the GPS epoch.
+    ///
+    /// This is the inverse of [`from_gps_seconds`](Self::from_gps_seconds).
+    #[inline]
+    pub fn to_gps_seconds(&self) -> Second {
+        self.quantity().to::<qtty::unit::Second>()
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -829,10 +941,10 @@ mod tests {
 
         let before_unix = Time::<UnixTime>::from_utc(before);
         let after_unix = Time::<UnixTime>::from_utc(after);
-        let before_unix_secs = before_unix.quantity().value() * 86_400.0;
-        let after_unix_secs = after_unix.quantity().value() * 86_400.0;
-        assert!((before_unix_secs - before.timestamp() as f64).abs() < 1e-3);
-        assert!((after_unix_secs - after.timestamp() as f64).abs() < 1e-3);
+        let before_unix_secs = before_unix.to_unix_seconds();
+        let after_unix_secs = after_unix.to_unix_seconds();
+        assert!((before_unix_secs - Second::new(before.timestamp() as f64)).abs() < Second::new(1e-3));
+        assert!((after_unix_secs - Second::new(after.timestamp() as f64)).abs() < Second::new(1e-3));
 
         let unix_step = (after_unix.quantity() - before_unix.quantity()).to::<qtty::unit::Second>();
         assert!((unix_step - Second::new(1.0)).abs() < Second::new(1e-3));
@@ -870,5 +982,59 @@ mod tests {
 
         assert!((tai_minus_utc(jd_utc) - 36.0).abs() < 1e-12);
         assert!((tai_minus_utc(jd_tt) - 37.0).abs() < 1e-12);
+    }
+
+    // ── UnixTime seconds constructors ────────────────────────────────
+
+    #[test]
+    fn unix_from_seconds_one_day() {
+        let t = Time::<UnixTime>::from_unix_seconds(Second::new(86_400.0));
+        assert!((t.value() - 1.0).abs() < 1e-15);
+    }
+
+    #[test]
+    fn unix_from_seconds_epoch_identity() {
+        let t = Time::<UnixTime>::from_unix_seconds(Second::new(0.0));
+        assert!((t.value()).abs() < 1e-15);
+    }
+
+    #[test]
+    fn unix_seconds_roundtrip() {
+        let secs = Second::new(1_700_000_000.0);
+        let t = Time::<UnixTime>::from_unix_seconds(secs);
+        assert!((t.to_unix_seconds() - secs).abs() < Second::new(1e-4));
+    }
+
+    #[test]
+    fn unix_try_from_seconds_rejects_nan() {
+        assert!(Time::<UnixTime>::try_from_unix_seconds(Second::new(f64::NAN)).is_err());
+    }
+
+    #[test]
+    fn unix_from_seconds_matches_new_days() {
+        let days = Day::new(18_262.0);
+        let from_new = Time::<UnixTime>::new(days.value());
+        let from_secs = Time::<UnixTime>::from_unix_seconds(days.to::<qtty::unit::Second>());
+        assert!((from_new.value() - from_secs.value()).abs() < 1e-15);
+    }
+
+    // ── GPS seconds constructors ─────────────────────────────────────
+
+    #[test]
+    fn gps_from_seconds_one_day() {
+        let t = Time::<GPS>::from_gps_seconds(Second::new(86_400.0));
+        assert!((t.value() - 1.0).abs() < 1e-15);
+    }
+
+    #[test]
+    fn gps_seconds_roundtrip() {
+        let secs = Second::new(1_000_000_000.0);
+        let t = Time::<GPS>::from_gps_seconds(secs);
+        assert!((t.to_gps_seconds() - secs).abs() < Second::new(1e-4));
+    }
+
+    #[test]
+    fn gps_try_from_seconds_rejects_infinity() {
+        assert!(Time::<GPS>::try_from_gps_seconds(Second::new(f64::INFINITY)).is_err());
     }
 }

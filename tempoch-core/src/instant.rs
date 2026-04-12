@@ -13,6 +13,7 @@
 //! (e.g. [`Time::<JD>::julian_centuries()`]) are placed in inherent `impl`
 //! blocks gated on the concrete marker type.
 
+use super::scales::TT_MINUS_TAI_SECS;
 use chrono::{DateTime, Utc};
 use qtty::*;
 use std::marker::PhantomData;
@@ -110,7 +111,6 @@ impl std::fmt::Display for UtcConversionError {
 
 impl std::error::Error for UtcConversionError {}
 
-const TT_MINUS_TAI_SECS: f64 = 32.184;
 const SECONDS_PER_DAY: f64 = 86_400.0;
 const NANOS_PER_SECOND: f64 = 1_000_000_000.0;
 const JD_MINUS_MJD: f64 = 2_400_000.5;
@@ -685,7 +685,7 @@ mod tests {
     #[test]
     fn test_julian_conversions() {
         let jd = Time::<JD>::J2000 + Day::new(365_250.0);
-        assert!((jd.julian_millennias() - Millennium::new(1.0)).abs() < Millennium::new(1e-12));
+        assert!((jd.julian_millennia() - Millennium::new(1.0)).abs() < Millennium::new(1e-12));
         assert!((jd.julian_centuries() - Century::new(10.0)).abs() < Century::new(1e-12));
         assert!((jd.julian_years() - JulianYear::new(1000.0)).abs() < JulianYear::new(1e-9));
     }

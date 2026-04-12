@@ -58,6 +58,7 @@ use crate::generated::time_data::{
     MODERN_DELTA_T_END_MJD, MODERN_DELTA_T_POINTS, MODERN_DELTA_T_START_MJD,
 };
 use qtty::{Day, Second};
+use std::sync::OnceLock;
 
 /// Total number of tabulated terms (biennial 1620–1992).
 const TERMS: usize = 187;
@@ -154,14 +155,7 @@ fn interpolate_modern_delta_t(mjd: f64) -> Option<Second> {
     }
 
     let (mjd0, dt0) = MODERN_DELTA_T_POINTS[lo];
-    if (mjd - mjd0).abs() < f64::EPSILON {
-        return Some(Second::new(dt0));
-    }
-
     let (mjd1, dt1) = MODERN_DELTA_T_POINTS[hi];
-    if (mjd - mjd1).abs() < f64::EPSILON {
-        return Some(Second::new(dt1));
-    }
 
     Some(Second::new(
         dt0 + (mjd - mjd0) * (dt1 - dt0) / (mjd1 - mjd0),
@@ -185,7 +179,11 @@ fn delta_t_modern_series(jd: JulianDate) -> Second {
 /// boundary.
 const DELTA_T_EXTRAPOLATION_TAIL_POINTS: usize = 12;
 
-fn quadratic_tail_fit_delta_t_seconds(mjd: f64) -> f64 {
+/// Quadratic coefficients `(a, b, c, origin)` for the prediction-tail fit.
+/// Computed once from the compiled data; cached for all subsequent calls.
+static TAIL_FIT: OnceLock<(f64, f64, f64, f64)> = OnceLock::new();
+
+fn compute_tail_fit_coefficients() -> (f64, f64, f64, f64) {
     let tail_len = MODERN_DELTA_T_POINTS
         .len()
         .clamp(3, DELTA_T_EXTRAPOLATION_TAIL_POINTS);
@@ -238,9 +236,11 @@ fn quadratic_tail_fit_delta_t_seconds(mjd: f64) -> f64 {
         }
     }
 
-    let a = system[0][3];
-    let b = system[1][3];
-    let c = system[2][3];
+    (system[0][3], system[1][3], system[2][3], origin)
+}
+
+fn quadratic_tail_fit_delta_t_seconds(mjd: f64) -> f64 {
+    let &(a, b, c, origin) = TAIL_FIT.get_or_init(compute_tail_fit_coefficients);
     let x = mjd - origin;
     a + b * x + c * x * x
 }

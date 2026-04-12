@@ -54,6 +54,25 @@
 //! conversions reject those dates. The compiled modern ΔT series runs through
 //! MJD 63871 (`2033-10-01`) and uses a quadratic continuation of the official
 //! prediction tail after that point.
+//!
+//! # Precision limits
+//!
+//! All time values are stored as a single `f64` day count. Near J2000
+//! (JD 2 451 545.0) one ULP ≈ 4.66 × 10⁻¹⁰ d ≈ **40 μs**. This sets
+//! the hard precision ceiling for all scales and conversions.
+//!
+//! # Scales vs representations
+//!
+//! The [`TimeScale`] markers fall into three conceptual categories:
+//!
+//! * **Physical scales** (`TT`, `TAI`, `TDB`, `TCG`, `TCB`) — define what
+//!   a clock measures.
+//! * **Epoch counters** (`JD`, `JDE`, `MJD`, `GPS`, `UnixTime`) — define
+//!   how a physical instant is encoded as a number.
+//! * **Earth-rotation scales** (`UT`) — tied to a modelled observable.
+//!
+//! The unified trait is intentional: all categories share the same
+//! `to_jd_tt` / `from_jd_tt` contract.
 
 pub use tempoch_core::{
     complement_within, intersect_periods, normalize_periods, tai_minus_utc, validate_period_list,

@@ -7,6 +7,20 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+
+- **TDB−TT formula**: Removed a spurious Kepler equation correction (`sin(M + e·sin(M))` → `sin(M)`) from the dominant term of the Fairhead & Bretagnon (1990) expression. The `e·sin(M)` factor was converting mean anomaly to eccentric anomaly, which is not part of the standard TDB−TT Fourier series and introduced a ~28 μs systematic error.
+
+### Changed
+
+- **ΔT extrapolation performance**: The quadratic tail-fit coefficients for post-horizon ΔT extrapolation are now computed once and cached via `OnceLock`, instead of solving a 3×3 Gaussian elimination on every call.
+- **Deduplicated `TT_MINUS_TAI_SECS`**: The `32.184 s` constant is now defined once in `scales.rs` (`pub(crate)`) and imported by `instant.rs`, eliminating a duplicate definition that could drift.
+- **Removed dead `f64::EPSILON` comparisons** in the modern ΔT interpolator. The exact-match shortcuts against MJD-scale values could never trigger (1 ULP at MJD ~50 000 is ≈ 7×10⁻¹² ≫ `f64::EPSILON`); removed in favour of the unconditional linear interpolation that was already the effective code path.
+
+### Deprecated
+
+- `Time::<JD>::julian_millennias()` is deprecated in favour of `julian_millennia()` (correct Latin plural). The old name remains available with a `#[deprecated]` attribute.
+
 ### Added
 
 - Automated time-data refresh tooling via `scripts/update_time_data.py` and a scheduled GitHub Actions workflow.

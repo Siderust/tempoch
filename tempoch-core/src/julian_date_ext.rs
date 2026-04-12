@@ -24,8 +24,15 @@ impl Time<JD> {
 
     /// Julian millennia since J2000.0 (used by VSOP87).
     #[inline]
-    pub fn julian_millennias(&self) -> Millennium {
+    pub fn julian_millennia(&self) -> Millennium {
         Millennium::new(((*self - Self::J2000) / Self::JULIAN_MILLENNIUM).value())
+    }
+
+    /// Deprecated: use [`julian_millennia`](Self::julian_millennia) instead.
+    #[deprecated(since = "0.5.0", note = "renamed to `julian_millennia` (correct Latin plural)")]
+    #[inline]
+    pub fn julian_millennias(&self) -> Millennium {
+        self.julian_millennia()
     }
 
     /// Julian centuries since J2000.0 (used by nutation, precession, sidereal time).
@@ -115,7 +122,7 @@ impl From<Millennium> for Time<JD> {
 
 impl From<Time<JD>> for Millennium {
     fn from(jd: Time<JD>) -> Self {
-        jd.julian_millennias()
+        jd.julian_millennia()
     }
 }
 

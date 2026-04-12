@@ -395,16 +395,42 @@ pub extern "C" fn tempoch_jde_to_jd(jde: f64) -> f64 {
     scale_value_to_jd(jde, TempochScaleId::JDE)
 }
 
-/// Convert a Julian Date (TT) to Unix time in seconds since 1970-01-01T00:00:00 UTC.
+/// Convert a Julian Date (TT) to Unix time in **seconds** since 1970-01-01T00:00:00 UTC.
+///
+/// The result is a standard Unix timestamp suitable for passing to C `gmtime()`,
+/// Python `datetime.fromtimestamp()`, etc. Internally the conversion routes
+/// through the compiled UTC-TAI history.
 #[no_mangle]
 pub extern "C" fn tempoch_jd_to_unix(jd: f64) -> f64 {
     jd_to_scale_value(jd, TempochScaleId::UnixTime)
 }
 
-/// Convert Unix time in seconds back to Julian Date (TT).
+/// Convert Unix time in **seconds** since 1970-01-01T00:00:00 UTC back to Julian Date (TT).
+///
+/// Accepts a standard Unix timestamp (seconds, not days). The conversion
+/// uses the compiled UTC-TAI history for leap-second handling.
 #[no_mangle]
 pub extern "C" fn tempoch_unix_to_jd(unix: f64) -> f64 {
     scale_value_to_jd(unix, TempochScaleId::UnixTime)
+}
+
+/// Create a Unix timestamp from seconds since 1970-01-01T00:00:00 UTC.
+///
+/// This is a convenience identity for the C ABI: the returned `double` is
+/// the same value, confirming that the FFI Unix convention is **seconds**.
+/// Use [`tempoch_unix_to_jd`] when you need the corresponding Julian Date.
+#[no_mangle]
+pub extern "C" fn tempoch_unix_from_seconds(seconds: f64) -> f64 {
+    seconds
+}
+
+/// Extract the Unix timestamp in seconds from a value previously obtained
+/// via [`tempoch_jd_to_unix`] or [`tempoch_unix_from_seconds`].
+///
+/// This is also a convenience identity confirming the seconds convention.
+#[no_mangle]
+pub extern "C" fn tempoch_unix_to_seconds(unix: f64) -> f64 {
+    unix
 }
 
 /// Return ΔT = TT − UT1 in seconds for a given Julian Date.

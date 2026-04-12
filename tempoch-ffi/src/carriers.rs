@@ -102,7 +102,7 @@ pub(crate) fn jd_to_scale_value(jd: f64, scale: TempochScaleId) -> f64 {
         TempochScaleId::GPS => t.to::<GPS>().value(),
         TempochScaleId::UT => t.to::<UT>().value(),
         TempochScaleId::JDE => t.to::<JDE>().value(),
-        TempochScaleId::UnixTime => t.to::<UnixTime>().value() * 86_400.0,
+        TempochScaleId::UnixTime => t.to::<UnixTime>().to_unix_seconds().value(),
     }
 }
 
@@ -120,8 +120,7 @@ pub(crate) fn scale_value_to_jd(value: f64, scale: TempochScaleId) -> f64 {
         TempochScaleId::UT => Time::<UT>::new(value).to::<JD>().value(),
         TempochScaleId::JDE => Time::<JDE>::new(value).to::<JD>().value(),
         TempochScaleId::UnixTime => {
-            // value is Unix seconds; core UnixTime stores days
-            Time::<UnixTime>::new(value / 86_400.0).to::<JD>().value()
+            Time::<UnixTime>::from_unix_seconds(qtty::Second::new(value)).to::<JD>().value()
         }
     }
 }
@@ -193,7 +192,11 @@ pub(crate) fn time_difference_days_value(lhs: f64, rhs: f64, scale: TempochScale
         TempochScaleId::JDE => Time::<JDE>::new(lhs)
             .difference(&Time::<JDE>::new(rhs))
             .value(),
-        TempochScaleId::UnixTime => (lhs - rhs) / 86_400.0,
+        TempochScaleId::UnixTime => {
+            Time::<UnixTime>::from_unix_seconds(qtty::Second::new(lhs))
+                .difference(&Time::<UnixTime>::from_unix_seconds(qtty::Second::new(rhs)))
+                .value()
+        }
     }
 }
 
@@ -210,7 +213,12 @@ pub(crate) fn time_add_days_value(value: f64, days: qtty::Day, scale: TempochSca
         TempochScaleId::GPS => Time::<GPS>::new(value).add_duration(days).value(),
         TempochScaleId::UT => Time::<UT>::new(value).add_duration(days).value(),
         TempochScaleId::JDE => Time::<JDE>::new(value).add_duration(days).value(),
-        TempochScaleId::UnixTime => value + days.value() * 86_400.0,
+        TempochScaleId::UnixTime => {
+            Time::<UnixTime>::from_unix_seconds(qtty::Second::new(value))
+                .add_duration(days)
+                .to_unix_seconds()
+                .value()
+        }
     }
 }
 

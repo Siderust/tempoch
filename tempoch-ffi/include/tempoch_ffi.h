@@ -248,11 +248,31 @@ tempoch_status_t tempoch_period_mjd_intersection(struct tempoch_period_mjd_t a,
 // Convert Julian Ephemeris Date back to Julian Date (TT).
  double tempoch_jde_to_jd(double jde);
 
-// Convert a Julian Date (TT) to Unix time in seconds since 1970-01-01T00:00:00 UTC.
+// Convert a Julian Date (TT) to Unix time in **seconds** since 1970-01-01T00:00:00 UTC.
+//
+// The result is a standard Unix timestamp suitable for passing to C `gmtime()`,
+// Python `datetime.fromtimestamp()`, etc. Internally the conversion routes
+// through the compiled UTC-TAI history.
  double tempoch_jd_to_unix(double jd);
 
-// Convert Unix time in seconds back to Julian Date (TT).
+// Convert Unix time in **seconds** since 1970-01-01T00:00:00 UTC back to Julian Date (TT).
+//
+// Accepts a standard Unix timestamp (seconds, not days). The conversion
+// uses the compiled UTC-TAI history for leap-second handling.
  double tempoch_unix_to_jd(double unix);
+
+// Create a Unix timestamp from seconds since 1970-01-01T00:00:00 UTC.
+//
+// This is a convenience identity for the C ABI: the returned `double` is
+// the same value, confirming that the FFI Unix convention is **seconds**.
+// Use [`tempoch_unix_to_jd`] when you need the corresponding Julian Date.
+ double tempoch_unix_from_seconds(double seconds);
+
+// Extract the Unix timestamp in seconds from a value previously obtained
+// via [`tempoch_jd_to_unix`] or [`tempoch_unix_from_seconds`].
+//
+// This is also a convenience identity confirming the seconds convention.
+ double tempoch_unix_to_seconds(double unix);
 
 // Return ΔT = TT − UT1 in seconds for a given Julian Date.
  double tempoch_delta_t_seconds(double jd);
