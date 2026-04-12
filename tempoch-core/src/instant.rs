@@ -164,8 +164,8 @@ fn datetime_from_utc_mjd(mjd_utc: f64) -> Option<DateTime<Utc>> {
     datetime_from_seconds_since_epoch((mjd_utc - UNIX_EPOCH_MJD) * SECONDS_PER_DAY)
 }
 
-fn utc_from_tt_exact(jd_tt: f64) -> Result<DateTime<Utc>, UtcConversionError> {
-    let mjd_tt = jd_tt - JD_MINUS_MJD;
+fn utc_from_tt_exact(jd_tt: Day) -> Result<DateTime<Utc>, UtcConversionError> {
+    let mjd_tt = jd_tt.value() - JD_MINUS_MJD;
     let first_start_tt =
         utc_mjd_to_tt_mjd_in_segment(UTC_TAI_SEGMENTS[0].start_mjd as f64, UTC_TAI_SEGMENTS[0]);
     if mjd_tt < first_start_tt - UTC_INTERVAL_EPS_DAYS {
@@ -370,7 +370,7 @@ impl<S: TimeScale> Time<S> {
     ///
     /// See [`to_utc`](Self::to_utc) for precision notes per scale.
     pub fn try_to_utc(&self) -> Result<DateTime<Utc>, UtcConversionError> {
-        utc_from_tt_exact(S::to_jd_tt(self.quantity).value())
+        utc_from_tt_exact(S::to_jd_tt(self.quantity))
     }
 
     /// Build an instant from a `chrono::DateTime<Utc>`.
@@ -686,7 +686,9 @@ mod tests {
     fn test_julian_conversions() {
         let jd = Time::<JD>::J2000 + Day::new(365_250.0);
         assert!((jd.julian_millennia() - Millennium::new(1.0)).abs() < Millennium::new(1e-12));
-        assert!((jd.julian_centuries() - Century::new(10.0)).abs() < Century::new(1e-12));
+        assert!(
+            (jd.julian_centuries() - JulianCentury::new(10.0)).abs() < JulianCentury::new(1e-12)
+        );
         assert!((jd.julian_years() - JulianYear::new(1000.0)).abs() < JulianYear::new(1e-9));
     }
 
@@ -754,8 +756,8 @@ mod tests {
     #[test]
     fn test_into_centuries() {
         let jd = Time::<JD>::J2000 + Day::new(36_525.0 * 3.0);
-        let centuries: Century = jd.into();
-        assert!((centuries - Century::new(3.0)).abs() < Century::new(1e-12));
+        let centuries: JulianCentury = jd.into();
+        assert!((centuries - JulianCentury::new(3.0)).abs() < JulianCentury::new(1e-12));
 
         let roundtrip = Time::<JD>::from(centuries);
         assert!((roundtrip.quantity() - jd.quantity()).abs() < Day::new(1e-12));

@@ -25,26 +25,19 @@ impl Time<JD> {
     /// Julian millennia since J2000.0 (used by VSOP87).
     #[inline]
     pub fn julian_millennia(&self) -> Millennium {
-        Millennium::new(((*self - Self::J2000) / Self::JULIAN_MILLENNIUM).value())
-    }
-
-    /// Deprecated: use [`julian_millennia`](Self::julian_millennia) instead.
-    #[deprecated(since = "0.5.0", note = "renamed to `julian_millennia` (correct Latin plural)")]
-    #[inline]
-    pub fn julian_millennias(&self) -> Millennium {
-        self.julian_millennia()
+        Millennium::new(self.julian_years().value() / 1000.0)
     }
 
     /// Julian centuries since J2000.0 (used by nutation, precession, sidereal time).
     #[inline]
-    pub fn julian_centuries(&self) -> Century {
-        Century::new(((*self - Self::J2000) / Self::JULIAN_CENTURY).value())
+    pub fn julian_centuries(&self) -> JulianCentury {
+        (*self - Self::J2000).to::<qtty::unit::JulianCentury>()
     }
 
     /// Julian years since J2000.0.
     #[inline]
     pub fn julian_years(&self) -> JulianYear {
-        JulianYear::new(((*self - Self::J2000) / Self::JULIAN_YEAR).value())
+        (*self - Self::J2000).to::<qtty::unit::JulianYear>()
     }
 
     /// Converts JD(TT) → JD(TDB) using the Fairhead & Bretagnon (1990)
@@ -100,14 +93,13 @@ impl From<Time<JD>> for JulianYear {
     }
 }
 
-impl From<Century> for Time<JD> {
-    fn from(centuries: Century) -> Self {
-        // `Century` are interpreted as Julian centuries relative to J2000.
-        Self::J2000 + Day::new(centuries.value() * Self::JULIAN_CENTURY.value())
+impl From<JulianCentury> for Time<JD> {
+    fn from(centuries: JulianCentury) -> Self {
+        Self::J2000 + centuries.to::<qtty::unit::Day>()
     }
 }
 
-impl From<Time<JD>> for Century {
+impl From<Time<JD>> for JulianCentury {
     fn from(jd: Time<JD>) -> Self {
         jd.julian_centuries()
     }

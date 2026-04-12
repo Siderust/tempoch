@@ -17,9 +17,10 @@
 //! ```
 
 use chrono::{DateTime, Utc};
+use qtty::Day;
 use tempoch::{
-    tai_minus_utc, JulianDate, ModifiedJulianDate, Time, GPS, JD, JDE, MJD, TAI, TCB, TCG, TDB, TT,
-    UT,
+    tai_minus_utc, JulianDate, ModifiedJulianDate, Time, GPS, JD, JDE, MJD, TAI, TCB, TCG, TDB,
+    TT, UT,
 };
 
 fn main() {
@@ -70,7 +71,7 @@ fn main() {
     println!("Offset quantities at J2000.0:");
     let delta_t = ut.delta_t(); // TT − UT1 — already has units in its Display
     println!("  ΔT (TT − UT1) : {}", delta_t);
-    let tai_utc = tai_minus_utc(jd_utc); // TAI − UTC in seconds at the UTC instant
+    let tai_utc = tai_minus_utc(Day::new(jd_utc)); // TAI − UTC in seconds at the UTC instant
     println!("  TAI − UTC     : {} s  (leap seconds)", tai_utc);
     println!();
 
@@ -104,7 +105,7 @@ fn main() {
     const SECONDS_PER_DAY: f64 = 86_400.0;
     const GPS_UTC_OFFSET_S: i32 = 19; // GPS time was locked to TAI at GPS epoch
     let tt_tai_diff_s = (tt.value() - tai.value()) * SECONDS_PER_DAY;
-    let tai_utc_s = tai_minus_utc(jd_utc) as i32;
+    let tai_utc_s = tai_minus_utc(Day::new(jd_utc)).value() as i32;
     let tai_gps_diff_s = tai_utc_s - GPS_UTC_OFFSET_S;
 
     println!("Offsets between scales (seconds):");

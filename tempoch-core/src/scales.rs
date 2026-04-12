@@ -446,8 +446,8 @@ pub(crate) fn try_tai_minus_utc(jd_utc: f64) -> Option<f64> {
 }
 
 #[inline]
-pub fn tai_minus_utc(jd_utc: f64) -> f64 {
-    try_tai_minus_utc(jd_utc).unwrap_or(PRE_1961_TAI_MINUS_UTC_APPROX)
+pub fn tai_minus_utc(jd_utc: Day) -> Second {
+    Second::new(try_tai_minus_utc(jd_utc.value()).unwrap_or(PRE_1961_TAI_MINUS_UTC_APPROX))
 }
 
 /// TT = TAI + 32.184 s, and TAI = UTC + leap_seconds.
@@ -461,22 +461,22 @@ impl TimeScale for UnixTime {
     fn to_jd_tt(value: Day) -> Day {
         // Interpret the Unix / POSIX timestamp on the UTC civil axis, then
         // map that physical instant through UTC→TAI→TT.
-        let jd_utc = value.value() + UNIX_EPOCH_JD.value();
+        let jd_utc = value + UNIX_EPOCH_JD;
         let ls = tai_minus_utc(jd_utc);
         // JD(TT) = JD(UTC) + (TAI−UTC + 32.184) / 86400
-        Day::new(jd_utc + (ls + TT_MINUS_TAI_SECS) / 86_400.0)
+        jd_utc + (ls + Second::new(TT_MINUS_TAI_SECS)).to::<qtty::unit::Day>()
     }
 
     #[inline]
     fn from_jd_tt(jd_tt: Day) -> Day {
         // Recover the UTC civil instant first, then express it as a standard
         // Unix / POSIX timestamp.
-        let mut jd_utc = jd_tt.value() - (37.0 + TT_MINUS_TAI_SECS) / 86_400.0;
+        let mut jd_utc = jd_tt - Second::new(37.0 + TT_MINUS_TAI_SECS).to::<qtty::unit::Day>();
         for _ in 0..3 {
             let ls = tai_minus_utc(jd_utc);
-            jd_utc = jd_tt.value() - (ls + TT_MINUS_TAI_SECS) / 86_400.0;
+            jd_utc = jd_tt - (ls + Second::new(TT_MINUS_TAI_SECS)).to::<qtty::unit::Day>();
         }
-        Day::new(jd_utc - UNIX_EPOCH_JD.value())
+        jd_utc - UNIX_EPOCH_JD
     }
 }
 
@@ -964,24 +964,24 @@ mod tests {
         // 1969-01-01 00:00:00 UTC corresponds to MJD 40222.
         // The official UTC-TAI history gives:
         // TAI-UTC = 4.2131700 + (MJD - 39126) * 0.002592.
-        let jd_utc = 2_440_222.5;
-        let expected = 4.213_170_0 + (40_222.0 - 39_126.0) * 0.002_592;
-        assert!((tai_minus_utc(jd_utc) - expected).abs() < 1e-9);
+        let jd_utc = Day::new(2_440_222.5);
+        let expected = Second::new(4.213_170_0 + (40_222.0 - 39_126.0) * 0.002_592);
+        assert!((tai_minus_utc(jd_utc) - expected).abs() < Second::new(1e-9));
     }
 
     #[test]
     fn tai_minus_utc_pre_1961_uses_legacy_approximation() {
-        assert_eq!(tai_minus_utc(2_400_000.0), 10.0);
+        assert_eq!(tai_minus_utc(Day::new(2_400_000.0)), Second::new(10.0));
     }
 
     #[test]
     fn tai_minus_utc_requires_utc_axis_jd() {
         let utc: DateTime<Utc> = DateTime::from_timestamp(1_483_228_770, 0).unwrap();
-        let jd_utc = UNIX_EPOCH_JD.value() + utc.timestamp() as f64 / 86_400.0;
-        let jd_tt = Time::<TT>::from_utc(utc).value();
+        let jd_utc = UNIX_EPOCH_JD + Day::new(utc.timestamp() as f64 / 86_400.0);
+        let jd_tt = Time::<TT>::from_utc(utc).quantity();
 
-        assert!((tai_minus_utc(jd_utc) - 36.0).abs() < 1e-12);
-        assert!((tai_minus_utc(jd_tt) - 37.0).abs() < 1e-12);
+        assert!((tai_minus_utc(jd_utc) - Second::new(36.0)).abs() < Second::new(1e-12));
+        assert!((tai_minus_utc(jd_tt) - Second::new(37.0)).abs() < Second::new(1e-12));
     }
 
     // ── UnixTime seconds constructors ────────────────────────────────
