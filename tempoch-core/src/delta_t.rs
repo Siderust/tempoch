@@ -100,7 +100,7 @@ fn delta_t_ancient(jd: JulianDate) -> Second {
     const DT_A1_S: Second = Second::new(-405.0);
     const DT_A2_S: Second = Second::new(46.5);
     const JD_EPOCH_948_UT: JulianDate = JulianDate::new(2_067_314.5);
-    let c = days_ratio(jd - JD_EPOCH_948_UT, JulianDate::JULIAN_CENTURY);
+    let c = (jd - JD_EPOCH_948_UT) / JulianDate::JULIAN_CENTURY;
     DT_A0_S + DT_A1_S * c + DT_A2_S * c * c
 }
 
@@ -111,7 +111,7 @@ fn delta_t_medieval(jd: JulianDate) -> Second {
     const JD_EPOCH_1850_UT: JulianDate = JulianDate::new(2_396_758.5);
     const DT_A2_S: Second = Second::new(22.5);
 
-    let c = days_ratio(jd - JD_EPOCH_1850_UT, JulianDate::JULIAN_CENTURY);
+    let c = (jd - JD_EPOCH_1850_UT) / JulianDate::JULIAN_CENTURY;
     DT_A2_S * c * c
 }
 
@@ -122,17 +122,14 @@ fn delta_t_table(jd: JulianDate) -> Second {
     const JD_TABLE_START_1620: JulianDate = JulianDate::new(2_312_752.5);
     const BIENNIAL_STEP_D: Day = Day::new(730.5);
 
-    let mut i = days_ratio(jd - JD_TABLE_START_1620, BIENNIAL_STEP_D) as usize;
+    let mut i = ((jd - JD_TABLE_START_1620) / BIENNIAL_STEP_D) as usize;
     if i > TERMS - 3 {
         i = TERMS - 3;
     }
     let a: Second = DELTA_T[i + 1] - DELTA_T[i];
     let b: Second = DELTA_T[i + 2] - DELTA_T[i + 1];
     let c: Second = a - b;
-    let n = days_ratio(
-        jd - (JD_TABLE_START_1620 + BIENNIAL_STEP_D * i as f64),
-        BIENNIAL_STEP_D,
-    );
+    let n = (jd - (JD_TABLE_START_1620 + BIENNIAL_STEP_D * i as f64)) / BIENNIAL_STEP_D;
     DELTA_T[i + 1] + n / 2.0 * (a + b + n * c)
 }
 
@@ -249,11 +246,6 @@ fn quadratic_tail_fit_delta_t_seconds(mjd: f64) -> f64 {
 fn delta_t_extrapolated(jd: JulianDate) -> Second {
     let mjd = jd.value() - 2_400_000.5;
     Second::new(quadratic_tail_fit_delta_t_seconds(mjd))
-}
-
-#[inline]
-fn days_ratio(num: Day, den: Day) -> f64 {
-    (num / den).value()
 }
 
 /// Returns **ΔT** in seconds for a Julian Day on the **UT** axis.

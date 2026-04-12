@@ -525,7 +525,7 @@ impl<S: TimeScale> std::ops::Div<Day> for Time<S> {
     type Output = f64;
     #[inline]
     fn div(self, rhs: Day) -> Self::Output {
-        (self.quantity / rhs).value()
+        self.quantity / rhs
     }
 }
 
