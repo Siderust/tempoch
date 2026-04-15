@@ -21,12 +21,12 @@ const GPS_EPOCH_TAI_JD: f64 = 2_444_244.5 + 19.0 / SECONDS_PER_DAY;
 
 #[inline]
 fn day_scalar(days: Day) -> f64 {
-    days.erase_unit_raw()
+    days / Day::new(1.0)
 }
 
 #[inline]
 fn second_scalar(seconds: Seconds) -> f64 {
-    seconds.erase_unit_raw()
+    seconds / Seconds::new(1.0)
 }
 
 /// Time scale identifier for generic dispatch functions.
@@ -101,13 +101,13 @@ fn unix_seconds_to_utc(seconds: Seconds) -> Option<DateTime<Utc>> {
     }
 
     let mut whole = seconds.floor();
-    let mut nanos = ((seconds - whole).erase_unit_raw() * 1e9).round();
+    let mut nanos = (((seconds - whole) / Seconds::new(1.0)) * 1e9).round();
     if nanos >= 1e9 {
         whole += Seconds::new(1.0);
         nanos = 0.0;
     }
 
-    DateTime::<Utc>::from_timestamp(whole.erase_unit_raw() as i64, nanos as u32)
+    DateTime::<Utc>::from_timestamp((whole / Seconds::new(1.0)) as i64, nanos as u32)
 }
 
 #[inline]
@@ -132,26 +132,26 @@ fn scale_value_to_tt(
             Time::<TT>::from_modified_julian_days(Day::new(value))
         }
         TempochScaleId::TDB => {
-            Time::<TDB>::from_julian_days(Day::new(value)).and_then(|t| t.to::<TT>())
+            Time::<TDB>::from_julian_days(Day::new(value)).map(|t| t.to::<TT>())
         }
         TempochScaleId::TAI => {
-            Time::<TAI>::from_julian_days(Day::new(value)).and_then(|t| t.to::<TT>())
+            Time::<TAI>::from_julian_days(Day::new(value)).map(|t| t.to::<TT>())
         }
         TempochScaleId::TCG => {
-            Time::<TCG>::from_julian_days(Day::new(value)).and_then(|t| t.to::<TT>())
+            Time::<TCG>::from_julian_days(Day::new(value)).map(|t| t.to::<TT>())
         }
         TempochScaleId::TCB => {
-            Time::<TCB>::from_julian_days(Day::new(value)).and_then(|t| t.to::<TT>())
+            Time::<TCB>::from_julian_days(Day::new(value)).map(|t| t.to::<TT>())
         }
         TempochScaleId::GPS => {
             Time::<TAI>::from_julian_days(Day::new(value + GPS_EPOCH_TAI_JD))
-                .and_then(|t| t.to::<TT>())
+                .map(|t| t.to::<TT>())
         }
         TempochScaleId::UT => Time::<UT1>::from_julian_days(Day::new(value))
             .and_then(|time| time.to_with::<TT>(ctx)),
         TempochScaleId::UnixTime => {
             Time::<UTC>::from_unix_seconds(Seconds::new(value))
-                .and_then(|t| t.to::<TT>())
+                .map(|t| t.to::<TT>())
         }
     }
 }
@@ -164,30 +164,25 @@ fn tt_to_scale_value(
 ) -> Result<f64, ConversionError> {
     match scale {
         TempochScaleId::JD | TempochScaleId::JDE | TempochScaleId::TT => Ok(tt_to_jd(tt)),
-        TempochScaleId::MJD => Ok(tt
-            .modified_julian_days()
-            .erase_unit_raw()),
+        TempochScaleId::MJD => Ok(day_scalar(tt.modified_julian_days())),
         TempochScaleId::TDB => Ok(day_scalar(
-            tt.to::<TDB>()?.julian_days(),
+            tt.to::<TDB>().julian_days(),
         )),
         TempochScaleId::TAI => Ok(day_scalar(
-            tt.to::<TAI>()?.julian_days(),
+            tt.to::<TAI>().julian_days(),
         )),
         TempochScaleId::TCG => Ok(day_scalar(
-            tt.to::<TCG>()?.julian_days(),
+            tt.to::<TCG>().julian_days(),
         )),
         TempochScaleId::TCB => Ok(day_scalar(
-            tt.to::<TCB>()?.julian_days(),
+            tt.to::<TCB>().julian_days(),
         )),
         TempochScaleId::GPS => {
-            Ok(day_scalar(tt.to::<TAI>()?.julian_days()) - GPS_EPOCH_TAI_JD)
+            Ok(day_scalar(tt.to::<TAI>().julian_days()) - GPS_EPOCH_TAI_JD)
         }
-        TempochScaleId::UT => Ok(tt
-            .to_with::<UT1>(ctx)?
-            .julian_days()
-            .erase_unit_raw()),
+        TempochScaleId::UT => Ok(day_scalar(tt.to_with::<UT1>(ctx)?.julian_days())),
         TempochScaleId::UnixTime => Ok(second_scalar(utc_to_unix_seconds(
-            tt.to::<UTC>()?.try_to_chrono()?,
+            tt.to::<UTC>().try_to_chrono()?,
         ))),
     }
 }
@@ -215,7 +210,7 @@ pub(crate) fn time_from_utc_value(datetime: DateTime<Utc>, scale: TempochScaleId
     }
 
     let ctx = default_context();
-    let tt = Time::<UTC>::try_from_chrono(datetime).ok()?.to::<TT>().ok()?;
+    let tt = Time::<UTC>::try_from_chrono(datetime).ok()?.to::<TT>();
     tt_to_scale_value(tt, scale, &ctx).ok()
 }
 
@@ -229,7 +224,6 @@ pub(crate) fn time_to_utc_value(value: f64, scale: TempochScaleId) -> Option<Dat
     scale_value_to_tt(value, scale, &ctx)
         .ok()?
         .to::<UTC>()
-        .ok()?
         .try_to_chrono()
         .ok()
 }

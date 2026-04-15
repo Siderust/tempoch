@@ -25,8 +25,8 @@ impl TempochPeriodMjd {
     /// Convert from a Rust MJD interval to the C-repr struct.
     pub fn from_period(p: &MjdPeriod) -> Self {
         Self {
-            start_mjd: p.start.modified_julian_days().erase_unit_raw(),
-            end_mjd: p.end.modified_julian_days().erase_unit_raw(),
+            start_mjd: p.start.modified_julian_days() / Day::new(1.0),
+            end_mjd: p.end.modified_julian_days() / Day::new(1.0),
         }
     }
 

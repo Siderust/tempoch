@@ -45,10 +45,15 @@ impl<A: Axis> Clone for Time<A> {
     }
 }
 
+// `leap` is a civil presentation label, not physical instant identity. UTC
+// storage records underlying TAI seconds; `leap` is dropped on any axis
+// round-trip. Excluding it keeps `PartialEq` consistent with `PartialOrd`
+// and prevents two values representing the same instant from comparing
+// unequal due to differing labels.
 impl<A: Axis> PartialEq for Time<A> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.storage.seconds == other.storage.seconds && self.storage.leap == other.storage.leap
+        self.storage.seconds == other.storage.seconds
     }
 }
 
@@ -63,9 +68,9 @@ impl<A: Axis> core::fmt::Debug for Time<A> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
-            "Time<{}>({}{})",
+            "Time<{}>({:.6}s{})",
             A::NAME,
-            self.storage.seconds.erase_unit_raw(),
+            self.storage.seconds / Second::new(1.0),
             if self.storage.leap { " [leap]" } else { "" }
         )
     }
@@ -134,20 +139,18 @@ impl<A: ContinuousAxis> Time<A> {
 // ── Axis conversion: `to` (infallible routes) ─────────────────────────────
 
 impl<A: Axis> Time<A> {
-    /// Axis conversion. Compiles only for pairs with a closed-form,
-    /// context-free conversion. Always returns `Ok`.
+    /// Infallible axis conversion. Compiles only for pairs with a closed-form,
+    /// context-free conversion (e.g. TT↔TAI, TT↔TDB, UTC↔TAI).
     ///
-    /// For UT1 conversions that require a `TimeContext`, use
+    /// For UT1 conversions that require a [`TimeContext`], use
     /// [`to_with`](Self::to_with) instead.
     #[allow(private_bounds)]
     #[inline]
-    pub fn to<A2: Axis>(self) -> Result<Time<A2>, ConversionError>
+    pub fn to<A2: Axis>(self) -> Time<A2>
     where
         A: InfallibleConvertible<A2>,
     {
-        Ok(Time::from_storage(<A as InfallibleConvertible<A2>>::convert(
-            self.storage,
-        )))
+        Time::from_storage(<A as InfallibleConvertible<A2>>::convert(self.storage))
     }
 }
 
@@ -221,8 +224,8 @@ mod tests {
     #[test]
     fn tt_tai_round_trip_exact() {
         let tt = Time::<TT>::from_si_seconds(Second::new(0.0)).unwrap();
-        let tai = tt.to::<TAI>().unwrap();
-        let tt2 = tai.to::<TT>().unwrap();
+        let tai = tt.to::<TAI>();
+        let tt2 = tai.to::<TT>();
         assert_eq!(tt.si_seconds(), tt2.si_seconds());
         assert!((tai.si_seconds() - Second::new(-32.184)).abs() < Second::new(1e-15));
     }
@@ -230,8 +233,8 @@ mod tests {
     #[test]
     fn tt_tdb_round_trip_model_error() {
         let tt = Time::<TT>::from_si_seconds(Second::new(1_000_000.0)).unwrap();
-        let tdb = tt.to::<TDB>().unwrap();
-        let tt2 = tdb.to::<TT>().unwrap();
+        let tdb = tt.to::<TDB>();
+        let tt2 = tdb.to::<TT>();
         assert!(
             (tt.si_seconds() - tt2.si_seconds()).abs() < Second::new(1e-6),
             "round-trip error {:?}",
@@ -243,8 +246,8 @@ mod tests {
     fn tt_tcg_rate_difference() {
         let tt0 = Time::<TT>::from_si_seconds(Second::new(0.0)).unwrap();
         let tt1 = Time::<TT>::from_si_seconds(SECONDS_PER_DAY).unwrap();
-        let tcg0 = tt0.to::<TCG>().unwrap();
-        let tcg1 = tt1.to::<TCG>().unwrap();
+        let tcg0 = tt0.to::<TCG>();
+        let tcg1 = tt1.to::<TCG>();
         let drift: Second = (tcg1 - tcg0) - SECONDS_PER_DAY;
         let l_g = 6.969_290_134e-10_f64;
         let expected: Second = SECONDS_PER_DAY * (l_g / (1.0 - l_g));
@@ -259,8 +262,8 @@ mod tests {
     #[test]
     fn tdb_tcb_linear() {
         let tdb = Time::<TDB>::from_si_seconds(Second::new(1_000_000.0)).unwrap();
-        let tcb = tdb.to::<TCB>().unwrap();
-        let tdb2 = tcb.to::<TDB>().unwrap();
+        let tcb = tdb.to::<TCB>();
+        let tdb2 = tcb.to::<TDB>();
         assert!(
             (tdb.si_seconds() - tdb2.si_seconds()).abs() < Second::new(1e-6),
             "round-trip diff {:?}",

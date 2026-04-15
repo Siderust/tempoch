@@ -445,7 +445,7 @@ pub extern "C" fn tempoch_delta_t_seconds(jd: f64) -> f64 {
         Err(_) => return f64::NAN,
     };
     match tt.to_with::<UT1>(&ctx) {
-        Ok(ut1) => (tt.si_seconds() - ut1.si_seconds()).erase_unit_raw(),
+        Ok(ut1) => (tt.si_seconds() - ut1.si_seconds()) / qtty::Second::new(1.0),
         Err(_) => f64::NAN,
     }
 }

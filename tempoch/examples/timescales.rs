@@ -20,11 +20,11 @@ fn main() {
 
     let tt = Time::<TT>::from_julian_days(Day::new(2_451_545.0)).unwrap();
 
-    let tai = tt.to::<TAI>().unwrap();
-    let tdb = tt.to::<TDB>().unwrap();
-    let tcg = tt.to::<TCG>().unwrap();
-    let tcb = tt.to::<TCB>().unwrap();
-    let utc = tt.to::<UTC>().unwrap().to_chrono().unwrap();
+    let tai = tt.to::<TAI>();
+    let tdb = tt.to::<TDB>();
+    let tcg = tt.to::<TCG>();
+    let tcb = tt.to::<TCB>();
+    let utc = tt.to::<UTC>().to_chrono().unwrap();
     let ut1 = tt.to_with::<UT1>(&ctx).unwrap();
 
     println!("Reference epoch: J2000 TT");
@@ -46,7 +46,7 @@ fn main() {
     );
 
     let posix = Time::<UTC>::from_unix_seconds(Second::new(1_704_067_200.0)).unwrap();
-    let gps = posix.to::<TAI>().unwrap();
+    let gps = posix.to::<TAI>();
 
     println!();
     println!("Civil / transport representations:");
@@ -57,7 +57,7 @@ fn main() {
     println!("  GPS   : {:.3}", gps.gps_seconds());
 
     let now_utc = Time::<UTC>::from_chrono(Utc::now());
-    let now_tdb = now_utc.to::<TDB>().unwrap();
+    let now_tdb = now_utc.to::<TDB>();
 
     println!();
     println!("Current instant:");

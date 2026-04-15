@@ -30,6 +30,6 @@ fn main() {
     println!("Intersection windows: {}", intersection.len());
     println!(
         "First overlap starts at MJD {:.5}",
-        intersection[0].start.modified_julian_days().value()
+        intersection[0].start.modified_julian_days()
     );
 }

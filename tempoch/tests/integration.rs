@@ -15,8 +15,8 @@ fn mjd(value: f64) -> Time<TT> {
 fn utc_roundtrip_j2000_is_stable() {
     let datetime = DateTime::from_timestamp(946_728_000, 0).unwrap();
     let utc = Time::<UTC>::try_from_chrono(datetime).unwrap();
-    let jd_tt: Time<TT> = utc.to::<TT>().unwrap();
-    let back = jd_tt.to::<UTC>().unwrap().try_to_chrono().unwrap();
+    let jd_tt: Time<TT> = utc.to::<TT>();
+    let back = jd_tt.to::<UTC>().try_to_chrono().unwrap();
     let delta_ns = back.timestamp_nanos_opt().unwrap() - datetime.timestamp_nanos_opt().unwrap();
     assert!(delta_ns.abs() < 50_000);
 }
@@ -28,15 +28,15 @@ fn ut1_context_roundtrip_near_j2000() {
     let ut1 = tt.to_with::<UT1>(&ctx).unwrap();
     let tt_back = ut1.to_with::<TT>(&ctx).unwrap();
 
-    let offset_s = (tt.si_seconds() - ut1.si_seconds()).value();
-    assert!((offset_s - 63.83).abs() < 1.0);
-    assert!((tt - tt_back).value().abs() < 1e-9);
+    let offset_s = tt.si_seconds() - ut1.si_seconds();
+    assert!((offset_s - Second::new(63.83)).abs() < Second::new(1.0));
+    assert!((tt - tt_back).abs() < Second::new(1e-9));
 }
 
 #[test]
 fn public_constats_epochs_are_usable() {
     let j2000 = Time::<TT>::from_julian_days(J2000_JD_TT).unwrap();
-    let tai = j2000.to::<TAI>().unwrap();
+    let tai = j2000.to::<TAI>();
 
     assert_eq!(j2000.julian_days(), J2000_JD_TT);
     assert!(((j2000.si_seconds() - tai.si_seconds()) - TT_MINUS_TAI).abs() < Second::new(1e-12));
@@ -78,10 +78,10 @@ fn interval_set_ops_match_expected_intervals() {
     let between = intersect_periods(&a, &below_b);
 
     assert_eq!(between.len(), 3);
-    assert_eq!(between[0].start.modified_julian_days().value(), 1.0);
-    assert_eq!(between[0].end.modified_julian_days().value(), 2.0);
-    assert_eq!(between[1].start.modified_julian_days().value(), 5.0);
-    assert_eq!(between[1].end.modified_julian_days().value(), 7.0);
-    assert_eq!(between[2].start.modified_julian_days().value(), 8.0);
-    assert_eq!(between[2].end.modified_julian_days().value(), 9.0);
+    assert_eq!(between[0].start.modified_julian_days(), Day::new(1.0));
+    assert_eq!(between[0].end.modified_julian_days(), Day::new(2.0));
+    assert_eq!(between[1].start.modified_julian_days(), Day::new(5.0));
+    assert_eq!(between[1].end.modified_julian_days(), Day::new(7.0));
+    assert_eq!(between[2].start.modified_julian_days(), Day::new(8.0));
+    assert_eq!(between[2].end.modified_julian_days(), Day::new(9.0));
 }
