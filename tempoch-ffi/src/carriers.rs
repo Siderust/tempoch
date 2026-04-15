@@ -19,15 +19,6 @@ use tempoch::{
 const SECONDS_PER_DAY: f64 = 86_400.0;
 const GPS_EPOCH_TAI_JD: f64 = 2_444_244.5 + 19.0 / SECONDS_PER_DAY;
 
-#[inline]
-fn day_scalar(days: Day) -> f64 {
-    days / Day::new(1.0)
-}
-
-#[inline]
-fn second_scalar(seconds: Seconds) -> f64 {
-    seconds / Seconds::new(1.0)
-}
 
 /// Time scale identifier for generic dispatch functions.
 ///
@@ -117,7 +108,7 @@ fn tt_from_jd(jd: f64) -> Result<Time<TT>, ConversionError> {
 
 #[inline]
 fn tt_to_jd(tt: Time<TT>) -> f64 {
-    day_scalar(tt.julian_days())
+    tt.julian_days().value()
 }
 
 #[inline]
@@ -164,26 +155,18 @@ fn tt_to_scale_value(
 ) -> Result<f64, ConversionError> {
     match scale {
         TempochScaleId::JD | TempochScaleId::JDE | TempochScaleId::TT => Ok(tt_to_jd(tt)),
-        TempochScaleId::MJD => Ok(day_scalar(tt.modified_julian_days())),
-        TempochScaleId::TDB => Ok(day_scalar(
-            tt.to::<TDB>().julian_days(),
-        )),
-        TempochScaleId::TAI => Ok(day_scalar(
-            tt.to::<TAI>().julian_days(),
-        )),
-        TempochScaleId::TCG => Ok(day_scalar(
-            tt.to::<TCG>().julian_days(),
-        )),
-        TempochScaleId::TCB => Ok(day_scalar(
-            tt.to::<TCB>().julian_days(),
-        )),
+        TempochScaleId::MJD => Ok(tt.modified_julian_days().value()),
+        TempochScaleId::TDB => Ok(tt.to::<TDB>().julian_days().value()),
+        TempochScaleId::TAI => Ok(tt.to::<TAI>().julian_days().value()),
+        TempochScaleId::TCG => Ok(tt.to::<TCG>().julian_days().value()),
+        TempochScaleId::TCB => Ok(tt.to::<TCB>().julian_days().value()),
         TempochScaleId::GPS => {
-            Ok(day_scalar(tt.to::<TAI>().julian_days()) - GPS_EPOCH_TAI_JD)
+            Ok(tt.to::<TAI>().julian_days().value() - GPS_EPOCH_TAI_JD)
         }
-        TempochScaleId::UT => Ok(day_scalar(tt.to_with::<UT1>(ctx)?.julian_days())),
-        TempochScaleId::UnixTime => Ok(second_scalar(utc_to_unix_seconds(
+        TempochScaleId::UT => Ok(tt.to_with::<UT1>(ctx)?.julian_days().value()),
+        TempochScaleId::UnixTime => Ok(utc_to_unix_seconds(
             tt.to::<UTC>().try_to_chrono()?,
-        ))),
+        ).value()),
     }
 }
 
@@ -206,7 +189,7 @@ pub(crate) fn scale_value_to_jd(value: f64, scale: TempochScaleId) -> f64 {
 /// Convert a UTC instant to a native scalar in the requested scale.
 pub(crate) fn time_from_utc_value(datetime: DateTime<Utc>, scale: TempochScaleId) -> Option<f64> {
     if matches!(scale, TempochScaleId::UnixTime) {
-        return Some(second_scalar(utc_to_unix_seconds(datetime)));
+        return Some(utc_to_unix_seconds(datetime).value());
     }
 
     let ctx = default_context();
@@ -239,8 +222,8 @@ pub(crate) fn time_difference_days_value(lhs: f64, rhs: f64, scale: TempochScale
 /// Add a duration in days in the native scale and return the resulting scalar.
 pub(crate) fn time_add_days_value(value: f64, days: qtty::Day, scale: TempochScaleId) -> f64 {
     match scale {
-        TempochScaleId::UnixTime => value + second_scalar(days.to::<qtty::unit::Second>()),
-        _ => value + day_scalar(days),
+        TempochScaleId::UnixTime => value + days.to::<qtty::unit::Second>().value(),
+        _ => value + days.value(),
     }
 }
 
