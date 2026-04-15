@@ -5,8 +5,8 @@
 //!
 //! [`Interval`] is a half-open range `[start, end)` over any totally-ordered
 //! instant type. It is parameterised on `T: Copy + PartialOrd` so that the
-//! same type works for `Time<A, R>` on any axis/representation as well as
-//! for `chrono::DateTime<Utc>`.
+//! same type works for `Time<A>` on any axis as well as for
+//! `chrono::DateTime<Utc>`.
 
 use core::fmt;
 

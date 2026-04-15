@@ -1,19 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Vallés Puig, Ramon
 
-//! Conversion matrix (RFC 0001 §7, §11).
+//! Conversion matrix.
 //!
-//! Three disjoint witness traits enumerate which axis pairs are valid:
+//! Two disjoint witness traits enumerate which axis pairs are valid:
 //!
-//! * [`InfallibleConvertible`] — exact/affine + context-free closed-form
-//!   (always succeeds).
-//! * [`FallibleConvertible`]    — depends on compiled UTC–TAI history; can
-//!   fail with a `ConversionError`.
+//! * [`InfallibleConvertible`] — exact/affine, context-free, always succeeds.
+//!   Used by `Time::to::<A2>()`.
 //! * [`ContextConvertible`]     — requires a `TimeContext` (UT1 routes).
+//!   Used by `Time::to_with::<A2>(&ctx)`.
 //!
-//! Each witness carries the conversion itself as a method, so `Time<A, R>`
-//! never has to pattern-match on axis at runtime — the compiler inlines the
-//! concrete path.
+//! Each witness carries the conversion as a method so `Time<A>` never
+//! pattern-matches on axis at runtime — the compiler inlines the concrete path.
 
 // Witness trait methods are `pub(crate)` — their `Storage<_>` parameters
 // are internal and not part of the public surface.

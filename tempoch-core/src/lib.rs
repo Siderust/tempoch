@@ -3,15 +3,17 @@
 
 //! Typed astronomical time primitives.
 //!
-//! `tempoch-core` exposes a time model with a single type dimension:
+//! The central type is [`Time<A>`], where `A` is an [`Axis`] marker
+//! (`TT`, `TAI`, `UTC`, `UT1`, `TDB`, `TCG`, `TCB`).
 //!
-//! - [`Axis`] describes the physical or civil axis (`TT`, `TAI`, `UTC`,
-//!   `UT1`, ...).
+//! Axis conversions:
 //!
-//! The primary type is [`Time<A>`]. Axis conversions use `.to::<A2>()`
-//! (returns `Result`) and `.to_with::<UT1>(&ctx)` for context-dependent
-//! routes.
-//! - [`constats`] for typed epoch and offset constants
+//! - `.to::<A2>()` — infallible closed-form routes (TT↔TAI, TT↔TDB, UTC↔any,
+//!   etc.). Returns `Time<A2>` directly.
+//! - `.to_with::<A2>(&ctx)` — context-required routes (UT1, via ΔT).
+//!   Returns `Result<Time<A2>, ConversionError>`.
+//!
+//! See [`constats`] for typed epoch and offset constants.
 
 mod axis;
 mod civil;

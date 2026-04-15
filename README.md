@@ -8,29 +8,29 @@ Typed astronomical time primitives for Rust.
 
 `tempoch` provides:
 
-- `Time<A, R = Native>` instants with a first-class separation between
-  physical/civil axes (`TT`, `TAI`, `UTC`, `UT1`, `TDB`, `TCG`, `TCB`) and
-  representations (`JulianDays`, `ModifiedJulianDays`, `SISeconds`,
-  `UnixSeconds<POSIX>`, `GpsSeconds`).
-- Compile-time conversion witnesses for infallible, fallible, and
-  context-required conversions.
+- `Time<A>` instants parameterized by a physical or civil axis (`TT`, `TAI`,
+  `UTC`, `UT1`, `TDB`, `TCG`, `TCB`).
+- Compile-time conversion witnesses for infallible (`to`) and
+  context-required (`to_with`) routes.
 - UTC conversion through `chrono`, exact from 1961 onward and leap-second
   aware.
-- Automatic `ΔT = TT - UT1` handling for `UT1` conversions through an
-  explicit `TimeContext`.
-- Standard Unix/POSIX timestamps via `UnixSeconds<POSIX>` and GPS transport
-  values via `GpsSeconds`.
+- Automatic `ΔT = TT - UT1` handling for `UT1` conversions via an explicit
+  `TimeContext`.
+- Julian Day, Modified Julian Day, and SI-second accessors as direct methods
+  on `Time<A>` for continuous axes.
+- Unix/POSIX timestamps via `Time::<UTC>::from_unix_seconds` / `unix_seconds`.
+- GPS transport values via `Time::<TAI>::from_gps_seconds` / `gps_seconds`.
 - Compiled time-data tables generated from official UTC-TAI and Delta T
   sources.
 - Public typed epoch/offset constants under `tempoch::constats`, such as
   `J2000_JD_TT`, `TT_MINUS_TAI`, and `DELTA_T_PREDICTION_HORIZON_MJD`.
-- Generic intervals with `Interval<T>` plus utility operations like
-  intersection, normalization, validation, and complement.
+- Generic intervals with `Interval<T>` plus utility operations: intersection,
+  normalization, validation, and complement.
 
-**Storage model:** `Time<A, R>` stores a single `f64` second count since
-J2000 TT on the target axis. Precision therefore depends on the epoch
-magnitude; around contemporary dates the floor is sub-microsecond, but it
-still degrades as the absolute second count grows.
+**Storage model:** `Time<A>` stores a single `f64` second count since J2000 TT
+on the target axis. Precision therefore depends on the epoch magnitude; around
+contemporary dates the floor is sub-microsecond, but it degrades as the
+absolute second count grows.
 
 The compiled modern ΔT series runs through MJD 63871 (`2033-10-01`). Beyond
 that date UT1 conversions fail with `ConversionError::Ut1HorizonExceeded`.
@@ -48,28 +48,24 @@ tempoch = "0.4"
 
 ```rust
 use chrono::Utc;
-use tempoch::{JulianDays, ModifiedJulianDays, Time, TT, UTC};
+use tempoch::{Time, TT, UTC};
 
 let utc_now = Time::<UTC>::from_chrono(Utc::now());
 let tt_now = utc_now.to::<TT>();
-let jd_tt: Time<TT, JulianDays> = tt_now.repr();
-let mjd_tt: Time<TT, ModifiedJulianDays> = tt_now.repr();
 
 println!("UTC: {}", utc_now.to_chrono().unwrap());
-println!("JD(TT): {}", jd_tt.julian_days().value());
-println!("MJD(TT): {}", mjd_tt.modified_julian_days().value());
+println!("JD(TT):  {:.9}", tt_now.julian_days());
+println!("MJD(TT): {:.9}", tt_now.modified_julian_days());
 ```
 
 ## Period Operations
 
 ```rust
 use qtty::Day;
-use tempoch::{complement_within, intersect_periods, Interval, ModifiedJulianDays, Time, TT};
+use tempoch::{complement_within, intersect_periods, Interval, Time, TT};
 
-type MjdTt = Time<TT, ModifiedJulianDays>;
-
-fn mjd(value: f64) -> MjdTt {
-    Time::<TT, ModifiedJulianDays>::from_modified_julian_days(Day::new(value)).unwrap()
+fn mjd(value: f64) -> Time<TT> {
+    Time::<TT>::from_modified_julian_days(Day::new(value)).unwrap()
 }
 
 let outer = Interval::new(mjd(0.0), mjd(10.0));

@@ -3,9 +3,8 @@
 
 //! Typed epoch and offset constants.
 //!
-//! These values are exposed as raw `qtty` quantities rather than `Time<A, R>`
-//! instants so callers can construct whichever typed axis/representation view
-//! they need on top.
+//! These values are exposed as raw `qtty` quantities so callers can pass them
+//! directly to `Time::<A>::from_julian_days`, `from_modified_julian_days`, etc.
 
 use qtty::{Day, Second};
 
