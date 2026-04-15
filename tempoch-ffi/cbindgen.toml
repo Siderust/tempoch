@@ -9,9 +9,6 @@ after_includes = """
 #include "qtty_ffi.h"
 """
 
-[defines]
-"feature = serde" = "TEMPOCH_FFI_HAS_SERDE"
-
 [export]
 # Exclude qtty-ffi types — they come from qtty_ffi.h (included via after_includes)
 exclude = ["QttyQuantity", "UnitId", "DimensionId", "QttyDerivedQuantity"]

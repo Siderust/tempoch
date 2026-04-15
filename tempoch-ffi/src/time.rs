@@ -16,7 +16,10 @@ use crate::error::TempochStatus;
 use chrono::{NaiveDate, Utc};
 use qtty::Day;
 use qtty_ffi::{QttyQuantity, UnitId};
-use tempoch::{JulianDate, UniversalTime, UT};
+use tempoch::{JulianDays, Time, TimeContext, TT, UT1};
+
+const J2000_JD_TT: f64 = 2_451_545.0;
+const JULIAN_CENTURY_DAYS: f64 = 36_525.0;
 
 /// UTC date-time breakdown for C interop.
 #[repr(C)]
@@ -94,7 +97,7 @@ pub extern "C" fn tempoch_jd_new(value: f64) -> f64 {
 /// Return the J2000.0 epoch as a Julian Date (2451545.0).
 #[no_mangle]
 pub extern "C" fn tempoch_jd_j2000() -> f64 {
-    JulianDate::J2000.value()
+    J2000_JD_TT
 }
 
 /// Convert a Julian Date to a Modified Julian Date.
@@ -228,7 +231,7 @@ pub extern "C" fn tempoch_mjd_add_days(mjd: f64, days: f64) -> f64 {
 /// Compute Julian centuries since J2000 for a given Julian Date.
 #[no_mangle]
 pub extern "C" fn tempoch_jd_julian_centuries(jd: f64) -> f64 {
-    JulianDate::new(jd).julian_centuries().value()
+    (jd - J2000_JD_TT) / JULIAN_CENTURY_DAYS
 }
 
 /// Compute the difference between two Julian Dates as a `QttyQuantity` in days.
@@ -436,8 +439,15 @@ pub extern "C" fn tempoch_unix_to_seconds(unix: f64) -> f64 {
 /// Return ΔT = TT − UT1 in seconds for a given Julian Date.
 #[no_mangle]
 pub extern "C" fn tempoch_delta_t_seconds(jd: f64) -> f64 {
-    let ut: UniversalTime = JulianDate::new(jd).to::<UT>();
-    ut.delta_t().value()
+    let ctx = TimeContext::new();
+    let tt = match Time::<TT, JulianDays>::from_julian_days(Day::new(jd)) {
+        Ok(time) => time.repr(),
+        Err(_) => return f64::NAN,
+    };
+    match tt.to_with::<UT1>(&ctx) {
+        Ok(ut1) => (tt.si_seconds() - ut1.si_seconds()).erase_unit_raw(),
+        Err(_) => f64::NAN,
+    }
 }
 
 /// Convert a `double` time value from one scale to another.

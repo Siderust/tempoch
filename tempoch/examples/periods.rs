@@ -1,45 +1,35 @@
-use chrono::{DateTime, Utc};
+use qtty::Day;
 use tempoch::{
-    complement_within, intersect_periods, Interval, ModifiedJulianDate, Period, UtcPeriod,
+    complement_within, intersect_periods, normalize_periods, validate_period_list, Interval,
+    ModifiedJulianDays, Time, TT,
 };
 
+type MjdTt = Time<TT, ModifiedJulianDays>;
+
+fn mjd(value: f64) -> MjdTt {
+    Time::<TT, ModifiedJulianDays>::from_modified_julian_days(Day::new(value)).unwrap()
+}
+
 fn main() {
-    let day = Period::new(
-        ModifiedJulianDate::new(61_000.0),
-        ModifiedJulianDate::new(61_001.0),
-    );
-    let windows = vec![
-        Period::new(
-            ModifiedJulianDate::new(61_000.10),
-            ModifiedJulianDate::new(61_000.30),
-        ),
-        Period::new(
-            ModifiedJulianDate::new(61_000.60),
-            ModifiedJulianDate::new(61_000.85),
-        ),
-    ];
+    let day = Interval::new(mjd(61_000.0), mjd(61_001.0));
+    let windows = normalize_periods(&[
+        Interval::new(mjd(61_000.10), mjd(61_000.30)),
+        Interval::new(mjd(61_000.60), mjd(61_000.85)),
+    ]);
+    validate_period_list(&windows).unwrap();
 
     let gaps = complement_within(day, &windows);
     println!("Visible windows: {}", windows.len());
     println!("Gaps: {}", gaps.len());
 
     let constraints = vec![
-        Period::new(
-            ModifiedJulianDate::new(61_000.00),
-            ModifiedJulianDate::new(61_000.20),
-        ),
-        Period::new(
-            ModifiedJulianDate::new(61_000.70),
-            ModifiedJulianDate::new(61_001.00),
-        ),
+        Interval::new(mjd(61_000.00), mjd(61_000.20)),
+        Interval::new(mjd(61_000.70), mjd(61_001.00)),
     ];
     let intersection = intersect_periods(&windows, &constraints);
     println!("Intersection windows: {}", intersection.len());
-
-    let utc_day: UtcPeriod = day.to::<DateTime<Utc>>().unwrap();
-    let roundtrip: Interval<ModifiedJulianDate> = utc_day.to::<ModifiedJulianDate>();
     println!(
-        "Roundtrip drift (days): {:.3e}",
-        (roundtrip.start.value() - day.start.value()).abs()
+        "First overlap starts at MJD {:.5}",
+        intersection[0].start.modified_julian_days().value()
     );
 }

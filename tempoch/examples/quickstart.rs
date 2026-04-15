@@ -1,13 +1,13 @@
 use chrono::Utc;
-use tempoch::{JulianDate, Time, MJD, UT};
+use tempoch::{JulianDays, ModifiedJulianDays, Time, TT, UTC};
 
 fn main() {
-    let now_jd = JulianDate::from_utc(Utc::now());
-    let now_mjd: Time<MJD> = now_jd.to::<MJD>();
-    let now_ut: Time<UT> = now_jd.to::<UT>();
+    let utc_now = Time::<UTC>::from_chrono(Utc::now());
+    let tt_now = utc_now.to::<TT>();
+    let jd_tt: Time<TT, JulianDays> = tt_now.repr();
+    let mjd_tt: Time<TT, ModifiedJulianDays> = tt_now.repr();
 
-    println!("JD(TT): {now_jd}");
-    println!("MJD(TT): {now_mjd}");
-    println!("UT: {now_ut}");
-    println!("ΔT: {}", now_ut.delta_t());
+    println!("UTC       : {}", utc_now.to_chrono().unwrap());
+    println!("JD(TT)    : {:.9}", jd_tt.julian_days().value());
+    println!("MJD(TT)   : {:.9}", mjd_tt.modified_julian_days().value());
 }

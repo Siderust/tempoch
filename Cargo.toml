@@ -3,5 +3,5 @@ resolver = "2"
 members = ["tempoch", "tempoch-core", "tempoch-ffi"]
 
 [patch.crates-io]
-qtty = { git = "https://github.com/Siderust/qtty", branch = "pre-release" }
-qtty-ffi = { git = "https://github.com/Siderust/qtty", branch = "pre-release" }
+qtty = { path = "../qtty/qtty" }
+qtty-ffi = { path = "../qtty/qtty-ffi" }

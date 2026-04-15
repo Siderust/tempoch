@@ -1,23 +1,34 @@
 use chrono::{DateTime, NaiveDate};
 use qtty::{Day, Second};
-use tempoch::{complement_within, intersect_periods, JulianDate, ModifiedJulianDate, Period, UT};
+use tempoch::{
+    complement_within, intersect_periods, Interval, JulianDays, ModifiedJulianDays, Time,
+    TimeContext, TT, UT1, UTC,
+};
+
+fn mjd(value: f64) -> Time<TT, ModifiedJulianDays> {
+    Time::<TT, ModifiedJulianDays>::from_modified_julian_days(Day::new(value)).unwrap()
+}
 
 #[test]
 fn utc_roundtrip_j2000_is_stable() {
     let datetime = DateTime::from_timestamp(946_728_000, 0).unwrap();
-    let jd = JulianDate::from_utc(datetime);
-    let back = jd.to_utc().expect("to_utc");
+    let utc = Time::<UTC>::try_from_chrono(datetime).unwrap();
+    let jd_tt: Time<TT, JulianDays> = utc.to::<TT>().repr();
+    let back = jd_tt.to::<UTC>().try_to_chrono().unwrap();
     let delta_ns = back.timestamp_nanos_opt().unwrap() - datetime.timestamp_nanos_opt().unwrap();
     assert!(delta_ns.abs() < 50_000);
 }
 
 #[test]
-fn ut_applies_delta_t_near_j2000() {
-    let ut = tempoch::Time::<UT>::new(2_451_545.0);
-    let jd: JulianDate = ut.to::<tempoch::JD>();
-    let offset = (jd.quantity() - ut.quantity()).to::<qtty::unit::Day>();
-    let offset_s = offset.to::<qtty::unit::Second>();
-    assert!((offset_s - Second::new(63.83)).abs() < Second::new(1.0));
+fn ut1_context_roundtrip_near_j2000() {
+    let ctx = TimeContext::new();
+    let tt = Time::<TT>::from_si_seconds(Second::new(0.0)).unwrap();
+    let ut1 = tt.to_with::<UT1>(&ctx).unwrap();
+    let tt_back = ut1.to_with::<TT>(&ctx).unwrap();
+
+    let offset_s = (tt.si_seconds() - ut1.si_seconds()).value();
+    assert!((offset_s - 63.83).abs() < 1.0);
+    assert!((tt - tt_back).value().abs() < 1e-9);
 }
 
 #[test]
@@ -28,9 +39,10 @@ fn utc_leap_second_roundtrip_is_preserved() {
         .unwrap()
         .and_utc();
 
-    let jd = JulianDate::try_from_utc(leap).unwrap();
-    let back = jd.try_to_utc().unwrap();
+    let utc = Time::<UTC>::try_from_chrono(leap).unwrap();
+    let back = utc.try_to_chrono().unwrap();
 
+    assert!(utc.is_leap_second());
     assert_eq!(back.timestamp(), leap.timestamp());
     assert!(
         (back.timestamp_subsec_nanos() as i64 - leap.timestamp_subsec_nanos() as i64).abs()
@@ -40,37 +52,25 @@ fn utc_leap_second_roundtrip_is_preserved() {
 }
 
 #[test]
-fn period_set_ops_match_expected_intervals() {
-    let outer = Period::new(ModifiedJulianDate::new(0.0), ModifiedJulianDate::new(10.0));
+fn interval_set_ops_match_expected_intervals() {
+    let outer = Interval::new(mjd(0.0), mjd(10.0));
     let a = vec![
-        Period::new(ModifiedJulianDate::new(1.0), ModifiedJulianDate::new(3.0)),
-        Period::new(ModifiedJulianDate::new(5.0), ModifiedJulianDate::new(9.0)),
+        Interval::new(mjd(1.0), mjd(3.0)),
+        Interval::new(mjd(5.0), mjd(9.0)),
     ];
     let b = vec![
-        Period::new(ModifiedJulianDate::new(2.0), ModifiedJulianDate::new(4.0)),
-        Period::new(ModifiedJulianDate::new(7.0), ModifiedJulianDate::new(8.0)),
+        Interval::new(mjd(2.0), mjd(4.0)),
+        Interval::new(mjd(7.0), mjd(8.0)),
     ];
 
     let below_b = complement_within(outer, &b);
     let between = intersect_periods(&a, &below_b);
 
     assert_eq!(between.len(), 3);
-    assert_eq!(between[0].start.quantity(), Day::new(1.0));
-    assert_eq!(between[0].end.quantity(), Day::new(2.0));
-    assert_eq!(between[1].start.quantity(), Day::new(5.0));
-    assert_eq!(between[1].end.quantity(), Day::new(7.0));
-    assert_eq!(between[2].start.quantity(), Day::new(8.0));
-    assert_eq!(between[2].end.quantity(), Day::new(9.0));
-}
-
-#[cfg(feature = "serde")]
-#[test]
-fn serde_period_mjd_uses_legacy_field_names() {
-    let period = Period::new(
-        ModifiedJulianDate::new(59_000.25),
-        ModifiedJulianDate::new(59_000.75),
-    );
-    let json = serde_json::to_string(&period).unwrap();
-    assert!(json.contains("start_mjd"));
-    assert!(json.contains("end_mjd"));
+    assert_eq!(between[0].start.modified_julian_days().value(), 1.0);
+    assert_eq!(between[0].end.modified_julian_days().value(), 2.0);
+    assert_eq!(between[1].start.modified_julian_days().value(), 5.0);
+    assert_eq!(between[1].end.modified_julian_days().value(), 7.0);
+    assert_eq!(between[2].start.modified_julian_days().value(), 8.0);
+    assert_eq!(between[2].end.modified_julian_days().value(), 9.0);
 }

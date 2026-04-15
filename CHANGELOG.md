@@ -7,6 +7,33 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- The axis / representation time model is now the primary public API at the
+  crate root (`tempoch::*` / `tempoch_core::*`):
+  - `Time<A, R = Native>` with sealed `Axis` (`TAI`, `TT`, `TDB`, `TCG`,
+    `TCB`, `UTC`, `UT1`) and sealed `Representation` (`Native`,
+    `JulianDays`, `ModifiedJulianDays`, `SISeconds`, `UnixSeconds<POSIX>`,
+    `GpsSeconds`).
+  - Three disjoint witness traits (`InfallibleConvertible`,
+    `FallibleConvertible`, `ContextConvertible`) select conversion mode at
+    compile time.
+  - `TimeContext` carries the compiled-data context required for UT1
+    conversions.
+  - Civil layer: `Time<UTC>::{from_chrono, to_chrono}` preserves leap-second
+    labels; `Time<UTC, UnixSeconds<POSIX>>` exposes POSIX seconds;
+    `Time<TAI, GpsSeconds>` exposes GPS seconds with the fixed 19 s offset.
+  - Generic `Interval<T: Copy + PartialOrd>` with the same algorithmic set
+    (`complement_within`, `intersect_periods`, `normalize_periods`,
+    `validate_period_list`).
+
+### Removed
+
+- Deleted the old `Time<S>` compatibility layer entirely, including the
+  `tempoch::legacy` / `tempoch_core::legacy` namespaces.
+- Dropped the legacy-only `serde` feature from `tempoch-core`, `tempoch`, and
+  `tempoch-ffi`.
+
 ### Fixed
 
 - **TDB−TT formula**: Removed a spurious Kepler equation correction (`sin(M + e·sin(M))` → `sin(M)`) from the dominant term of the Fairhead & Bretagnon (1990) expression. The `e·sin(M)` factor was converting mean anomaly to eccentric anomaly, which is not part of the standard TDB−TT Fourier series and introduced a ~28 μs systematic error.
