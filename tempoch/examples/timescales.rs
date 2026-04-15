@@ -28,21 +28,21 @@ fn main() {
     let ut1 = tt.to_with::<UT1>(&ctx).unwrap();
 
     println!("Reference epoch: J2000 TT");
-    println!("  JD(TT)   : {:.9}", tt.julian_days().value());
-    println!("  MJD(TT)  : {:.9}", tt.modified_julian_days().value());
-    println!("  TT(s)    : {:.3}", tt.si_seconds().value());
+    println!("  JD(TT)   : {:.9}", tt.julian_days());
+    println!("  MJD(TT)  : {:.9}", tt.modified_julian_days());
+    println!("  TT(s)    : {:.3}", tt.si_seconds());
     println!(
         "  UTC      : {}",
         utc.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
     );
-    println!("  TAI(s)   : {:.3}", tai.si_seconds().value());
-    println!("  TDB(s)   : {:.6}", tdb.si_seconds().value());
-    println!("  TCG(s)   : {:.6}", tcg.si_seconds().value());
-    println!("  TCB(s)   : {:.6}", tcb.si_seconds().value());
-    println!("  UT1(s)   : {:.6}", ut1.si_seconds().value());
+    println!("  TAI   : {:.3}", tai.si_seconds());
+    println!("  TDB   : {:.6}", tdb.si_seconds());
+    println!("  TCG   : {:.6}", tcg.si_seconds());
+    println!("  TCB   : {:.6}", tcb.si_seconds());
+    println!("  UT1   : {:.6}", ut1.si_seconds());
     println!(
-        "  TT-UT1   : {:.3} s",
-        (tt.si_seconds() - ut1.si_seconds()).value()
+        "  TT-UT1   : {:.3}",
+        tt.si_seconds() - ut1.si_seconds()
     );
 
     let posix = Time::<UTC>::from_unix_seconds(Second::new(1_704_067_200.0)).unwrap();
@@ -51,16 +51,16 @@ fn main() {
     println!();
     println!("Civil / transport representations:");
     println!(
-        "  POSIX seconds : {:.3}",
-        posix.unix_seconds().unwrap().value()
+        "  POSIX : {:.3}",
+        posix.unix_seconds().unwrap()
     );
-    println!("  GPS seconds   : {:.3}", gps.gps_seconds().value());
+    println!("  GPS   : {:.3}", gps.gps_seconds());
 
     let now_utc = Time::<UTC>::from_chrono(Utc::now());
     let now_tdb = now_utc.to::<TDB>().unwrap();
 
     println!();
     println!("Current instant:");
-    println!("  UTC      : {}", now_utc.to_chrono().unwrap());
-    println!("  TDB(s)   : {:.3}", now_tdb.si_seconds().value());
+    println!("  UTC   : {}", now_utc.to_chrono().unwrap());
+    println!("  TDB   : {:.3}", now_tdb.si_seconds());
 }
