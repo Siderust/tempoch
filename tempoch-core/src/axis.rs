@@ -2,31 +2,65 @@
 // Copyright (C) 2026 Vallés Puig, Ramon
 
 //! Frozen axis set.
+//!
+//! Every axis carries an associated [`Axis::Store`] type that encodes the
+//! storage layout at the type level:
+//!
+//! * Continuous axes (`TAI`, `TT`, `TDB`, `TCG`, `TCB`, `UT1`) use
+//!   [`ContinuousStore`], which is `#[repr(transparent)]` over `Seconds`.
+//!   A `Time<TT>` therefore has the same ABI as a bare `f64`.
+//! * The civil axis `UTC` uses [`UtcStore`], which adds a leap-second label.
 
 use super::sealed::Sealed;
+use super::storage::{AxisStore, ContinuousStore, UtcStore};
 
 /// Marker trait for a scientifically distinct time axis.
 ///
-/// Sealed: implementations live in this crate (and, in a later phase, in
-/// `tempoch-astro`) — downstream crates cannot add new axes.
+/// Sealed: implementations live in this crate only — downstream crates cannot
+/// add new axes.
+///
+/// The associated `Store` type encodes the storage layout for this axis and
+/// is the mechanism through which `Time<A>` achieves zero-overhead layout for
+/// continuous axes.
+#[allow(private_bounds)]
 pub trait Axis: Sealed + Copy + Clone + core::fmt::Debug + 'static {
-    /// Display name of the axis. Used by `Debug` / `Display` on `Time`.
+    /// Storage variant used by `Time<Self>`.
+    type Store: AxisStore;
+    /// Display name of the axis. Used by `Debug` on `Time`.
     const NAME: &'static str;
 }
 
-macro_rules! define_axis {
+// ── Axis macros ───────────────────────────────────────────────────────────
+
+macro_rules! define_continuous_axis {
     ($(#[$meta:meta])* $ident:ident = $name:literal) => {
         $(#[$meta])*
         #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub struct $ident;
         impl Sealed for $ident {}
         impl Axis for $ident {
+            type Store = ContinuousStore;
             const NAME: &'static str = $name;
         }
     };
 }
 
-define_axis!(
+macro_rules! define_civil_axis {
+    ($(#[$meta:meta])* $ident:ident = $name:literal) => {
+        $(#[$meta])*
+        #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        pub struct $ident;
+        impl Sealed for $ident {}
+        impl Axis for $ident {
+            type Store = UtcStore;
+            const NAME: &'static str = $name;
+        }
+    };
+}
+
+// ── Axis definitions ──────────────────────────────────────────────────────
+
+define_civil_axis!(
     /// Coordinated Universal Time.
     ///
     /// Leap-second-aware civil axis. Internally `Time<UTC>` stores TAI seconds
@@ -36,19 +70,19 @@ define_axis!(
     UTC = "UTC"
 );
 
-define_axis!(
+define_continuous_axis!(
     /// International Atomic Time. Continuous SI-second clock.
     TAI = "TAI"
 );
 
-define_axis!(
+define_continuous_axis!(
     /// Terrestrial Time. The dynamical reference axis in this crate.
     ///
     /// Related to TAI by `TT = TAI + 32.184 s` (exact).
     TT = "TT"
 );
 
-define_axis!(
+define_continuous_axis!(
     /// Barycentric Dynamical Time.
     ///
     /// Differs from TT by a modeled periodic term (Fairhead–Bretagnon, <30 µs).
@@ -57,17 +91,17 @@ define_axis!(
     TDB = "TDB"
 );
 
-define_axis!(
+define_continuous_axis!(
     /// Geocentric Coordinate Time (IAU 2000 B1.9). Linear rate difference to TT.
     TCG = "TCG"
 );
 
-define_axis!(
+define_continuous_axis!(
     /// Barycentric Coordinate Time (IAU 2006 B3). Linear relation to TDB.
     TCB = "TCB"
 );
 
-define_axis!(
+define_continuous_axis!(
     /// Universal Time 1 — Earth-rotation time axis.
     ///
     /// Continuous in SI seconds, but `UT1 ↔ TT` requires a `TimeContext`
@@ -75,3 +109,20 @@ define_axis!(
     /// phases, observed-ΔT data).
     UT1 = "UT1"
 );
+
+// ── ContinuousAxis witness ────────────────────────────────────────────────
+
+/// Witness that an axis uses [`ContinuousStore`] and supports direct
+/// `qtty::Second` arithmetic. `UTC` deliberately does not implement this
+/// (see RFC §9).
+///
+/// Sealed — downstream cannot implement it.
+#[allow(private_bounds)]
+pub trait ContinuousAxis: Axis<Store = ContinuousStore> + Sealed {}
+
+macro_rules! continuous {
+    ($($axis:ty),+ $(,)?) => {
+        $(impl ContinuousAxis for $axis {})+
+    };
+}
+continuous!(TAI, TT, TDB, TCG, TCB, UT1);

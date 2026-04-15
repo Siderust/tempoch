@@ -3,14 +3,16 @@
 
 //! `Time<A>` — the core public type.
 
-use super::axis::Axis;
+use core::marker::PhantomData;
+
+use super::axis::{Axis, ContinuousAxis};
 use super::context::TimeContext;
 use super::conversion::{ContextConvertible, InfallibleConvertible};
 use super::encoding::{
     j2000_seconds_to_jd, j2000_seconds_to_mjd, jd_to_j2000_seconds, mjd_to_j2000_seconds,
 };
 use super::error::ConversionError;
-use super::storage::{ContinuousAxis, Storage};
+use super::storage::{AxisStore, ContinuousStore};
 use qtty::{Day, Second};
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -20,12 +22,11 @@ use qtty::{Day, Second};
 /// A point in time on axis `A`.
 ///
 /// For continuous axes (`TT`, `TAI`, `TDB`, `TCG`, `TCB`, `UT1`) the
-/// internal storage is SI seconds since J2000 TT counted on that axis.
+/// internal storage is `#[repr(transparent)]` over a single `Seconds` scalar
+/// — the same ABI as a bare `f64`.
 ///
-/// `UTC` is an exception: storage holds the equivalent TAI seconds (keeping
-/// the scalar continuous across leap seconds) plus a boolean leap-second
-/// label. All public UTC methods account for this transparently; the
-/// difference only matters when reasoning about internal representation.
+/// `UTC` uses [`UtcStore`](super::storage::UtcStore) which adds a leap-second
+/// label. All public UTC methods account for this transparently.
 ///
 /// ```rust,no_run
 /// use tempoch_core::{Time, TT};
@@ -39,7 +40,8 @@ use qtty::{Day, Second};
 /// `.to_with::<A2>(&ctx)` for UT1 routes that need a [`TimeContext`].
 #[repr(transparent)]
 pub struct Time<A: Axis> {
-    storage: Storage<A>,
+    store: A::Store,
+    _axis: PhantomData<A>,
 }
 
 impl<A: Axis> Copy for Time<A> {}
@@ -58,14 +60,14 @@ impl<A: Axis> Clone for Time<A> {
 impl<A: Axis> PartialEq for Time<A> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.storage.seconds == other.storage.seconds
+        self.store.seconds() == other.store.seconds()
     }
 }
 
 impl<A: Axis> PartialOrd for Time<A> {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-        self.storage.seconds.partial_cmp(&other.storage.seconds)
+        self.store.seconds().partial_cmp(&other.store.seconds())
     }
 }
 
@@ -75,8 +77,8 @@ impl<A: Axis> core::fmt::Debug for Time<A> {
             f,
             "Time<{}>({:.6}s{})",
             A::NAME,
-            self.storage.seconds / Second::new(1.0),
-            if self.storage.leap { " [leap]" } else { "" }
+            self.store.seconds() / Second::new(1.0),
+            if self.store.leap() { " [leap]" } else { "" }
         )
     }
 }
@@ -85,13 +87,13 @@ impl<A: Axis> core::fmt::Debug for Time<A> {
 
 impl<A: Axis> Time<A> {
     #[inline]
-    pub(crate) const fn from_storage(storage: Storage<A>) -> Self {
-        Self { storage }
+    pub(crate) fn from_store(store: A::Store) -> Self {
+        Self { store, _axis: PhantomData }
     }
 
     #[inline]
-    pub(crate) fn storage(&self) -> Storage<A> {
-        self.storage
+    pub(crate) fn store(self) -> A::Store {
+        self.store
     }
 }
 
@@ -103,13 +105,13 @@ impl<A: ContinuousAxis> Time<A> {
     /// Fails on non-finite input.
     #[inline]
     pub fn from_si_seconds(seconds: Second) -> Result<Self, ConversionError> {
-        Ok(Self::from_storage(Storage::new(seconds)?))
+        Ok(Self::from_store(ContinuousStore::new(seconds)?))
     }
 
     /// SI seconds since J2000 TT on axis `A`.
     #[inline]
     pub fn si_seconds(self) -> Second {
-        self.storage.seconds
+        self.store.0
     }
 
     /// Build a `Time<A>` from an absolute Julian Day number on axis `A`.
@@ -117,13 +119,13 @@ impl<A: ContinuousAxis> Time<A> {
     /// Fails on non-finite input.
     #[inline]
     pub fn from_julian_days(jd: Day) -> Result<Self, ConversionError> {
-        Ok(Self::from_storage(Storage::new(jd_to_j2000_seconds(jd))?))
+        Ok(Self::from_store(ContinuousStore::new(jd_to_j2000_seconds(jd))?))
     }
 
     /// Julian Day number on axis `A`.
     #[inline]
     pub fn julian_days(self) -> Day {
-        j2000_seconds_to_jd(self.storage.seconds)
+        j2000_seconds_to_jd(self.store.0)
     }
 
     /// Build a `Time<A>` from a Modified Julian Day value on axis `A`.
@@ -131,13 +133,13 @@ impl<A: ContinuousAxis> Time<A> {
     /// Fails on non-finite input.
     #[inline]
     pub fn from_modified_julian_days(mjd: Day) -> Result<Self, ConversionError> {
-        Ok(Self::from_storage(Storage::new(mjd_to_j2000_seconds(mjd))?))
+        Ok(Self::from_store(ContinuousStore::new(mjd_to_j2000_seconds(mjd))?))
     }
 
     /// Modified Julian Day on axis `A`.
     #[inline]
     pub fn modified_julian_days(self) -> Day {
-        j2000_seconds_to_mjd(self.storage.seconds)
+        j2000_seconds_to_mjd(self.store.0)
     }
 }
 
@@ -155,7 +157,7 @@ impl<A: Axis> Time<A> {
     where
         A: InfallibleConvertible<A2>,
     {
-        Time::from_storage(<A as InfallibleConvertible<A2>>::convert(self.storage))
+        Time::from_store(<A as InfallibleConvertible<A2>>::convert(self.store))
     }
 }
 
@@ -170,8 +172,8 @@ impl<A: Axis> Time<A> {
     where
         A: ContextConvertible<A2>,
     {
-        Ok(Time::from_storage(
-            <A as ContextConvertible<A2>>::convert_with(self.storage, ctx)?,
+        Ok(Time::from_store(
+            <A as ContextConvertible<A2>>::convert_with(self.store, ctx)?,
         ))
     }
 }
@@ -182,7 +184,7 @@ impl<A: ContinuousAxis> core::ops::Sub for Time<A> {
     type Output = Second;
     #[inline]
     fn sub(self, rhs: Self) -> Second {
-        self.storage.seconds - rhs.storage.seconds
+        self.store.0 - rhs.store.0
     }
 }
 
@@ -190,7 +192,7 @@ impl<A: ContinuousAxis> core::ops::Add<Second> for Time<A> {
     type Output = Self;
     #[inline]
     fn add(self, rhs: Second) -> Self {
-        Self::from_storage(Storage::new_unchecked(self.storage.seconds + rhs, false))
+        Self::from_store(ContinuousStore(self.store.0 + rhs))
     }
 }
 
@@ -198,21 +200,21 @@ impl<A: ContinuousAxis> core::ops::Sub<Second> for Time<A> {
     type Output = Self;
     #[inline]
     fn sub(self, rhs: Second) -> Self {
-        Self::from_storage(Storage::new_unchecked(self.storage.seconds - rhs, false))
+        Self::from_store(ContinuousStore(self.store.0 - rhs))
     }
 }
 
 impl<A: ContinuousAxis> core::ops::AddAssign<Second> for Time<A> {
     #[inline]
     fn add_assign(&mut self, rhs: Second) {
-        self.storage.seconds += rhs;
+        self.store.0 += rhs;
     }
 }
 
 impl<A: ContinuousAxis> core::ops::SubAssign<Second> for Time<A> {
     #[inline]
     fn sub_assign(&mut self, rhs: Second) {
-        self.storage.seconds -= rhs;
+        self.store.0 -= rhs;
     }
 }
 
@@ -317,3 +319,4 @@ mod tests {
         );
     }
 }
+

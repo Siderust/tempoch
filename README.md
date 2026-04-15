@@ -12,8 +12,8 @@ Typed astronomical time primitives for Rust.
   `UTC`, `UT1`, `TDB`, `TCG`, `TCB`).
 - Compile-time conversion witnesses for infallible (`to`) and
   context-required (`to_with`) routes.
-- UTC conversion through `chrono`, exact from 1961 onward and leap-second
-  aware.
+- UTC conversion through `chrono`, covering 1961 onward and leap-second
+  aware; round-trip precision is limited by `f64` storage (~100 µs near J2000).
 - Automatic `ΔT = TT - UT1` handling for `UT1` conversions via an explicit
   `TimeContext`.
 - Julian Day, Modified Julian Day, and SI-second accessors as direct methods

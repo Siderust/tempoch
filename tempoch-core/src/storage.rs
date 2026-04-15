@@ -1,68 +1,116 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Vallés Puig, Ramon
 
-//! Private storage layer. Storage is not a public contract.
+//! Private storage layer.
+//!
+//! Two concrete types encode the structural difference between continuous
+//! axes and the civil UTC axis at zero cost:
+//!
+//! * [`ContinuousStore`] — `#[repr(transparent)]` over `Seconds` (8 bytes).
+//!   All continuous-axis `Time<A>` values have the same ABI as a bare `f64`.
+//! * [`UtcStore`]        — holds TAI-equivalent seconds plus a leap label.
+//!   Used exclusively by the `UTC` axis.
+//!
+//! The [`AxisStore`] sealed trait provides uniform read access; every method
+//! is `#[inline]` and monomorphises to zero-overhead code.
 
-use super::axis::Axis;
 use super::error::ConversionError;
-use core::marker::PhantomData;
+use super::sealed::Sealed;
 use qtty::time::Seconds;
 
-/// SI seconds since J2000 TT (JD 2_451_545.0 TT). The scalar is interpreted
-/// on axis `A`: on TT it is SI seconds on the TT axis, on TAI it is SI
-/// seconds on the TAI axis (i.e. offset by +32.184 s), and so on. Axis
-/// conversion crosses this boundary via the `convert` module.
+// ── AxisStore ─────────────────────────────────────────────────────────────
+
+/// Sealed interface for the two concrete storage variants.
 ///
-/// For continuous axes, the "leap" flag is always `false`.
-/// For UTC, the scalar records the corresponding *TAI* seconds since J2000
-/// TT (so it remains continuous across leap seconds), and `leap` marks the
-/// instant as a positive-leap label.
-#[derive(Debug, Copy, Clone)]
-pub(crate) struct Storage<A: Axis> {
-    pub(crate) seconds: Seconds,
-    pub(crate) leap: bool,
-    pub(crate) _axis: PhantomData<A>,
+/// Downstream crates cannot implement this trait.
+#[allow(private_bounds)]
+#[doc(hidden)]
+pub trait AxisStore: Copy + Clone + core::fmt::Debug + 'static + Sealed {
+    fn seconds(self) -> Seconds;
+    fn new(seconds: Seconds) -> Result<Self, ConversionError>
+    where
+        Self: Sized;
+    /// Unchecked constructor. Caller must guarantee `seconds.is_finite()`.
+    fn new_unchecked(seconds: Seconds, leap: bool) -> Self;
+    fn leap(self) -> bool;
 }
 
-impl<A: Axis> Storage<A> {
+// ── ContinuousStore ───────────────────────────────────────────────────────
+
+/// Zero-overhead storage for continuous time axes.
+///
+/// `#[repr(transparent)]` over `Seconds`, so `Time<TT>` (and every other
+/// continuous-axis instant) has the same ABI and size as a bare `f64`.
+#[derive(Debug, Copy, Clone)]
+#[repr(transparent)]
+#[doc(hidden)]
+pub struct ContinuousStore(pub(crate) Seconds);
+
+impl Sealed for ContinuousStore {}
+
+impl AxisStore for ContinuousStore {
     #[inline]
-    pub(crate) const fn new_unchecked(seconds: Seconds, leap: bool) -> Self {
-        Self {
-            seconds,
-            leap,
-            _axis: PhantomData,
-        }
+    fn seconds(self) -> Seconds {
+        self.0
     }
 
     #[inline]
-    pub(crate) fn new(seconds: Seconds) -> Result<Self, ConversionError> {
-        if seconds.is_finite() {
-            Ok(Self::new_unchecked(seconds, false))
+    fn new(s: Seconds) -> Result<Self, ConversionError> {
+        if s.is_finite() {
+            Ok(Self(s))
         } else {
             Err(ConversionError::NonFinite)
         }
     }
+
+    #[inline]
+    fn new_unchecked(s: Seconds, _leap: bool) -> Self {
+        Self(s)
+    }
+
+    #[inline]
+    fn leap(self) -> bool {
+        false
+    }
 }
 
-/// Axis witness that the axis has a continuous SI-second storage and
-/// supports direct `qtty::Second` arithmetic. UTC is deliberately excluded
-/// (see RFC §9).
+// ── UtcStore ──────────────────────────────────────────────────────────────
+
+/// Civil-time storage for the `UTC` axis.
 ///
-/// Sealed — downstream cannot implement it.
-pub trait ContinuousAxis: Axis + super::sealed::Sealed {}
-
-macro_rules! continuous {
-    ($($axis:ty),+ $(,)?) => {
-        $(impl ContinuousAxis for $axis {})+
-    };
+/// Holds TAI-equivalent seconds (so the scalar remains continuous across
+/// leap seconds) plus a boolean leap-second label.
+#[derive(Debug, Copy, Clone)]
+#[doc(hidden)]
+pub struct UtcStore {
+    pub(crate) seconds: Seconds,
+    pub(crate) leap: bool,
 }
-continuous!(
-    super::axis::TAI,
-    super::axis::TT,
-    super::axis::TDB,
-    super::axis::TCG,
-    super::axis::TCB,
-    super::axis::UT1,
-);
 
-// UTC intentionally does not implement ContinuousAxis.
+impl Sealed for UtcStore {}
+
+impl AxisStore for UtcStore {
+    #[inline]
+    fn seconds(self) -> Seconds {
+        self.seconds
+    }
+
+    #[inline]
+    fn new(s: Seconds) -> Result<Self, ConversionError> {
+        if s.is_finite() {
+            Ok(Self { seconds: s, leap: false })
+        } else {
+            Err(ConversionError::NonFinite)
+        }
+    }
+
+    #[inline]
+    fn new_unchecked(s: Seconds, leap: bool) -> Self {
+        Self { seconds: s, leap }
+    }
+
+    #[inline]
+    fn leap(self) -> bool {
+        self.leap
+    }
+}

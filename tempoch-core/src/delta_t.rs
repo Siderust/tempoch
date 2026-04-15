@@ -22,8 +22,6 @@ const JD_EPOCH_948_UT: Day = Day::new(2_067_314.5);
 const JD_EPOCH_1850_UT: Day = Day::new(2_396_758.5);
 const JD_TABLE_START_1620: Day = Day::new(2_312_752.5);
 const BIENNIAL_STEP_D: Day = Day::new(730.5);
-/// Boundary JD between ancient and medieval ΔT models (1461-07-04).
-const JD_MEDIEVAL_START: Day = Day::new(2_305_447.5);
 
 const TERMS: usize = 187;
 
@@ -189,12 +187,24 @@ fn delta_t_extrapolated(jd_ut: Day) -> Second {
 }
 
 /// ΔT = TT − UT1, in seconds, for a Julian Day on the UT1 axis.
+///
+/// Piecewise dispatch:
+/// * **Before 948 CE** — Stephenson & Houlden (1986) quadratic with epoch 948.
+/// * **948 CE – 1619** — Stephenson & Houlden (1986) quadratic with epoch 1850
+///   (`22.5 c²`). Extends to the start of the biennial table rather than
+///   terminating at 1461, since the biennial table begins at 1620.
+/// * **1620 – modern table end** — biennial interpolation (Meeus ch. 9) then
+///   USNO monthly data.
+/// * **Beyond table** — quadratic tail-fit extrapolation.
 #[inline]
 pub(crate) fn delta_t_seconds(jd_ut: Day) -> Second {
     let mjd = jd_to_mjd(jd_ut);
     if jd_ut < JD_EPOCH_948_UT {
         delta_t_ancient(jd_ut)
-    } else if jd_ut < JD_MEDIEVAL_START {
+    } else if jd_ut < JD_TABLE_START_1620 {
+        // Medieval model covers 948–1619; JD_TABLE_START_1620 is the first
+        // valid biennial-table entry, so backward-extrapolating the table
+        // into this range is wrong.
         delta_t_medieval(jd_ut)
     } else if mjd < MODERN_DELTA_T_START_MJD {
         delta_t_table(jd_ut)

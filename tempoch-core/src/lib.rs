@@ -38,3 +38,21 @@ pub use interval::{
     InvalidIntervalError, PeriodListError,
 };
 pub use time::Time;
+
+#[cfg(test)]
+mod size_tests {
+    use super::*;
+    #[test]
+    fn continuous_time_is_eight_bytes() {
+        assert_eq!(core::mem::size_of::<Time<TT>>(), 8);
+        assert_eq!(core::mem::size_of::<Time<TAI>>(), 8);
+        assert_eq!(core::mem::size_of::<Time<TDB>>(), 8);
+        assert_eq!(core::mem::size_of::<Time<TCG>>(), 8);
+        assert_eq!(core::mem::size_of::<Time<TCB>>(), 8);
+        assert_eq!(core::mem::size_of::<Time<UT1>>(), 8);
+    }
+    #[test]
+    fn utc_time_has_leap_label() {
+        assert_eq!(core::mem::size_of::<Time<UTC>>(), 16);
+    }
+}

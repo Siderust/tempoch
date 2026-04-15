@@ -22,7 +22,7 @@ use super::encoding::{
     mjd_to_unix_seconds, unix_seconds_to_jd, unix_seconds_to_mjd,
 };
 use super::error::ConversionError;
-use super::storage::Storage;
+use super::storage::{AxisStore, ContinuousStore, UtcStore};
 use super::time::Time;
 use crate::generated::time_data::UTC_TAI_SEGMENTS;
 use chrono::{DateTime, Utc};
@@ -120,6 +120,34 @@ fn utc_from_tai_seconds(tai_secs: Seconds) -> Result<DateTime<Utc>, ConversionEr
     datetime_from_utc_mjd(mjd_utc).ok_or(ConversionError::OutOfRange)
 }
 
+/// Return `true` when `tai_secs` (TAI-seconds-since-J2000-TT) falls inside a
+/// positive leap-second window — i.e. the UTC clock would show 23:59:60.x at
+/// that instant.
+///
+/// This recomputes the answer from the compiled UTC-TAI segment table so the
+/// result is correct even after an axis round-trip that clears the stored flag.
+fn tai_seconds_is_in_leap_window(tai_secs: Second) -> bool {
+    let jd_tt: Days = j2000_seconds_to_jd(tai_secs + TT_MINUS_TAI);
+    let mjd_tt = jd_to_mjd(jd_tt);
+    for window in UTC_TAI_SEGMENTS.windows(2) {
+        let segment = window[0];
+        let next = window[1];
+        let end_mjd = match segment.end_mjd_days() {
+            Some(d) => d,
+            None => continue,
+        };
+        let end_tt = utc_mjd_to_tt_mjd_in_segment(end_mjd, segment);
+        let next_start_tt =
+            utc_mjd_to_tt_mjd_in_segment(next.start_mjd_days(), next);
+        // The leap window is [end_tt, next_start_tt); any TT value inside it
+        // maps to 23:59:60.x in UTC.
+        if mjd_tt >= end_tt - UTC_INTERVAL_EPS && mjd_tt < next_start_tt - UTC_INTERVAL_EPS {
+            return true;
+        }
+    }
+    false
+}
+
 /// Convert a chrono DateTime<Utc> to TAI-seconds-since-J2000-TT. Returns
 /// `(tai_secs, leap_flag)`.
 fn tai_seconds_from_utc(dt: DateTime<Utc>) -> Result<(Second, bool), ConversionError> {
@@ -160,7 +188,7 @@ impl Time<UTC> {
     #[inline]
     pub fn try_from_chrono(dt: DateTime<Utc>) -> Result<Self, ConversionError> {
         let (tai_secs, leap) = tai_seconds_from_utc(dt)?;
-        Ok(Self::from_storage(Storage::new_unchecked(tai_secs, leap)))
+        Ok(Self::from_store(UtcStore::new_unchecked(tai_secs, leap)))
     }
 
     /// Convenience panicking wrapper over [`try_from_chrono`](Self::try_from_chrono).
@@ -173,7 +201,7 @@ impl Time<UTC> {
     /// Convert to a `chrono::DateTime<Utc>`, preserving leap-second labels.
     #[inline]
     pub fn try_to_chrono(self) -> Result<DateTime<Utc>, ConversionError> {
-        utc_from_tai_seconds(self.storage().seconds)
+        utc_from_tai_seconds(self.store().seconds)
     }
 
     /// Convenience non-fallible wrapper (returns `None` on error).
@@ -182,11 +210,15 @@ impl Time<UTC> {
         self.try_to_chrono().ok()
     }
 
-    /// Returns `true` if this instant is labeled as a positive leap second
+    /// Returns `true` if this instant falls inside a positive leap second
     /// in UTC (e.g., 23:59:60).
+    ///
+    /// Recomputed from the UTC-TAI segment table, so the result is stable
+    /// even when `self` was obtained via an axis round-trip (e.g. `UTC→TT→UTC`)
+    /// that does not preserve a stored label.
     #[inline]
     pub fn is_leap_second(self) -> bool {
-        self.storage().leap
+        tai_seconds_is_in_leap_window(self.store().seconds)
     }
 }
 
@@ -207,7 +239,7 @@ impl Time<UTC> {
         let tai_minus_utc =
             try_tai_minus_utc_mjd(mjd_utc).ok_or(ConversionError::UtcHistoryUnsupported)?;
         let tai_secs = mjd_to_j2000_seconds(mjd_utc) + tai_minus_utc;
-        Ok(Self::from_storage(Storage::new_unchecked(tai_secs, false)))
+        Ok(Self::from_store(UtcStore::new_unchecked(tai_secs, false)))
     }
 
     /// Return the POSIX timestamp in seconds for this UTC instant.
@@ -216,7 +248,7 @@ impl Time<UTC> {
     /// labels collapse onto the preceding integer second (standard POSIX).
     #[inline]
     pub fn unix_seconds(self) -> Result<Second, ConversionError> {
-        let dt = utc_from_tai_seconds(self.storage().seconds)?;
+        let dt = utc_from_tai_seconds(self.store().seconds)?;
         let nanos = dt.timestamp_subsec_nanos().min(999_999_999);
         Ok(Seconds::new(dt.timestamp() as f64) + Nanoseconds::new(nanos as f64).to::<SecondUnit>())
     }
@@ -234,16 +266,13 @@ impl Time<TAI> {
         if !seconds.is_finite() {
             return Err(ConversionError::NonFinite);
         }
-        Ok(Self::from_storage(Storage::new_unchecked(
-            seconds + GPS_EPOCH_TAI,
-            false,
-        )))
+        Ok(Self::from_store(ContinuousStore(seconds + GPS_EPOCH_TAI)))
     }
 
     /// Return GPS seconds since the GPS epoch for this instant.
     #[inline]
     pub fn gps_seconds(self) -> Second {
-        self.storage().seconds - GPS_EPOCH_TAI
+        self.store().0 - GPS_EPOCH_TAI
     }
 }
 
