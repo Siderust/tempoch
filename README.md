@@ -24,8 +24,8 @@ Typed astronomical time primitives for Rust.
   sources.
 - Public typed epoch/offset constants under `tempoch::constats`, such as
   `J2000_JD_TT`, `TT_MINUS_TAI`, and `DELTA_T_PREDICTION_HORIZON_MJD`.
-- Generic intervals with `Interval<T>` plus utility operations: intersection,
-  normalization, validation, and complement.
+- A utility `Interval<T>` type for half-open time ranges over `Time<A>`,
+  with intersection, normalization, validation, and complement helpers.
 
 **Storage model:** `Time<A>` stores a single `f64` second count since J2000 TT
 on the target axis. Precision therefore depends on the epoch magnitude; around

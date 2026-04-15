@@ -19,8 +19,13 @@ use qtty::{Day, Second};
 
 /// A point in time on axis `A`.
 ///
-/// Storage is private (SI seconds since J2000 TT on the axis). Construction
-/// and reading are done through named methods:
+/// For continuous axes (`TT`, `TAI`, `TDB`, `TCG`, `TCB`, `UT1`) the
+/// internal storage is SI seconds since J2000 TT counted on that axis.
+///
+/// `UTC` is an exception: storage holds the equivalent TAI seconds (keeping
+/// the scalar continuous across leap seconds) plus a boolean leap-second
+/// label. All public UTC methods account for this transparently; the
+/// difference only matters when reasoning about internal representation.
 ///
 /// ```rust,no_run
 /// use tempoch_core::{Time, TT};

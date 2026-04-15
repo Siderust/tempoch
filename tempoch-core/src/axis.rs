@@ -29,9 +29,10 @@ macro_rules! define_axis {
 define_axis!(
     /// Coordinated Universal Time.
     ///
-    /// First-class axis: leap-second-aware, discontinuous. `Native` on UTC is
-    /// an exact civil instant (integer seconds + nanos + leap flag). Arithmetic
-    /// via `qtty::Seconds` routes through TAI.
+    /// Leap-second-aware civil axis. Internally `Time<UTC>` stores TAI seconds
+    /// (keeping the scalar continuous across leap seconds) plus a leap-second
+    /// label. Civil conversions go through `try_to_chrono` / `from_chrono`;
+    /// direct SI-second arithmetic is intentionally not available.
     UTC = "UTC"
 );
 
