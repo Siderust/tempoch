@@ -3,20 +3,20 @@ use qtty::{Day, Second};
 use tempoch::{
     complement_within,
     constats::{J2000_JD_TT, TT_MINUS_TAI},
-    intersect_periods, Interval, JulianDays, ModifiedJulianDays, Time, TimeContext, TAI, TT, UT1,
+    intersect_periods, Interval, Time, TimeContext, TAI, TT, UT1,
     UTC,
 };
 
-fn mjd(value: f64) -> Time<TT, ModifiedJulianDays> {
-    Time::<TT, ModifiedJulianDays>::from_modified_julian_days(Day::new(value)).unwrap()
+fn mjd(value: f64) -> Time<TT> {
+    Time::<TT>::from_modified_julian_days(Day::new(value)).unwrap()
 }
 
 #[test]
 fn utc_roundtrip_j2000_is_stable() {
     let datetime = DateTime::from_timestamp(946_728_000, 0).unwrap();
     let utc = Time::<UTC>::try_from_chrono(datetime).unwrap();
-    let jd_tt: Time<TT, JulianDays> = utc.to::<TT>().repr();
-    let back = jd_tt.to::<UTC>().try_to_chrono().unwrap();
+    let jd_tt: Time<TT> = utc.to::<TT>().unwrap();
+    let back = jd_tt.to::<UTC>().unwrap().try_to_chrono().unwrap();
     let delta_ns = back.timestamp_nanos_opt().unwrap() - datetime.timestamp_nanos_opt().unwrap();
     assert!(delta_ns.abs() < 50_000);
 }
@@ -35,11 +35,10 @@ fn ut1_context_roundtrip_near_j2000() {
 
 #[test]
 fn public_constats_epochs_are_usable() {
-    let j2000_jd = Time::<TT, JulianDays>::from_julian_days(J2000_JD_TT).unwrap();
-    let j2000: Time<TT> = j2000_jd.repr();
-    let tai = j2000.to::<TAI>();
+    let j2000 = Time::<TT>::from_julian_days(J2000_JD_TT).unwrap();
+    let tai = j2000.to::<TAI>().unwrap();
 
-    assert_eq!(j2000_jd.julian_days(), J2000_JD_TT);
+    assert_eq!(j2000.julian_days(), J2000_JD_TT);
     assert!(((j2000.si_seconds() - tai.si_seconds()) - TT_MINUS_TAI).abs() < Second::new(1e-12));
 }
 

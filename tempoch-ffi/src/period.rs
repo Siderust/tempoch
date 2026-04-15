@@ -7,9 +7,9 @@ use crate::catch_panic;
 use crate::error::TempochStatus;
 use qtty::Day;
 use qtty_ffi::{QttyQuantity, UnitId};
-use tempoch::{Interval, ModifiedJulianDays, Time, TT};
+use tempoch::{Interval, Time, TT};
 
-type MjdPeriod = Interval<Time<TT, ModifiedJulianDays>>;
+type MjdPeriod = Interval<Time<TT>>;
 
 /// A time period expressed in Modified Julian Date, suitable for C interop.
 #[repr(C)]
@@ -32,9 +32,9 @@ impl TempochPeriodMjd {
 
     fn try_to_period(&self) -> Result<MjdPeriod, TempochStatus> {
         let start =
-            Time::<TT, ModifiedJulianDays>::from_modified_julian_days(Day::new(self.start_mjd))
+            Time::<TT>::from_modified_julian_days(Day::new(self.start_mjd))
                 .map_err(|_| TempochStatus::InvalidPeriod)?;
-        let end = Time::<TT, ModifiedJulianDays>::from_modified_julian_days(Day::new(self.end_mjd))
+        let end = Time::<TT>::from_modified_julian_days(Day::new(self.end_mjd))
             .map_err(|_| TempochStatus::InvalidPeriod)?;
         Interval::try_new(start, end).map_err(|_| TempochStatus::InvalidPeriod)
     }

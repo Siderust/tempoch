@@ -21,7 +21,7 @@
 //! * **Civil/transport encodings** — POSIX (Unix) seconds, GPS seconds.
 //!   Involve civil epoch offsets; the civil layer adds UTC-TAI history
 //!   on top.
-//! * **Convenience** — `jd_to_mjd` / `mjd_to_jd` for axis-independent
+//! * **Convenience** — `jd_to_mjd` for axis-independent
 //!   day-count conversions.
 
 use crate::constats::{DAYS_PER_JC, J2000_JD_TT, JD_MINUS_MJD, UNIX_EPOCH_JD, UNIX_EPOCH_MJD};
@@ -62,12 +62,6 @@ pub(crate) fn j2000_seconds_to_mjd(seconds: Seconds) -> Days {
 #[inline]
 pub(crate) fn jd_to_mjd(jd: Days) -> Days {
     jd - JD_MINUS_MJD
-}
-
-/// Modified Julian Day → Julian Day.
-#[inline]
-pub(crate) fn mjd_to_jd(mjd: Days) -> Days {
-    mjd + JD_MINUS_MJD
 }
 
 // ── Julian centuries ─────────────────────────────────────────────────────
@@ -119,14 +113,6 @@ mod tests {
         let secs = mjd_to_j2000_seconds(mjd);
         let back = j2000_seconds_to_mjd(secs);
         assert!((back - mjd).abs() < EPS_D);
-    }
-
-    #[test]
-    fn jd_mjd_identity() {
-        let jd = Days::new(2_451_545.0);
-        let mjd = jd_to_mjd(jd);
-        let back = mjd_to_jd(mjd);
-        assert_eq!(back, jd);
     }
 
     #[test]

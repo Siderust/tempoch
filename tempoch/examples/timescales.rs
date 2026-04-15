@@ -11,29 +11,26 @@
 use chrono::Utc;
 use qtty::{Day, Second};
 use tempoch::{
-    GpsSeconds, JulianDays, ModifiedJulianDays, SISeconds, Time, TimeContext, UnixSeconds, POSIX,
+    Time, TimeContext,
     TAI, TCB, TCG, TDB, TT, UT1, UTC,
 };
 
 fn main() {
     let ctx = TimeContext::new();
 
-    let tt_j2000: Time<TT, JulianDays> = Time::from_julian_days(Day::new(2_451_545.0)).unwrap();
-    let tt: Time<TT> = tt_j2000.repr();
-    let mjd: Time<TT, ModifiedJulianDays> = tt.repr();
-    let si: Time<TT, SISeconds> = tt.repr();
+    let tt = Time::<TT>::from_julian_days(Day::new(2_451_545.0)).unwrap();
 
-    let tai = tt.to::<TAI>();
-    let tdb = tt.to::<TDB>();
-    let tcg = tt.to::<TCG>();
-    let tcb = tt.to::<TCB>();
-    let utc = tt.to::<UTC>().to_chrono().unwrap();
+    let tai = tt.to::<TAI>().unwrap();
+    let tdb = tt.to::<TDB>().unwrap();
+    let tcg = tt.to::<TCG>().unwrap();
+    let tcb = tt.to::<TCB>().unwrap();
+    let utc = tt.to::<UTC>().unwrap().to_chrono().unwrap();
     let ut1 = tt.to_with::<UT1>(&ctx).unwrap();
 
     println!("Reference epoch: J2000 TT");
-    println!("  JD(TT)   : {:.9}", tt_j2000.julian_days().value());
-    println!("  MJD(TT)  : {:.9}", mjd.modified_julian_days().value());
-    println!("  TT(s)    : {:.3}", si.seconds().value());
+    println!("  JD(TT)   : {:.9}", tt.julian_days().value());
+    println!("  MJD(TT)  : {:.9}", tt.modified_julian_days().value());
+    println!("  TT(s)    : {:.3}", tt.si_seconds().value());
     println!(
         "  UTC      : {}",
         utc.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
@@ -48,9 +45,8 @@ fn main() {
         (tt.si_seconds() - ut1.si_seconds()).value()
     );
 
-    let posix =
-        Time::<UTC, UnixSeconds<POSIX>>::from_unix_seconds(Second::new(1_704_067_200.0)).unwrap();
-    let gps: Time<TAI, GpsSeconds> = posix.to::<TAI>().repr();
+    let posix = Time::<UTC>::from_unix_seconds(Second::new(1_704_067_200.0)).unwrap();
+    let gps = posix.to::<TAI>().unwrap();
 
     println!();
     println!("Civil / transport representations:");
@@ -61,7 +57,7 @@ fn main() {
     println!("  GPS seconds   : {:.3}", gps.gps_seconds().value());
 
     let now_utc = Time::<UTC>::from_chrono(Utc::now());
-    let now_tdb = now_utc.to::<TDB>();
+    let now_tdb = now_utc.to::<TDB>().unwrap();
 
     println!();
     println!("Current instant:");

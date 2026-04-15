@@ -15,10 +15,8 @@
 //! never has to pattern-match on axis at runtime — the compiler inlines the
 //! concrete path.
 
-// Witness trait methods are `#[doc(hidden)]` — their `Storage<_>` parameters
-// leak through the trait API by construction but are not part of the public
-// surface.
-#![allow(private_interfaces)]
+// Witness trait methods are `pub(crate)` — their `Storage<_>` parameters
+// are internal and not part of the public surface.
 
 use super::axis::{Axis, TAI, TCB, TCG, TDB, TT, UT1, UTC};
 use super::constats::{
@@ -114,22 +112,13 @@ fn tdb_minus_tt_seconds(jd_tt: Days) -> Seconds {
 
 /// Witness that converting from `Self` to `A2` is an infallible closed-form
 /// operation.
-pub trait InfallibleConvertible<A2: Axis>: Axis + Sealed {
-    #[doc(hidden)]
+pub(crate) trait InfallibleConvertible<A2: Axis>: Axis + Sealed {
     fn convert(src: Storage<Self>) -> Storage<A2>;
-}
-
-/// Witness that converting from `Self` to `A2` uses the compiled UTC–TAI
-/// history and may fail (e.g. pre-1961).
-pub trait FallibleConvertible<A2: Axis>: Axis + Sealed {
-    #[doc(hidden)]
-    fn try_convert(src: Storage<Self>) -> Result<Storage<A2>, ConversionError>;
 }
 
 /// Witness that converting from `Self` to `A2` requires an explicit
 /// `TimeContext`.
-pub trait ContextConvertible<A2: Axis>: Axis + Sealed {
-    #[doc(hidden)]
+pub(crate) trait ContextConvertible<A2: Axis>: Axis + Sealed {
     fn convert_with(src: Storage<Self>, ctx: &TimeContext) -> Result<Storage<A2>, ConversionError>;
 }
 

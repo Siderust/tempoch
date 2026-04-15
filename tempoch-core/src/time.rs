@@ -1,67 +1,70 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Vallés Puig, Ramon
 
-//! `Time<A, R = Native>` — the core public type.
+//! `Time<A>` — the core public type.
 
 use super::axis::Axis;
 use super::context::TimeContext;
-use super::conversion::{ContextConvertible, FallibleConvertible, InfallibleConvertible};
-use super::encoding::{j2000_seconds_to_jd, j2000_seconds_to_mjd, jd_to_j2000_seconds, mjd_to_j2000_seconds};
+use super::conversion::{ContextConvertible, InfallibleConvertible};
+use super::encoding::{
+    j2000_seconds_to_jd, j2000_seconds_to_mjd, jd_to_j2000_seconds, mjd_to_j2000_seconds,
+};
 use super::error::ConversionError;
-use super::representation::{JulianDays, ModifiedJulianDays, Native, Representation, SISeconds};
 use super::storage::{ContinuousAxis, Storage};
-use core::marker::PhantomData;
 use qtty::{Day, Second};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Time
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// A point in time on axis `A`, encoded in representation `R` (default
-/// `Native`).
+/// A point in time on axis `A`.
 ///
-/// Storage is private; this struct is `#[repr(transparent)]` over that
-/// storage.
+/// Storage is private (SI seconds since J2000 TT on the axis). Construction
+/// and reading are done through named methods:
+///
+/// ```rust,no_run
+/// use tempoch_core::{Time, TT};
+/// use qtty::Day;
+///
+/// let t = Time::<TT>::from_julian_days(Day::new(2_451_545.0)).unwrap();
+/// let jd_back = t.julian_days();
+/// ```
+///
+/// Axis conversions use `.to::<A2>()` for closed-form routes and
+/// `.to_with::<A2>(&ctx)` for UT1 routes that need a [`TimeContext`].
 #[repr(transparent)]
-pub struct Time<A: Axis, R: Representation<A> = Native> {
+pub struct Time<A: Axis> {
     storage: Storage<A>,
-    _repr: PhantomData<fn() -> R>,
 }
 
-impl<A: Axis, R: Representation<A>> Copy for Time<A, R> {}
-impl<A: Axis, R: Representation<A>> Clone for Time<A, R> {
+impl<A: Axis> Copy for Time<A> {}
+impl<A: Axis> Clone for Time<A> {
     #[inline]
     fn clone(&self) -> Self {
         *self
     }
 }
 
-// Don't derive `PartialEq` / `PartialOrd`: the target representation `R`
-// participates in equality semantics. Two `Time<TT, JulianDays>` compare as
-// expected; comparing `Time<TT, JulianDays>` with `Time<TT, SISeconds>`
-// would be a type error, which is intentional.
-
-impl<A: Axis, R: Representation<A>> PartialEq for Time<A, R> {
+impl<A: Axis> PartialEq for Time<A> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.storage.seconds == other.storage.seconds && self.storage.leap == other.storage.leap
     }
 }
 
-impl<A: Axis, R: Representation<A>> PartialOrd for Time<A, R> {
+impl<A: Axis> PartialOrd for Time<A> {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         self.storage.seconds.partial_cmp(&other.storage.seconds)
     }
 }
 
-impl<A: Axis, R: Representation<A>> core::fmt::Debug for Time<A, R> {
+impl<A: Axis> core::fmt::Debug for Time<A> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
-            "Time<{}, {}>({}{})",
+            "Time<{}>({}{})",
             A::NAME,
-            R::NAME,
             self.storage.seconds.erase_unit_raw(),
             if self.storage.leap { " [leap]" } else { "" }
         )
@@ -70,28 +73,24 @@ impl<A: Axis, R: Representation<A>> core::fmt::Debug for Time<A, R> {
 
 // ── Internal constructors ─────────────────────────────────────────────────
 
-impl<A: Axis, R: Representation<A>> Time<A, R> {
+impl<A: Axis> Time<A> {
     #[inline]
     pub(crate) const fn from_storage(storage: Storage<A>) -> Self {
-        Self {
-            storage,
-            _repr: PhantomData,
-        }
+        Self { storage }
     }
 
     #[inline]
-    #[doc(hidden)]
     pub(crate) fn storage(&self) -> Storage<A> {
         self.storage
     }
 }
 
-// ── Construction from SI seconds (continuous axes) ────────────────────────
+// ── Construction and encoding (continuous axes) ───────────────────────────
 
-impl<A: ContinuousAxis> Time<A, Native> {
-    /// Build a `Time<A, Native>` from SI seconds since J2000 TT on axis `A`.
+impl<A: ContinuousAxis> Time<A> {
+    /// Build a `Time<A>` from SI seconds since J2000 TT on axis `A`.
     ///
-    /// Available only for continuous axes. Fails on non-finite input.
+    /// Fails on non-finite input.
     #[inline]
     pub fn from_si_seconds(seconds: Second) -> Result<Self, ConversionError> {
         Ok(Self::from_storage(Storage::new(seconds)?))
@@ -102,17 +101,10 @@ impl<A: ContinuousAxis> Time<A, Native> {
     pub fn si_seconds(self) -> Second {
         self.storage.seconds
     }
-}
 
-// ── Construction from Julian Day (continuous axes with JulianDays repr) ──
-
-impl<A: Axis> Time<A, JulianDays>
-where
-    JulianDays: Representation<A>,
-    A: ContinuousAxis,
-{
-    /// Build a `Time<A, JulianDays>` from an absolute Julian Day number on
-    /// axis `A`. Fails on non-finite input.
+    /// Build a `Time<A>` from an absolute Julian Day number on axis `A`.
+    ///
+    /// Fails on non-finite input.
     #[inline]
     pub fn from_julian_days(jd: Day) -> Result<Self, ConversionError> {
         Ok(Self::from_storage(Storage::new(jd_to_j2000_seconds(jd))?))
@@ -123,103 +115,52 @@ where
     pub fn julian_days(self) -> Day {
         j2000_seconds_to_jd(self.storage.seconds)
     }
-}
 
-impl<A: Axis> Time<A, ModifiedJulianDays>
-where
-    ModifiedJulianDays: Representation<A>,
-    A: ContinuousAxis,
-{
-    /// Build a `Time<A, ModifiedJulianDays>` from an MJD value.
+    /// Build a `Time<A>` from a Modified Julian Day value on axis `A`.
+    ///
+    /// Fails on non-finite input.
     #[inline]
     pub fn from_modified_julian_days(mjd: Day) -> Result<Self, ConversionError> {
         Ok(Self::from_storage(Storage::new(mjd_to_j2000_seconds(mjd))?))
     }
 
-    /// MJD value on axis `A`.
+    /// Modified Julian Day on axis `A`.
     #[inline]
     pub fn modified_julian_days(self) -> Day {
         j2000_seconds_to_mjd(self.storage.seconds)
     }
 }
 
-impl<A: Axis> Time<A, SISeconds>
-where
-    SISeconds: Representation<A>,
-    A: ContinuousAxis,
-{
-    /// Build a `Time<A, SISeconds>` from SI seconds since J2000 TT.
+// ── Axis conversion: `to` (infallible routes) ─────────────────────────────
+
+impl<A: Axis> Time<A> {
+    /// Axis conversion. Compiles only for pairs with a closed-form,
+    /// context-free conversion. Always returns `Ok`.
+    ///
+    /// For UT1 conversions that require a `TimeContext`, use
+    /// [`to_with`](Self::to_with) instead.
+    #[allow(private_bounds)]
     #[inline]
-    pub fn from_seconds(seconds: Second) -> Result<Self, ConversionError> {
-        Ok(Self::from_storage(Storage::new(seconds)?))
-    }
-
-    /// SI seconds since J2000 TT.
-    #[inline]
-    pub fn seconds(self) -> Second {
-        self.storage.seconds
-    }
-}
-
-// ── Representation transform (`repr`) ─────────────────────────────────────
-//
-// Representation is purely a type-level label on continuous axes (the
-// stored scalar is the same). UTC's leap-aware representations require
-// dedicated civil-time logic.
-
-impl<A: Axis, R: Representation<A>> Time<A, R>
-where
-    A: ContinuousAxis,
-{
-    /// Same-axis representation change. Pure relabel on continuous axes.
-    #[inline]
-    pub fn repr<R2: Representation<A>>(self) -> Time<A, R2> {
-        Time::from_storage(self.storage)
-    }
-}
-
-// ── Axis conversion: `to` (infallible) ───────────────────────────────────
-
-impl<A: Axis, R: Representation<A>> Time<A, R> {
-    /// Infallible axis conversion. Compiles only for pairs that have a
-    /// closed-form, context-free, always-succeeding conversion.
-    #[inline]
-    pub fn to<A2: Axis>(self) -> Time<A2, Native>
+    pub fn to<A2: Axis>(self) -> Result<Time<A2>, ConversionError>
     where
         A: InfallibleConvertible<A2>,
-        Native: Representation<A2>,
     {
-        Time::from_storage(<A as InfallibleConvertible<A2>>::convert(self.storage))
-    }
-}
-
-// ── Axis conversion: `try_to` (fallible) ──────────────────────────────────
-
-impl<A: Axis, R: Representation<A>> Time<A, R> {
-    /// Fallible axis conversion. Compiles only for pairs that depend on
-    /// the compiled UTC–TAI history.
-    #[inline]
-    pub fn try_to<A2: Axis>(self) -> Result<Time<A2, Native>, ConversionError>
-    where
-        A: FallibleConvertible<A2>,
-        Native: Representation<A2>,
-    {
-        Ok(Time::from_storage(
-            <A as FallibleConvertible<A2>>::try_convert(self.storage)?,
-        ))
+        Ok(Time::from_storage(<A as InfallibleConvertible<A2>>::convert(
+            self.storage,
+        )))
     }
 }
 
 // ── Axis conversion: `to_with` (context-required) ────────────────────────
 
-impl<A: Axis, R: Representation<A>> Time<A, R> {
-    /// Context-required axis conversion. Compiles only for pairs that need
-    /// a [`TimeContext`].
+impl<A: Axis> Time<A> {
+    /// Context-required axis conversion. Compiles only for UT1 routes that
+    /// need a [`TimeContext`].
+    #[allow(private_bounds)]
     #[inline]
-    pub fn to_with<A2: Axis>(self, ctx: &TimeContext) -> Result<Time<A2, Native>, ConversionError>
+    pub fn to_with<A2: Axis>(self, ctx: &TimeContext) -> Result<Time<A2>, ConversionError>
     where
         A: ContextConvertible<A2>,
-        Native: Representation<A2>,
     {
         Ok(Time::from_storage(
             <A as ContextConvertible<A2>>::convert_with(self.storage, ctx)?,
@@ -229,10 +170,7 @@ impl<A: Axis, R: Representation<A>> Time<A, R> {
 
 // ── Arithmetic (continuous axes only) ─────────────────────────────────────
 
-impl<A: Axis, R: Representation<A>> core::ops::Sub for Time<A, R>
-where
-    A: ContinuousAxis,
-{
+impl<A: ContinuousAxis> core::ops::Sub for Time<A> {
     type Output = Second;
     #[inline]
     fn sub(self, rhs: Self) -> Second {
@@ -240,10 +178,7 @@ where
     }
 }
 
-impl<A: Axis, R: Representation<A>> core::ops::Add<Second> for Time<A, R>
-where
-    A: ContinuousAxis,
-{
+impl<A: ContinuousAxis> core::ops::Add<Second> for Time<A> {
     type Output = Self;
     #[inline]
     fn add(self, rhs: Second) -> Self {
@@ -251,10 +186,7 @@ where
     }
 }
 
-impl<A: Axis, R: Representation<A>> core::ops::Sub<Second> for Time<A, R>
-where
-    A: ContinuousAxis,
-{
+impl<A: ContinuousAxis> core::ops::Sub<Second> for Time<A> {
     type Output = Self;
     #[inline]
     fn sub(self, rhs: Second) -> Self {
@@ -262,20 +194,14 @@ where
     }
 }
 
-impl<A: Axis, R: Representation<A>> core::ops::AddAssign<Second> for Time<A, R>
-where
-    A: ContinuousAxis,
-{
+impl<A: ContinuousAxis> core::ops::AddAssign<Second> for Time<A> {
     #[inline]
     fn add_assign(&mut self, rhs: Second) {
         self.storage.seconds += rhs;
     }
 }
 
-impl<A: Axis, R: Representation<A>> core::ops::SubAssign<Second> for Time<A, R>
-where
-    A: ContinuousAxis,
-{
+impl<A: ContinuousAxis> core::ops::SubAssign<Second> for Time<A> {
     #[inline]
     fn sub_assign(&mut self, rhs: Second) {
         self.storage.seconds -= rhs;
@@ -288,28 +214,24 @@ where
 mod tests {
     use super::super::axis::{TAI, TCB, TCG, TDB, TT};
     use super::super::error::ConversionError;
-    use super::super::representation::{JulianDays, ModifiedJulianDays, SISeconds};
     use super::*;
 
-    // One day expressed as typed SI seconds.
     const SECONDS_PER_DAY: Second = Second::new(86_400.0);
 
     #[test]
     fn tt_tai_round_trip_exact() {
         let tt = Time::<TT>::from_si_seconds(Second::new(0.0)).unwrap();
-        let tai = tt.to::<TAI>();
-        let tt2 = tai.to::<TT>();
+        let tai = tt.to::<TAI>().unwrap();
+        let tt2 = tai.to::<TT>().unwrap();
         assert_eq!(tt.si_seconds(), tt2.si_seconds());
-        // TAI at J2000 TT should be −32.184 s on TAI axis.
         assert!((tai.si_seconds() - Second::new(-32.184)).abs() < Second::new(1e-15));
     }
 
     #[test]
     fn tt_tdb_round_trip_model_error() {
-        // Pick a non-zero epoch so the periodic term is nonzero.
         let tt = Time::<TT>::from_si_seconds(Second::new(1_000_000.0)).unwrap();
-        let tdb = tt.to::<TDB>();
-        let tt2 = tdb.to::<TT>();
+        let tdb = tt.to::<TDB>().unwrap();
+        let tt2 = tdb.to::<TT>().unwrap();
         assert!(
             (tt.si_seconds() - tt2.si_seconds()).abs() < Second::new(1e-6),
             "round-trip error {:?}",
@@ -321,11 +243,9 @@ mod tests {
     fn tt_tcg_rate_difference() {
         let tt0 = Time::<TT>::from_si_seconds(Second::new(0.0)).unwrap();
         let tt1 = Time::<TT>::from_si_seconds(SECONDS_PER_DAY).unwrap();
-        let tcg0 = tt0.to::<TCG>();
-        let tcg1 = tt1.to::<TCG>();
+        let tcg0 = tt0.to::<TCG>().unwrap();
+        let tcg1 = tt1.to::<TCG>().unwrap();
         let drift: Second = (tcg1 - tcg0) - SECONDS_PER_DAY;
-        // dTCG/dTT = 1 / (1 - L_G), so one TT-day's worth of TCG exceeds
-        // one day by L_G / (1 - L_G) · 86400 ≈ 6.02e-5 s.
         let l_g = 6.969_290_134e-10_f64;
         let expected: Second = SECONDS_PER_DAY * (l_g / (1.0 - l_g));
         assert!(
@@ -338,11 +258,9 @@ mod tests {
 
     #[test]
     fn tdb_tcb_linear() {
-        // Pick a non-zero epoch so TDB0 term is visible.
         let tdb = Time::<TDB>::from_si_seconds(Second::new(1_000_000.0)).unwrap();
-        let tcb = tdb.to::<TCB>();
-        let tdb2 = tcb.to::<TDB>();
-        // ULP-limited: t0 is ~7e8 s away, so 1 ULP ≈ 1e-7 s.
+        let tcb = tdb.to::<TCB>().unwrap();
+        let tdb2 = tcb.to::<TDB>().unwrap();
         assert!(
             (tdb.si_seconds() - tdb2.si_seconds()).abs() < Second::new(1e-6),
             "round-trip diff {:?}",
@@ -353,24 +271,22 @@ mod tests {
     #[test]
     fn julian_days_round_trip() {
         let jd = Day::new(2_451_545.0);
-        let t: Time<TT, JulianDays> = Time::from_julian_days(jd).unwrap();
+        let t = Time::<TT>::from_julian_days(jd).unwrap();
         assert_eq!(t.julian_days(), jd);
     }
 
     #[test]
     fn mjd_matches_jd_minus_offset() {
         let jd = Day::new(2_451_545.0);
-        let t_jd: Time<TT, JulianDays> = Time::from_julian_days(jd).unwrap();
-        let t_mjd: Time<TT, ModifiedJulianDays> = t_jd.repr();
+        let t = Time::<TT>::from_julian_days(jd).unwrap();
         let expected_mjd = Day::new(2_451_545.0 - 2_400_000.5);
-        assert!((t_mjd.modified_julian_days() - expected_mjd).abs() < Day::new(1e-9));
+        assert!((t.modified_julian_days() - expected_mjd).abs() < Day::new(1e-9));
     }
 
     #[test]
-    fn repr_transform_preserves_instant() {
-        let t_jd: Time<TT, JulianDays> = Time::from_julian_days(Day::new(2_451_545.5)).unwrap();
-        let t_si: Time<TT, SISeconds> = t_jd.repr();
-        assert!((t_si.seconds() - SECONDS_PER_DAY / 2.0).abs() < Second::new(1e-10));
+    fn si_seconds_and_julian_days_consistent() {
+        let t = Time::<TT>::from_julian_days(Day::new(2_451_545.5)).unwrap();
+        assert!((t.si_seconds() - SECONDS_PER_DAY / 2.0).abs() < Second::new(1e-10));
     }
 
     #[test]

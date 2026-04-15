@@ -7,8 +7,8 @@
 //! This module implements the fallible, history-dependent civil conversions:
 //!
 //! * `Time::<UTC>::from_chrono` / `try_from_chrono` / `to_chrono`
-//! * `Time::<UTC, UnixSeconds<POSIX>>::from_unix_seconds` / `unix_seconds`
-//! * `Time::<TAI, GpsSeconds>::from_gps_seconds` / `gps_seconds`
+//! * `Time::<UTC>::from_unix_seconds` / `unix_seconds`
+//! * `Time::<TAI>::from_gps_seconds` / `gps_seconds`
 
 use super::axis::{TAI, UTC};
 use super::constats::{
@@ -22,7 +22,6 @@ use super::encoding::{
     mjd_to_unix_seconds, unix_seconds_to_jd, unix_seconds_to_mjd,
 };
 use super::error::ConversionError;
-use super::representation::{GpsSeconds, Native, UnixSeconds, POSIX};
 use super::storage::Storage;
 use super::time::Time;
 use crate::generated::time_data::UTC_TAI_SEGMENTS;
@@ -146,9 +145,9 @@ fn tai_seconds_from_utc(dt: DateTime<Utc>) -> Result<(Second, bool), ConversionE
     Ok((tai_secs, leap))
 }
 
-// ── Time<UTC, Native>: chrono interop ────────────────────────────────────
+// ── Time<UTC>: chrono interop ────────────────────────────────────────
 
-impl Time<UTC, Native> {
+impl Time<UTC> {
     /// Build a UTC instant from a `chrono::DateTime<Utc>`.
     ///
     /// Leap-second labels (chrono's `nanos >= 1_000_000_000` encoding) are
@@ -191,9 +190,9 @@ impl Time<UTC, Native> {
     }
 }
 
-// ── Time<UTC, UnixSeconds<POSIX>>: Unix-seconds constructors ─────────────
+// ── Time<UTC>: Unix-seconds constructors ───────────────────────────────
 
-impl Time<UTC, UnixSeconds<POSIX>> {
+impl Time<UTC> {
     /// Build a UTC instant from a POSIX timestamp in seconds.
     ///
     /// A POSIX timestamp ignores leap seconds (one "Unix day" is always
@@ -223,9 +222,9 @@ impl Time<UTC, UnixSeconds<POSIX>> {
     }
 }
 
-// ── Time<TAI, GpsSeconds>: GPS-seconds constructors ──────────────────────
+// ── Time<TAI>: GPS-seconds constructors ────────────────────────────────
 
-impl Time<TAI, GpsSeconds> {
+impl Time<TAI> {
     /// Build a GPS instant from GPS seconds since the GPS epoch
     /// (1980-01-06T00:00:00 UTC).
     ///
@@ -252,7 +251,6 @@ impl Time<TAI, GpsSeconds> {
 mod tests {
     use super::super::axis::{TAI, TT};
     use super::super::context::TimeContext;
-    use super::super::representation::{GpsSeconds, UnixSeconds, POSIX};
     use super::*;
     use chrono::{NaiveDate, TimeZone};
 
@@ -290,7 +288,7 @@ mod tests {
     fn unix_round_trip() {
         // 2024-01-01T00:00:00Z ≈ 1_704_067_200 POSIX seconds.
         let secs = Second::new(1_704_067_200.0);
-        let t = Time::<UTC, UnixSeconds<POSIX>>::from_unix_seconds(secs).unwrap();
+        let t = Time::<UTC>::from_unix_seconds(secs).unwrap();
         let out = t.unix_seconds().unwrap();
         assert!(
             (out - secs).abs() < Second::new(1e-3),
@@ -302,7 +300,7 @@ mod tests {
     #[test]
     fn unix_negative_fraction_round_trip() {
         let secs = Second::new(-0.25);
-        let t = Time::<UTC, UnixSeconds<POSIX>>::from_unix_seconds(secs).unwrap();
+        let t = Time::<UTC>::from_unix_seconds(secs).unwrap();
         let out = t.unix_seconds().unwrap();
         assert!(
             (out - secs).abs() < Second::new(1e-3),
@@ -313,17 +311,15 @@ mod tests {
 
     #[test]
     fn gps_round_trip() {
-        let t = Time::<TAI, GpsSeconds>::from_gps_seconds(Second::new(1_000_000.0)).unwrap();
+        let t = Time::<TAI>::from_gps_seconds(Second::new(1_000_000.0)).unwrap();
         assert!((t.gps_seconds() - Second::new(1_000_000.0)).abs() < Second::new(1e-9));
     }
 
     #[test]
     fn gps_tai_offset_is_19s() {
         // GPS epoch in TAI seconds: (2024-01-01 GPS seconds) - (same TAI seconds) = 19 s.
-        let gps = Time::<TAI, GpsSeconds>::from_gps_seconds(Second::new(0.0)).unwrap();
-        let tai = gps
-            .repr::<super::super::representation::SISeconds>()
-            .seconds();
+        let gps = Time::<TAI>::from_gps_seconds(Second::new(0.0)).unwrap();
+        let tai = gps.si_seconds();
         // TAI reading at GPS epoch (1980-01-06 00:00:19 TAI) in SI seconds since J2000 TT.
         let expected = GPS_EPOCH_TAI;
         assert!((tai - expected).abs() < Second::new(1e-6));
