@@ -22,18 +22,21 @@
 
 use super::axis::{Axis, TAI, TCB, TCG, TDB, TT, UT1, UTC};
 use super::constats::{
-    DAYS_PER_JC, IAU_TIME_EPOCH_T0_JD, J2000_JD_TT, JD_MINUS_MJD, L_B, L_G, TDB0, TT_MINUS_TAI,
-    UNIX_EPOCH_MJD,
+    IAU_TIME_EPOCH_T0_JD, L_B, L_G, TDB0, TT_MINUS_TAI,
 };
 use super::context::TimeContext;
 use super::delta_t::{delta_t_seconds, DELTA_T_PREDICTION_HORIZON_MJD};
+use super::encoding::{
+    j2000_seconds_to_jd, jd_to_j2000_seconds, jd_to_julian_centuries, jd_to_mjd,
+    mjd_to_j2000_seconds,
+};
 use super::error::ConversionError;
 use super::sealed::Sealed;
 use super::storage::Storage;
 use crate::generated::time_data::{UtcTaiSegment, UTC_TAI_SEGMENTS};
 use crate::generated::{PRE_1961_TAI_MINUS_UTC_APPROX, UTC_TAI_HISTORY_START_MJD};
 use qtty::time::{Days, Seconds};
-use qtty::unit::{Day, Second};
+use qtty::unit::Day;
 
 /// Unix epoch (1970-01-01T00:00:00 UTC) expressed as seconds since J2000 TT
 /// on the TAI axis. Relies on the compiled UTC-TAI history.
@@ -41,8 +44,9 @@ use qtty::unit::{Day, Second};
 #[inline]
 pub(crate) fn unix_epoch_tai_secs() -> Seconds {
     // TAI-UTC at MJD 40587 per the compiled history.
-    let ls = try_tai_minus_utc_mjd(UNIX_EPOCH_MJD).unwrap_or(PRE_1961_TAI_MINUS_UTC_APPROX);
-    (UNIX_EPOCH_MJD + JD_MINUS_MJD - J2000_JD_TT).to::<Second>() + ls + TT_MINUS_TAI
+    let ls = try_tai_minus_utc_mjd(crate::constats::UNIX_EPOCH_MJD)
+        .unwrap_or(PRE_1961_TAI_MINUS_UTC_APPROX);
+    mjd_to_j2000_seconds(crate::constats::UNIX_EPOCH_MJD) + ls + TT_MINUS_TAI
 }
 
 // ── UTC-TAI history lookup ───────────────────────────────────────────────
@@ -92,7 +96,7 @@ pub(crate) fn try_tai_minus_utc_mjd(mjd_utc: Days) -> Option<Seconds> {
 
 #[inline]
 fn tdb_minus_tt_seconds(jd_tt: Days) -> Seconds {
-    let t = (jd_tt - J2000_JD_TT) / DAYS_PER_JC;
+    let t = jd_to_julian_centuries(jd_tt);
     let m_e = (357.5291092_f64 + 35_999.0502909 * t).to_radians();
     let m_j = (246.4512_f64 + 3_035.2335 * t).to_radians();
     let d = (297.8502042_f64 + 445_267.1115168 * t).to_radians();
@@ -161,7 +165,7 @@ impl InfallibleConvertible<TAI> for TT {
 impl InfallibleConvertible<TDB> for TT {
     #[inline]
     fn convert(src: Storage<TT>) -> Storage<TDB> {
-        let jd_tt: Days = J2000_JD_TT + src.seconds.to::<Day>();
+        let jd_tt: Days = j2000_seconds_to_jd(src.seconds);
         let delta: Seconds = tdb_minus_tt_seconds(jd_tt);
         Storage::new_unchecked(src.seconds + delta, false)
     }
@@ -169,9 +173,9 @@ impl InfallibleConvertible<TDB> for TT {
 impl InfallibleConvertible<TT> for TDB {
     #[inline]
     fn convert(src: Storage<TDB>) -> Storage<TT> {
-        let mut jd_tt: Days = J2000_JD_TT + src.seconds.to::<Day>();
+        let mut jd_tt: Days = j2000_seconds_to_jd(src.seconds);
         for _ in 0..2 {
-            jd_tt = J2000_JD_TT + (src.seconds - tdb_minus_tt_seconds(jd_tt)).to::<Day>();
+            jd_tt = j2000_seconds_to_jd(src.seconds - tdb_minus_tt_seconds(jd_tt));
         }
         let delta: Seconds = tdb_minus_tt_seconds(jd_tt);
         Storage::new_unchecked(src.seconds - delta, false)
@@ -181,7 +185,7 @@ impl InfallibleConvertible<TT> for TDB {
 impl InfallibleConvertible<TCG> for TT {
     #[inline]
     fn convert(src: Storage<TT>) -> Storage<TCG> {
-        let t0_secs_tt = (IAU_TIME_EPOCH_T0_JD - J2000_JD_TT).to::<Second>();
+        let t0_secs_tt = jd_to_j2000_seconds(IAU_TIME_EPOCH_T0_JD);
         let tcg_secs = src.seconds + L_G * (src.seconds - t0_secs_tt) / (1.0 - L_G);
         Storage::new_unchecked(tcg_secs, false)
     }
@@ -189,7 +193,7 @@ impl InfallibleConvertible<TCG> for TT {
 impl InfallibleConvertible<TT> for TCG {
     #[inline]
     fn convert(src: Storage<TCG>) -> Storage<TT> {
-        let t0_secs_tt = (IAU_TIME_EPOCH_T0_JD - J2000_JD_TT).to::<Second>();
+        let t0_secs_tt = jd_to_j2000_seconds(IAU_TIME_EPOCH_T0_JD);
         let tt_secs = src.seconds - L_G * (src.seconds - t0_secs_tt);
         Storage::new_unchecked(tt_secs, false)
     }
@@ -198,7 +202,7 @@ impl InfallibleConvertible<TT> for TCG {
 impl InfallibleConvertible<TCB> for TDB {
     #[inline]
     fn convert(src: Storage<TDB>) -> Storage<TCB> {
-        let t0_secs_tt = (IAU_TIME_EPOCH_T0_JD - J2000_JD_TT).to::<Second>();
+        let t0_secs_tt = jd_to_j2000_seconds(IAU_TIME_EPOCH_T0_JD);
         let delta = src.seconds - t0_secs_tt - TDB0;
         let tcb_secs = t0_secs_tt + delta / (1.0 - L_B);
         Storage::new_unchecked(tcb_secs, false)
@@ -207,7 +211,7 @@ impl InfallibleConvertible<TCB> for TDB {
 impl InfallibleConvertible<TDB> for TCB {
     #[inline]
     fn convert(src: Storage<TCB>) -> Storage<TDB> {
-        let t0_secs_tt = (IAU_TIME_EPOCH_T0_JD - J2000_JD_TT).to::<Second>();
+        let t0_secs_tt = jd_to_j2000_seconds(IAU_TIME_EPOCH_T0_JD);
         let delta = src.seconds - t0_secs_tt;
         let tdb_secs = t0_secs_tt + (1.0 - L_B) * delta + TDB0;
         Storage::new_unchecked(tdb_secs, false)
@@ -304,7 +308,7 @@ utc_through_tai!(TCB);
 
 #[inline]
 fn jd_ut1_from_ut1_seconds(seconds: Seconds) -> Days {
-    J2000_JD_TT + seconds.to::<Day>()
+    j2000_seconds_to_jd(seconds)
 }
 
 /// Guard: the extrapolated ΔT series is defined up to
@@ -327,7 +331,7 @@ impl ContextConvertible<TT> for UT1 {
             return Err(ConversionError::NonFinite);
         }
         let jd_ut1: Days = jd_ut1_from_ut1_seconds(src.seconds);
-        check_ut1_horizon(jd_ut1 - JD_MINUS_MJD)?;
+        check_ut1_horizon(jd_to_mjd(jd_ut1))?;
         let dt = delta_t_seconds(jd_ut1);
         Ok(Storage::new_unchecked(src.seconds + dt, false))
     }
@@ -348,7 +352,7 @@ impl ContextConvertible<UT1> for TT {
             ut1_seconds = src.seconds - dt;
         }
         let final_jd_ut1: Days = jd_ut1_from_ut1_seconds(ut1_seconds);
-        check_ut1_horizon(final_jd_ut1 - JD_MINUS_MJD)?;
+        check_ut1_horizon(jd_to_mjd(final_jd_ut1))?;
         Ok(Storage::new_unchecked(ut1_seconds, false))
     }
 }

@@ -12,11 +12,14 @@
 
 use super::axis::{TAI, UTC};
 use super::constats::{
-    GPS_EPOCH_TAI, J2000_JD_TT, JD_MINUS_MJD, TT_MINUS_TAI, UNIX_EPOCH_JD, UNIX_EPOCH_MJD,
-    UTC_INTERVAL_EPS,
+    GPS_EPOCH_TAI, TT_MINUS_TAI, UTC_INTERVAL_EPS,
 };
 use super::conversion::{
     try_tai_minus_utc_mjd, tt_mjd_to_utc_mjd_in_segment, utc_mjd_to_tt_mjd_in_segment,
+};
+use super::encoding::{
+    j2000_seconds_to_jd, jd_to_j2000_seconds, jd_to_mjd, mjd_to_j2000_seconds,
+    mjd_to_unix_seconds, unix_seconds_to_jd, unix_seconds_to_mjd,
 };
 use super::error::ConversionError;
 use super::representation::{GpsSeconds, Native, UnixSeconds, POSIX};
@@ -61,7 +64,7 @@ fn datetime_from_seconds_since_epoch(seconds_since_epoch: Seconds) -> Option<Dat
 
 #[inline]
 fn datetime_from_utc_mjd(mjd_utc: Days) -> Option<DateTime<Utc>> {
-    datetime_from_seconds_since_epoch((mjd_utc - UNIX_EPOCH_MJD).to::<SecondUnit>())
+    datetime_from_seconds_since_epoch(mjd_to_unix_seconds(mjd_utc))
 }
 
 /// Convert TAI-seconds-since-J2000-TT into a chrono DateTime<Utc>, preserving
@@ -72,8 +75,8 @@ fn utc_from_tai_seconds(tai_secs: Seconds) -> Result<DateTime<Utc>, ConversionEr
     }
 
     // TAI seconds → JD(TT) proxy: add 32.184 then divide by 86400.
-    let jd_tt: Days = J2000_JD_TT + (tai_secs + TT_MINUS_TAI).to::<Day>();
-    let mjd_tt = jd_tt - JD_MINUS_MJD;
+    let jd_tt: Days = j2000_seconds_to_jd(tai_secs + TT_MINUS_TAI);
+    let mjd_tt = jd_to_mjd(jd_tt);
 
     let first_start_tt =
         utc_mjd_to_tt_mjd_in_segment(UTC_TAI_SEGMENTS[0].start_mjd_days(), UTC_TAI_SEGMENTS[0]);
@@ -121,14 +124,14 @@ fn utc_from_tai_seconds(tai_secs: Seconds) -> Result<DateTime<Utc>, ConversionEr
 /// Convert a chrono DateTime<Utc> to TAI-seconds-since-J2000-TT. Returns
 /// `(tai_secs, leap_flag)`.
 fn tai_seconds_from_utc(dt: DateTime<Utc>) -> Result<(Second, bool), ConversionError> {
-    let base_jd_utc = UNIX_EPOCH_JD + Seconds::new(dt.timestamp() as f64).to::<Day>();
-    let tai_minus_utc = try_tai_minus_utc_mjd(base_jd_utc - JD_MINUS_MJD)
+    let base_jd_utc = unix_seconds_to_jd(Seconds::new(dt.timestamp() as f64));
+    let tai_minus_utc = try_tai_minus_utc_mjd(jd_to_mjd(base_jd_utc))
         .ok_or(ConversionError::UtcHistoryUnsupported)?;
     let subsec_nanos = dt.timestamp_subsec_nanos();
     let mut leap = false;
     if subsec_nanos >= 1_000_000_000 {
         let next =
-            try_tai_minus_utc_mjd(base_jd_utc - JD_MINUS_MJD + Seconds::new(1.0).to::<Day>())
+            try_tai_minus_utc_mjd(jd_to_mjd(base_jd_utc) + Seconds::new(1.0).to::<Day>())
                 .ok_or(ConversionError::InvalidLeapSecond)?;
         if next - tai_minus_utc < Seconds::new(0.5) {
             return Err(ConversionError::InvalidLeapSecond);
@@ -139,7 +142,7 @@ fn tai_seconds_from_utc(dt: DateTime<Utc>) -> Result<(Second, bool), ConversionE
     // Storage(TAI)(P) = (JD_TAI(P) - J2000_JD_TT) * 86400
     //                 = (JD_UTC(P) - J2000_JD_TT) * 86400 + (TAI − UTC)(P)
     let frac = Nanoseconds::new(subsec_nanos as f64).to::<SecondUnit>();
-    let tai_secs = (base_jd_utc - J2000_JD_TT).to::<SecondUnit>() + tai_minus_utc + frac;
+    let tai_secs = jd_to_j2000_seconds(base_jd_utc) + tai_minus_utc + frac;
     Ok((tai_secs, leap))
 }
 
@@ -201,10 +204,10 @@ impl Time<UTC, UnixSeconds<POSIX>> {
             return Err(ConversionError::NonFinite);
         }
         // POSIX time → UTC MJD (no leap seconds): mjd_utc = 40587 + s/86400.
-        let mjd_utc = UNIX_EPOCH_MJD + seconds.to::<Day>();
+        let mjd_utc = unix_seconds_to_mjd(seconds);
         let tai_minus_utc =
             try_tai_minus_utc_mjd(mjd_utc).ok_or(ConversionError::UtcHistoryUnsupported)?;
-        let tai_secs = (mjd_utc + JD_MINUS_MJD - J2000_JD_TT).to::<SecondUnit>() + tai_minus_utc;
+        let tai_secs = mjd_to_j2000_seconds(mjd_utc) + tai_minus_utc;
         Ok(Self::from_storage(Storage::new_unchecked(tai_secs, false)))
     }
 

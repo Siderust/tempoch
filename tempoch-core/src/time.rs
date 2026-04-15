@@ -4,14 +4,14 @@
 //! `Time<A, R = Native>` — the core public type.
 
 use super::axis::Axis;
-use super::constats::{J2000_JD_TT, JD_MINUS_MJD};
 use super::context::TimeContext;
 use super::conversion::{ContextConvertible, FallibleConvertible, InfallibleConvertible};
+use super::encoding::{j2000_seconds_to_jd, j2000_seconds_to_mjd, jd_to_j2000_seconds, mjd_to_j2000_seconds};
 use super::error::ConversionError;
 use super::representation::{JulianDays, ModifiedJulianDays, Native, Representation, SISeconds};
 use super::storage::{ContinuousAxis, Storage};
 use core::marker::PhantomData;
-use qtty::{unit, Day, Second};
+use qtty::{Day, Second};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Time
@@ -115,15 +115,13 @@ where
     /// axis `A`. Fails on non-finite input.
     #[inline]
     pub fn from_julian_days(jd: Day) -> Result<Self, ConversionError> {
-        Ok(Self::from_storage(Storage::new(
-            (jd - J2000_JD_TT).to::<unit::Second>(),
-        )?))
+        Ok(Self::from_storage(Storage::new(jd_to_j2000_seconds(jd))?))
     }
 
     /// Julian Day number on axis `A`.
     #[inline]
     pub fn julian_days(self) -> Day {
-        J2000_JD_TT + self.storage.seconds.to::<unit::Day>()
+        j2000_seconds_to_jd(self.storage.seconds)
     }
 }
 
@@ -135,15 +133,13 @@ where
     /// Build a `Time<A, ModifiedJulianDays>` from an MJD value.
     #[inline]
     pub fn from_modified_julian_days(mjd: Day) -> Result<Self, ConversionError> {
-        Ok(Self::from_storage(Storage::new(
-            (mjd + JD_MINUS_MJD - J2000_JD_TT).to::<unit::Second>(),
-        )?))
+        Ok(Self::from_storage(Storage::new(mjd_to_j2000_seconds(mjd))?))
     }
 
     /// MJD value on axis `A`.
     #[inline]
     pub fn modified_julian_days(self) -> Day {
-        J2000_JD_TT - JD_MINUS_MJD + self.storage.seconds.to::<unit::Day>()
+        j2000_seconds_to_mjd(self.storage.seconds)
     }
 }
 

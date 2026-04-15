@@ -11,7 +11,8 @@
 //! * **Beyond the last published prediction**: quadratic continuation of the
 //!   last 12 prediction points.
 
-use crate::constats::{DAYS_PER_JC, JD_MINUS_MJD};
+use crate::constats::DAYS_PER_JC;
+use crate::encoding::jd_to_mjd;
 use crate::generated::time_data::MODERN_DELTA_T_POINTS;
 use crate::generated::{MODERN_DELTA_T_END_MJD, MODERN_DELTA_T_START_MJD};
 use qtty::{Day, Second};
@@ -110,7 +111,7 @@ fn interpolate_modern_delta_t(mjd: Day) -> Option<Second> {
 
 #[inline]
 fn delta_t_modern_series(jd_ut: Day) -> Second {
-    let mjd = jd_ut - JD_MINUS_MJD;
+    let mjd = jd_to_mjd(jd_ut);
     interpolate_modern_delta_t(mjd).expect("modern Delta T interpolation requires in-range MJD")
 }
 
@@ -183,14 +184,14 @@ fn quadratic_tail_fit_delta_t_seconds(mjd: Day) -> Second {
 
 #[inline]
 fn delta_t_extrapolated(jd_ut: Day) -> Second {
-    let mjd = jd_ut - JD_MINUS_MJD;
+    let mjd = jd_to_mjd(jd_ut);
     quadratic_tail_fit_delta_t_seconds(mjd)
 }
 
 /// ΔT = TT − UT1, in seconds, for a Julian Day on the UT1 axis.
 #[inline]
 pub(crate) fn delta_t_seconds(jd_ut: Day) -> Second {
-    let mjd = jd_ut - JD_MINUS_MJD;
+    let mjd = jd_to_mjd(jd_ut);
     if jd_ut < JD_EPOCH_948_UT {
         delta_t_ancient(jd_ut)
     } else if jd_ut < JD_MEDIEVAL_START {

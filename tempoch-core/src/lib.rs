@@ -26,6 +26,7 @@ pub mod constats;
 mod context;
 mod conversion;
 mod delta_t;
+pub(crate) mod encoding;
 mod error;
 pub(crate) mod generated;
 mod interval;
