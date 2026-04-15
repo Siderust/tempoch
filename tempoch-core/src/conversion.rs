@@ -21,37 +21,19 @@
 #![allow(private_interfaces)]
 
 use super::axis::{Axis, TAI, TCB, TCG, TDB, TT, UT1, UTC};
+use super::constats::{
+    DAYS_PER_JC, IAU_TIME_EPOCH_T0_JD, J2000_JD_TT, JD_MINUS_MJD, L_B, L_G, TDB0, TT_MINUS_TAI,
+    UNIX_EPOCH_MJD,
+};
 use super::context::TimeContext;
 use super::delta_t::{delta_t_seconds, DELTA_T_PREDICTION_HORIZON_MJD};
 use super::error::ConversionError;
 use super::sealed::Sealed;
 use super::storage::Storage;
-use crate::generated::time_data::{
-    UtcTaiSegment, PRE_1961_TAI_MINUS_UTC_APPROX, UTC_TAI_HISTORY_START_MJD, UTC_TAI_SEGMENTS,
-};
+use crate::generated::time_data::{UtcTaiSegment, UTC_TAI_SEGMENTS};
+use crate::generated::{PRE_1961_TAI_MINUS_UTC_APPROX, UTC_TAI_HISTORY_START_MJD};
 use qtty::time::{Days, Seconds};
-use qtty::unit::{Day, JulianCentury, Second};
-
-// ── Constants ────────────────────────────────────────────────────────────
-
-pub(crate) const J2000_JD_TT: Days = Days::new(2_451_545.0);
-pub(crate) const JD_MINUS_MJD: Days = Days::new(2_400_000.5);
-pub(crate) const TT_MINUS_TAI: Seconds = Seconds::new(32.184);
-pub(crate) const UNIX_EPOCH_JD: Days = Days::new(2_440_587.5);
-pub(crate) const UNIX_EPOCH_MJD: Days = Days::new(40_587.0);
-pub(crate) const UTC_INTERVAL_EPS: Days = Days::new(1e-15);
-pub(crate) const IAU_TIME_EPOCH_T0_JD: Days = Days::new(2_443_144.500_372_5);
-pub(crate) const L_G: f64 = 6.969_290_134e-10;
-pub(crate) const L_B: f64 = 1.550_519_768e-8;
-pub(crate) const TDB0: Seconds = Seconds::new(-6.55e-5);
-
-/// GPS epoch (1980-01-06T00:00:00 UTC) as `Storage<TAI>` seconds.
-///
-/// The storage convention is `(JD_TAI(P) − J2000_JD_TT) × 86400`. For the GPS
-/// epoch, `JD_UTC = 2_444_244.5` and `TAI − UTC = 19 s` (exact), giving:
-///
-///   (44_244.0 − 51_544.5) × 86400 + 19 = −630_763_181.
-pub(crate) const GPS_EPOCH_TAI: Seconds = Seconds::new(-630_763_181.0);
+use qtty::unit::{Day, Second};
 
 /// Unix epoch (1970-01-01T00:00:00 UTC) expressed as seconds since J2000 TT
 /// on the TAI axis. Relies on the compiled UTC-TAI history.
@@ -59,8 +41,7 @@ pub(crate) const GPS_EPOCH_TAI: Seconds = Seconds::new(-630_763_181.0);
 #[inline]
 pub(crate) fn unix_epoch_tai_secs() -> Seconds {
     // TAI-UTC at MJD 40587 per the compiled history.
-    let ls =
-        try_tai_minus_utc_mjd(UNIX_EPOCH_MJD).unwrap_or(Seconds::new(PRE_1961_TAI_MINUS_UTC_APPROX));
+    let ls = try_tai_minus_utc_mjd(UNIX_EPOCH_MJD).unwrap_or(PRE_1961_TAI_MINUS_UTC_APPROX);
     (UNIX_EPOCH_MJD + JD_MINUS_MJD - J2000_JD_TT).to::<Second>() + ls + TT_MINUS_TAI
 }
 
@@ -68,8 +49,7 @@ pub(crate) fn unix_epoch_tai_secs() -> Seconds {
 
 #[inline]
 pub(crate) fn utc_offset_seconds_in_segment(mjd_utc: Days, segment: UtcTaiSegment) -> Seconds {
-    let utc_offset = mjd_utc - Days::new(segment.reference_mjd);
-    Seconds::new(segment.base_seconds + utc_offset.erase_unit_raw() * segment.slope_seconds_per_day)
+    segment.offset_at(mjd_utc)
 }
 
 #[inline]
@@ -80,26 +60,25 @@ pub(crate) fn utc_mjd_to_tt_mjd_in_segment(mjd_utc: Days, segment: UtcTaiSegment
 #[inline]
 pub(crate) fn tt_mjd_to_utc_mjd_in_segment(mjd_tt: Days, segment: UtcTaiSegment) -> Days {
     let scale = Days::new(1.0) + Seconds::new(segment.slope_seconds_per_day).to::<Day>();
-    let offset_days = Seconds::new(
-        segment.base_seconds
-            - segment.slope_seconds_per_day * segment.reference_mjd
-            + TT_MINUS_TAI.erase_unit_raw(),
-    )
-    .to::<Day>();
+    let ref_days = segment.reference_mjd_days() / Days::new(1.0);
+    let offset_days = (Seconds::new(segment.base_seconds)
+        - Seconds::new(segment.slope_seconds_per_day) * ref_days
+        + TT_MINUS_TAI)
+        .to::<Day>();
     Days::new((mjd_tt - offset_days) / scale)
 }
 
 /// Binary search: TAI − UTC at a UTC-axis MJD. Returns `None` pre-1961.
 #[inline]
 pub(crate) fn try_tai_minus_utc_mjd(mjd_utc: Days) -> Option<Seconds> {
-    if mjd_utc < Days::new(UTC_TAI_HISTORY_START_MJD as f64) {
+    if mjd_utc < UTC_TAI_HISTORY_START_MJD {
         return None;
     }
     let mut lo = 0usize;
     let mut hi = UTC_TAI_SEGMENTS.len();
     while lo < hi {
         let mid = lo + (hi - lo) / 2;
-        if Days::new(UTC_TAI_SEGMENTS[mid].start_mjd as f64) <= mjd_utc {
+        if UTC_TAI_SEGMENTS[mid].start_mjd_days() <= mjd_utc {
             lo = mid + 1;
         } else {
             hi = mid;
@@ -113,7 +92,7 @@ pub(crate) fn try_tai_minus_utc_mjd(mjd_utc: Days) -> Option<Seconds> {
 
 #[inline]
 fn tdb_minus_tt_seconds(jd_tt: Days) -> Seconds {
-    let t = (jd_tt - J2000_JD_TT).to::<JulianCentury>().erase_unit_raw();
+    let t = (jd_tt - J2000_JD_TT) / DAYS_PER_JC;
     let m_e = (357.5291092_f64 + 35_999.0502909 * t).to_radians();
     let m_j = (246.4512_f64 + 3_035.2335 * t).to_radians();
     let d = (297.8502042_f64 + 445_267.1115168 * t).to_radians();
@@ -334,7 +313,7 @@ fn jd_ut1_from_ut1_seconds(seconds: Seconds) -> Days {
 /// extrapolation never leaks through `to_with`.
 #[inline]
 fn check_ut1_horizon(mjd: Days) -> Result<(), ConversionError> {
-    if mjd <= Days::new(DELTA_T_PREDICTION_HORIZON_MJD) {
+    if mjd <= DELTA_T_PREDICTION_HORIZON_MJD {
         Ok(())
     } else {
         Err(ConversionError::Ut1HorizonExceeded)
@@ -349,7 +328,7 @@ impl ContextConvertible<TT> for UT1 {
         }
         let jd_ut1: Days = jd_ut1_from_ut1_seconds(src.seconds);
         check_ut1_horizon(jd_ut1 - JD_MINUS_MJD)?;
-        let dt = Seconds::new(delta_t_seconds(jd_ut1.erase_unit_raw()));
+        let dt = delta_t_seconds(jd_ut1);
         Ok(Storage::new_unchecked(src.seconds + dt, false))
     }
 }
@@ -365,7 +344,7 @@ impl ContextConvertible<UT1> for TT {
         let mut ut1_seconds = src.seconds;
         for _ in 0..3 {
             let jd_ut1: Days = jd_ut1_from_ut1_seconds(ut1_seconds);
-            let dt = Seconds::new(delta_t_seconds(jd_ut1.erase_unit_raw()));
+            let dt = delta_t_seconds(jd_ut1);
             ut1_seconds = src.seconds - dt;
         }
         let final_jd_ut1: Days = jd_ut1_from_ut1_seconds(ut1_seconds);

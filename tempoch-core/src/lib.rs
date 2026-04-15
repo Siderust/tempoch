@@ -18,9 +18,11 @@
 //!   history
 //! - [`ContextConvertible`] for conversions that require an explicit
 //!   [`TimeContext`]
+//! - [`constats`] for typed epoch and offset constants
 
 mod axis;
 mod civil;
+pub mod constats;
 mod context;
 mod conversion;
 mod delta_t;

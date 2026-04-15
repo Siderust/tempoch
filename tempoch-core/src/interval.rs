@@ -10,6 +10,24 @@
 
 use core::fmt;
 
+#[inline]
+fn partial_max<T: PartialOrd + Copy>(a: T, b: T) -> T {
+    if a >= b {
+        a
+    } else {
+        b
+    }
+}
+
+#[inline]
+fn partial_min<T: PartialOrd + Copy>(a: T, b: T) -> T {
+    if a <= b {
+        a
+    } else {
+        b
+    }
+}
+
 /// Error constructing an [`Interval`] with invalid bounds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InvalidIntervalError {
@@ -82,16 +100,8 @@ impl<T: Copy + PartialOrd> Interval<T> {
     /// Overlap as a half-open range. Returns `None` if the intervals touch
     /// only at a point or do not overlap.
     pub fn intersection(&self, other: &Self) -> Option<Self> {
-        let start = if self.start >= other.start {
-            self.start
-        } else {
-            other.start
-        };
-        let end = if self.end <= other.end {
-            self.end
-        } else {
-            other.end
-        };
+        let start = partial_max(self.start, other.start);
+        let end = partial_min(self.end, other.end);
         if start < end {
             Some(Self::new(start, end))
         } else {
@@ -130,16 +140,8 @@ pub fn intersect_periods<T: Copy + PartialOrd>(
     let mut result = Vec::new();
     let (mut i, mut j) = (0, 0);
     while i < a.len() && j < b.len() {
-        let start = if a[i].start >= b[j].start {
-            a[i].start
-        } else {
-            b[j].start
-        };
-        let end = if a[i].end <= b[j].end {
-            a[i].end
-        } else {
-            b[j].end
-        };
+        let start = partial_max(a[i].start, b[j].start);
+        let end = partial_min(a[i].end, b[j].end);
         if start < end {
             result.push(Interval::new(start, end));
         }

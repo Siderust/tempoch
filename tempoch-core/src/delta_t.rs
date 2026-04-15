@@ -11,10 +11,18 @@
 //! * **Beyond the last published prediction**: quadratic continuation of the
 //!   last 12 prediction points.
 
-use crate::generated::time_data::{
-    MODERN_DELTA_T_END_MJD, MODERN_DELTA_T_POINTS, MODERN_DELTA_T_START_MJD,
-};
+use crate::constats::{DAYS_PER_JC, JD_MINUS_MJD};
+use crate::generated::time_data::MODERN_DELTA_T_POINTS;
+use crate::generated::{MODERN_DELTA_T_END_MJD, MODERN_DELTA_T_START_MJD};
+use qtty::{Day, Second};
 use std::sync::OnceLock;
+
+const JD_EPOCH_948_UT: Day = Day::new(2_067_314.5);
+const JD_EPOCH_1850_UT: Day = Day::new(2_396_758.5);
+const JD_TABLE_START_1620: Day = Day::new(2_312_752.5);
+const BIENNIAL_STEP_D: Day = Day::new(730.5);
+/// Boundary JD between ancient and medieval ΔT models (1461-07-04).
+const JD_MEDIEVAL_START: Day = Day::new(2_305_447.5);
 
 const TERMS: usize = 187;
 
@@ -42,27 +50,23 @@ const DELTA_T: [f64; TERMS] = [
 ];
 
 #[inline]
-fn delta_t_ancient(jd_ut: f64) -> f64 {
+fn delta_t_ancient(jd_ut: Day) -> Second {
     const DT_A0: f64 = 1_830.0;
     const DT_A1: f64 = -405.0;
     const DT_A2: f64 = 46.5;
-    const JD_EPOCH_948_UT: f64 = 2_067_314.5;
-    let c = (jd_ut - JD_EPOCH_948_UT) / 36_525.0;
-    DT_A0 + DT_A1 * c + DT_A2 * c * c
+    let c = (jd_ut - JD_EPOCH_948_UT) / DAYS_PER_JC;
+    Second::new(DT_A0 + DT_A1 * c + DT_A2 * c * c)
 }
 
 #[inline]
-fn delta_t_medieval(jd_ut: f64) -> f64 {
-    const JD_EPOCH_1850_UT: f64 = 2_396_758.5;
+fn delta_t_medieval(jd_ut: Day) -> Second {
     const DT_A2: f64 = 22.5;
-    let c = (jd_ut - JD_EPOCH_1850_UT) / 36_525.0;
-    DT_A2 * c * c
+    let c = (jd_ut - JD_EPOCH_1850_UT) / DAYS_PER_JC;
+    Second::new(DT_A2 * c * c)
 }
 
 #[inline]
-fn delta_t_table(jd_ut: f64) -> f64 {
-    const JD_TABLE_START_1620: f64 = 2_312_752.5;
-    const BIENNIAL_STEP_D: f64 = 730.5;
+fn delta_t_table(jd_ut: Day) -> Second {
     let mut i = ((jd_ut - JD_TABLE_START_1620) / BIENNIAL_STEP_D) as usize;
     if i > TERMS - 3 {
         i = TERMS - 3;
@@ -70,12 +74,19 @@ fn delta_t_table(jd_ut: f64) -> f64 {
     let a = DELTA_T[i + 1] - DELTA_T[i];
     let b = DELTA_T[i + 2] - DELTA_T[i + 1];
     let c = a - b;
-    let n = (jd_ut - (JD_TABLE_START_1620 + BIENNIAL_STEP_D * i as f64)) / BIENNIAL_STEP_D;
-    DELTA_T[i + 1] + n / 2.0 * (a + b + n * c)
+    let step_start = JD_TABLE_START_1620 + BIENNIAL_STEP_D * i as f64;
+    let n = (jd_ut - step_start) / BIENNIAL_STEP_D;
+    Second::new(DELTA_T[i + 1] + n / 2.0 * (a + b + n * c))
 }
 
 #[inline]
-fn interpolate_modern_delta_t(mjd: f64) -> Option<f64> {
+fn modern_delta_t_point(index: usize) -> (Day, Second) {
+    let (mjd, dt) = MODERN_DELTA_T_POINTS[index];
+    (Day::new(mjd), Second::new(dt))
+}
+
+#[inline]
+fn interpolate_modern_delta_t(mjd: Day) -> Option<Second> {
     if !(MODERN_DELTA_T_START_MJD..=MODERN_DELTA_T_END_MJD).contains(&mjd) {
         return None;
     }
@@ -83,37 +94,42 @@ fn interpolate_modern_delta_t(mjd: f64) -> Option<f64> {
     let mut hi = MODERN_DELTA_T_POINTS.len() - 1;
     while lo + 1 < hi {
         let mid = lo + (hi - lo) / 2;
-        if MODERN_DELTA_T_POINTS[mid].0 <= mjd {
+        if modern_delta_t_point(mid).0 <= mjd {
             lo = mid;
         } else {
             hi = mid;
         }
     }
-    let (mjd0, dt0) = MODERN_DELTA_T_POINTS[lo];
-    let (mjd1, dt1) = MODERN_DELTA_T_POINTS[hi];
-    Some(dt0 + (mjd - mjd0) * (dt1 - dt0) / (mjd1 - mjd0))
+    let (mjd0, dt0) = modern_delta_t_point(lo);
+    let (mjd1, dt1) = modern_delta_t_point(hi);
+    // Linear interpolation: dt0 + (mjd − mjd0) / (mjd1 − mjd0) * (dt1 − dt0)
+    // Days / Days = f64 (ratio), Second * f64 = Second.
+    let frac = (mjd - mjd0) / (mjd1 - mjd0);
+    Some(dt0 + (dt1 - dt0) * frac)
 }
 
 #[inline]
-fn delta_t_modern_series(jd_ut: f64) -> f64 {
-    let mjd = jd_ut - 2_400_000.5;
+fn delta_t_modern_series(jd_ut: Day) -> Second {
+    let mjd = jd_ut - JD_MINUS_MJD;
     interpolate_modern_delta_t(mjd).expect("modern Delta T interpolation requires in-range MJD")
 }
 
 const DELTA_T_EXTRAPOLATION_TAIL_POINTS: usize = 12;
-static TAIL_FIT: OnceLock<(f64, f64, f64, f64)> = OnceLock::new();
+// Coefficients: (a: constant term in seconds, b: s/day, c: s/day², origin: MJD Day).
+static TAIL_FIT: OnceLock<(Second, f64, f64, Day)> = OnceLock::new();
 
-fn compute_tail_fit_coefficients() -> (f64, f64, f64, f64) {
+fn compute_tail_fit_coefficients() -> (Second, f64, f64, Day) {
     let tail_len = MODERN_DELTA_T_POINTS
         .len()
         .clamp(3, DELTA_T_EXTRAPOLATION_TAIL_POINTS);
     let tail = &MODERN_DELTA_T_POINTS[MODERN_DELTA_T_POINTS.len() - tail_len..];
-    let origin = tail[tail.len() - 1].0;
+    let origin = Day::new(tail[tail.len() - 1].0);
 
-    let (mut s0, mut s1, mut s2, mut s3, mut s4) = (0.0, 0.0, 0.0, 0.0, 0.0);
-    let (mut t0, mut t1, mut t2) = (0.0, 0.0, 0.0);
+    let (mut s0, mut s1, mut s2, mut s3, mut s4) = (0.0_f64, 0.0, 0.0, 0.0, 0.0);
+    let (mut t0, mut t1, mut t2) = (0.0_f64, 0.0, 0.0);
     for &(sample_mjd, delta_t) in tail {
-        let x = sample_mjd - origin;
+        // x: number of days from origin (Day / Day = f64).
+        let x = (Day::new(sample_mjd) - origin) / Day::new(1.0);
         let x2 = x * x;
         s0 += 1.0;
         s1 += x;
@@ -150,31 +166,38 @@ fn compute_tail_fit_coefficients() -> (f64, f64, f64, f64) {
             }
         }
     }
-    (system[0][3], system[1][3], system[2][3], origin)
+    (
+        Second::new(system[0][3]),
+        system[1][3],
+        system[2][3],
+        origin,
+    )
 }
 
-fn quadratic_tail_fit_delta_t_seconds(mjd: f64) -> f64 {
+fn quadratic_tail_fit_delta_t_seconds(mjd: Day) -> Second {
     let &(a, b, c, origin) = TAIL_FIT.get_or_init(compute_tail_fit_coefficients);
-    let x = mjd - origin;
-    a + b * x + c * x * x
+    // x: number of days from origin (Day / Day = f64).
+    let x = (mjd - origin) / Day::new(1.0);
+    a + Second::new(b * x + c * x * x)
 }
 
 #[inline]
-fn delta_t_extrapolated(jd_ut: f64) -> f64 {
-    let mjd = jd_ut - 2_400_000.5;
+fn delta_t_extrapolated(jd_ut: Day) -> Second {
+    let mjd = jd_ut - JD_MINUS_MJD;
     quadratic_tail_fit_delta_t_seconds(mjd)
 }
 
 /// ΔT = TT − UT1, in seconds, for a Julian Day on the UT1 axis.
 #[inline]
-pub(crate) fn delta_t_seconds(jd_ut: f64) -> f64 {
-    if jd_ut < 2_067_314.5 {
+pub(crate) fn delta_t_seconds(jd_ut: Day) -> Second {
+    let mjd = jd_ut - JD_MINUS_MJD;
+    if jd_ut < JD_EPOCH_948_UT {
         delta_t_ancient(jd_ut)
-    } else if jd_ut < 2_305_447.5 {
+    } else if jd_ut < JD_MEDIEVAL_START {
         delta_t_medieval(jd_ut)
-    } else if jd_ut < MODERN_DELTA_T_START_MJD + 2_400_000.5 {
+    } else if mjd < MODERN_DELTA_T_START_MJD {
         delta_t_table(jd_ut)
-    } else if jd_ut <= MODERN_DELTA_T_END_MJD + 2_400_000.5 {
+    } else if mjd <= MODERN_DELTA_T_END_MJD {
         delta_t_modern_series(jd_ut)
     } else {
         delta_t_extrapolated(jd_ut)
@@ -182,4 +205,4 @@ pub(crate) fn delta_t_seconds(jd_ut: f64) -> f64 {
 }
 
 /// MJD of the last compiled ΔT prediction point.
-pub const DELTA_T_PREDICTION_HORIZON_MJD: f64 = MODERN_DELTA_T_END_MJD;
+pub const DELTA_T_PREDICTION_HORIZON_MJD: Day = MODERN_DELTA_T_END_MJD;

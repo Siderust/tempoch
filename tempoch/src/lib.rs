@@ -12,9 +12,10 @@
 //! - compile-time conversion witnesses
 //!   ([`InfallibleConvertible`], [`FallibleConvertible`],
 //!   [`ContextConvertible`])
+//! - [`constats`] for typed epoch and offset constants
 
 pub use tempoch_core::{
-    complement_within, intersect_periods, normalize_periods, validate_period_list, Axis,
+    complement_within, constats, intersect_periods, normalize_periods, validate_period_list, Axis,
     ContextConvertible, ConversionError, FallibleConvertible, GpsSeconds, InfallibleConvertible,
     Interval, InvalidIntervalError, JulianDays, ModifiedJulianDays, Native, PeriodListError,
     Representation, SISeconds, Time, TimeContext, UnixSeconds, DELTA_T_PREDICTION_HORIZON_MJD,

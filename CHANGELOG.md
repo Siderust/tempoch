@@ -40,6 +40,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- Replaced the remaining raw time-quantity public APIs in `tempoch` with
+  `qtty` types:
+  - `Time::<UTC, UnixSeconds<POSIX>>::from_unix_seconds` and
+    `.unix_seconds()` now use `qtty::Second`.
+  - `Time::<TAI, GpsSeconds>::from_gps_seconds` and `.gps_seconds()` now use
+    `qtty::Second`.
+  - `DELTA_T_PREDICTION_HORIZON_MJD` is now exported as a typed `qtty::Day`
+    constant.
 - **ΔT extrapolation performance**: The quadratic tail-fit coefficients for post-horizon ΔT extrapolation are now computed once and cached via `OnceLock`, instead of solving a 3×3 Gaussian elimination on every call.
 - **Deduplicated `TT_MINUS_TAI_SECS`**: The `32.184 s` constant is now defined once in `scales.rs` (`pub(crate)`) and imported by `instant.rs`, eliminating a duplicate definition that could drift.
 - **Removed dead `f64::EPSILON` comparisons** in the modern ΔT interpolator. The exact-match shortcuts against MJD-scale values could never trigger (1 ULP at MJD ~50 000 is ≈ 7×10⁻¹² ≫ `f64::EPSILON`); removed in favour of the unconditional linear interpolation that was already the effective code path.

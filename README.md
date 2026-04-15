@@ -22,6 +22,8 @@ Typed astronomical time primitives for Rust.
   values via `GpsSeconds`.
 - Compiled time-data tables generated from official UTC-TAI and Delta T
   sources.
+- Public typed epoch/offset constants under `tempoch::constats`, such as
+  `J2000_JD_TT`, `TT_MINUS_TAI`, and `DELTA_T_PREDICTION_HORIZON_MJD`.
 - Generic intervals with `Interval<T>` plus utility operations like
   intersection, normalization, validation, and complement.
 
@@ -30,10 +32,10 @@ J2000 TT on the target axis. Precision therefore depends on the epoch
 magnitude; around contemporary dates the floor is sub-microsecond, but it
 still degrades as the absolute second count grows.
 
-The compiled modern ΔT series runs through MJD 63871 (`2033-10-01`).  Beyond
+The compiled modern ΔT series runs through MJD 63871 (`2033-10-01`). Beyond
 that date UT1 conversions fail with `ConversionError::Ut1HorizonExceeded`.
-Use the exported `DELTA_T_PREDICTION_HORIZON_MJD` constant to reference the
-compiled boundary programmatically.
+Use the exported `DELTA_T_PREDICTION_HORIZON_MJD` typed `qtty::Day` constant
+to reference the compiled boundary programmatically.
 
 ## Installation
 

@@ -9,7 +9,7 @@
 //! ```
 
 use chrono::Utc;
-use qtty::Day;
+use qtty::{Day, Second};
 use tempoch::{
     GpsSeconds, JulianDays, ModifiedJulianDays, SISeconds, Time, TimeContext, UnixSeconds, POSIX,
     TAI, TCB, TCG, TDB, TT, UT1, UTC,
@@ -48,13 +48,17 @@ fn main() {
         (tt.si_seconds() - ut1.si_seconds()).value()
     );
 
-    let posix = Time::<UTC, UnixSeconds<POSIX>>::from_unix_seconds(1_704_067_200.0).unwrap();
+    let posix =
+        Time::<UTC, UnixSeconds<POSIX>>::from_unix_seconds(Second::new(1_704_067_200.0)).unwrap();
     let gps: Time<TAI, GpsSeconds> = posix.to::<TAI>().repr();
 
     println!();
     println!("Civil / transport representations:");
-    println!("  POSIX seconds : {:.3}", posix.unix_seconds().unwrap());
-    println!("  GPS seconds   : {:.3}", gps.gps_seconds());
+    println!(
+        "  POSIX seconds : {:.3}",
+        posix.unix_seconds().unwrap().value()
+    );
+    println!("  GPS seconds   : {:.3}", gps.gps_seconds().value());
 
     let now_utc = Time::<UTC>::from_chrono(Utc::now());
     let now_tdb = now_utc.to::<TDB>();

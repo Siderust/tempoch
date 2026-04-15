@@ -4,16 +4,14 @@
 //! `Time<A, R = Native>` — the core public type.
 
 use super::axis::Axis;
+use super::constats::{J2000_JD_TT, JD_MINUS_MJD};
 use super::context::TimeContext;
-use super::conversion::{
-    ContextConvertible, FallibleConvertible, InfallibleConvertible, J2000_JD_TT, JD_MINUS_MJD,
-};
+use super::conversion::{ContextConvertible, FallibleConvertible, InfallibleConvertible};
 use super::error::ConversionError;
 use super::representation::{JulianDays, ModifiedJulianDays, Native, Representation, SISeconds};
 use super::storage::{ContinuousAxis, Storage};
 use core::marker::PhantomData;
-use qtty::{Day, Second};
-use qtty::unit::{Day as DayUnit, Second as SecondUnit};
+use qtty::{unit, Day, Second};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Time
@@ -118,14 +116,14 @@ where
     #[inline]
     pub fn from_julian_days(jd: Day) -> Result<Self, ConversionError> {
         Ok(Self::from_storage(Storage::new(
-            (jd - J2000_JD_TT).to::<SecondUnit>(),
+            (jd - J2000_JD_TT).to::<unit::Second>(),
         )?))
     }
 
     /// Julian Day number on axis `A`.
     #[inline]
     pub fn julian_days(self) -> Day {
-        J2000_JD_TT + self.storage.seconds.to::<DayUnit>()
+        J2000_JD_TT + self.storage.seconds.to::<unit::Day>()
     }
 }
 
@@ -138,14 +136,14 @@ where
     #[inline]
     pub fn from_modified_julian_days(mjd: Day) -> Result<Self, ConversionError> {
         Ok(Self::from_storage(Storage::new(
-            (mjd + JD_MINUS_MJD - J2000_JD_TT).to::<SecondUnit>(),
+            (mjd + JD_MINUS_MJD - J2000_JD_TT).to::<unit::Second>(),
         )?))
     }
 
     /// MJD value on axis `A`.
     #[inline]
     pub fn modified_julian_days(self) -> Day {
-        J2000_JD_TT - JD_MINUS_MJD + self.storage.seconds.to::<DayUnit>()
+        J2000_JD_TT - JD_MINUS_MJD + self.storage.seconds.to::<unit::Day>()
     }
 }
 
@@ -297,15 +295,8 @@ mod tests {
     use super::super::representation::{JulianDays, ModifiedJulianDays, SISeconds};
     use super::*;
 
-    // One day expressed as typed SI seconds, derived from the Day unit
-    // via qtty's const conversion rather than a hard-coded magic number.
+    // One day expressed as typed SI seconds.
     const SECONDS_PER_DAY: Second = Second::new(86_400.0);
-
-    const TOL_SEC: f64 = 1e-6;
-
-    fn approx_eq(a: f64, b: f64, tol: f64) -> bool {
-        (a - b).abs() <= tol
-    }
 
     #[test]
     fn tt_tai_round_trip_exact() {
@@ -314,7 +305,7 @@ mod tests {
         let tt2 = tai.to::<TT>();
         assert_eq!(tt.si_seconds(), tt2.si_seconds());
         // TAI at J2000 TT should be −32.184 s on TAI axis.
-        assert!(approx_eq(tai.si_seconds().erase_unit_raw(), -32.184, 1e-15));
+        assert!((tai.si_seconds() - Second::new(-32.184)).abs() < Second::new(1e-15));
     }
 
     #[test]
@@ -324,13 +315,9 @@ mod tests {
         let tdb = tt.to::<TDB>();
         let tt2 = tdb.to::<TT>();
         assert!(
-            approx_eq(
-                tt.si_seconds().erase_unit_raw(),
-                tt2.si_seconds().erase_unit_raw(),
-                TOL_SEC
-            ),
-            "round-trip error {}",
-            (tt - tt2).erase_unit_raw()
+            (tt.si_seconds() - tt2.si_seconds()).abs() < Second::new(1e-6),
+            "round-trip error {:?}",
+            tt - tt2
         );
     }
 
@@ -340,14 +327,14 @@ mod tests {
         let tt1 = Time::<TT>::from_si_seconds(SECONDS_PER_DAY).unwrap();
         let tcg0 = tt0.to::<TCG>();
         let tcg1 = tt1.to::<TCG>();
-        let drift = ((tcg1 - tcg0) - SECONDS_PER_DAY).erase_unit_raw();
+        let drift: Second = (tcg1 - tcg0) - SECONDS_PER_DAY;
         // dTCG/dTT = 1 / (1 - L_G), so one TT-day's worth of TCG exceeds
         // one day by L_G / (1 - L_G) · 86400 ≈ 6.02e-5 s.
         let l_g = 6.969_290_134e-10_f64;
-        let expected = l_g / (1.0 - l_g) * SECONDS_PER_DAY.erase_unit_raw();
+        let expected: Second = SECONDS_PER_DAY * (l_g / (1.0 - l_g));
         assert!(
-            approx_eq(drift, expected, 1e-11),
-            "drift = {}, expected = {}",
+            (drift - expected).abs() < Second::new(1e-11),
+            "drift = {:?}, expected = {:?}",
             drift,
             expected
         );
@@ -361,13 +348,9 @@ mod tests {
         let tdb2 = tcb.to::<TDB>();
         // ULP-limited: t0 is ~7e8 s away, so 1 ULP ≈ 1e-7 s.
         assert!(
-            approx_eq(
-                tdb.si_seconds().erase_unit_raw(),
-                tdb2.si_seconds().erase_unit_raw(),
-                1e-6
-            ),
-            "round-trip diff {}",
-            (tdb.si_seconds() - tdb2.si_seconds()).erase_unit_raw()
+            (tdb.si_seconds() - tdb2.si_seconds()).abs() < Second::new(1e-6),
+            "round-trip diff {:?}",
+            tdb.si_seconds() - tdb2.si_seconds()
         );
     }
 
@@ -383,23 +366,15 @@ mod tests {
         let jd = Day::new(2_451_545.0);
         let t_jd: Time<TT, JulianDays> = Time::from_julian_days(jd).unwrap();
         let t_mjd: Time<TT, ModifiedJulianDays> = t_jd.repr();
-        let expected_mjd = 2_451_545.0 - 2_400_000.5;
-        assert!(approx_eq(
-            t_mjd.modified_julian_days().erase_unit_raw(),
-            expected_mjd,
-            1e-9
-        ));
+        let expected_mjd = Day::new(2_451_545.0 - 2_400_000.5);
+        assert!((t_mjd.modified_julian_days() - expected_mjd).abs() < Day::new(1e-9));
     }
 
     #[test]
     fn repr_transform_preserves_instant() {
         let t_jd: Time<TT, JulianDays> = Time::from_julian_days(Day::new(2_451_545.5)).unwrap();
         let t_si: Time<TT, SISeconds> = t_jd.repr();
-        assert!(approx_eq(
-            t_si.seconds().erase_unit_raw(),
-            (SECONDS_PER_DAY / 2.0).erase_unit_raw(),
-            1e-10
-        ));
+        assert!((t_si.seconds() - SECONDS_PER_DAY / 2.0).abs() < Second::new(1e-10));
     }
 
     #[test]

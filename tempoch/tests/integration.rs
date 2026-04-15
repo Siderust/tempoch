@@ -1,8 +1,10 @@
 use chrono::{DateTime, NaiveDate};
 use qtty::{Day, Second};
 use tempoch::{
-    complement_within, intersect_periods, Interval, JulianDays, ModifiedJulianDays, Time,
-    TimeContext, TT, UT1, UTC,
+    complement_within,
+    constats::{J2000_JD_TT, TT_MINUS_TAI},
+    intersect_periods, Interval, JulianDays, ModifiedJulianDays, Time, TimeContext, TAI, TT, UT1,
+    UTC,
 };
 
 fn mjd(value: f64) -> Time<TT, ModifiedJulianDays> {
@@ -29,6 +31,16 @@ fn ut1_context_roundtrip_near_j2000() {
     let offset_s = (tt.si_seconds() - ut1.si_seconds()).value();
     assert!((offset_s - 63.83).abs() < 1.0);
     assert!((tt - tt_back).value().abs() < 1e-9);
+}
+
+#[test]
+fn public_constats_epochs_are_usable() {
+    let j2000_jd = Time::<TT, JulianDays>::from_julian_days(J2000_JD_TT).unwrap();
+    let j2000: Time<TT> = j2000_jd.repr();
+    let tai = j2000.to::<TAI>();
+
+    assert_eq!(j2000_jd.julian_days(), J2000_JD_TT);
+    assert!(((j2000.si_seconds() - tai.si_seconds()) - TT_MINUS_TAI).abs() < Second::new(1e-12));
 }
 
 #[test]

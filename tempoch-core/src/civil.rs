@@ -7,14 +7,16 @@
 //! This module implements the fallible, history-dependent civil conversions:
 //!
 //! * `Time::<UTC>::from_chrono` / `try_from_chrono` / `to_chrono`
-//! * `Time::<UTC, UnixSeconds<POSIX>>::from_unix_seconds` / `seconds`
-//! * `Time::<TAI, GpsSeconds>::from_gps_seconds` / `seconds`
+//! * `Time::<UTC, UnixSeconds<POSIX>>::from_unix_seconds` / `unix_seconds`
+//! * `Time::<TAI, GpsSeconds>::from_gps_seconds` / `gps_seconds`
 
 use super::axis::{TAI, UTC};
+use super::constats::{
+    GPS_EPOCH_TAI, J2000_JD_TT, JD_MINUS_MJD, TT_MINUS_TAI, UNIX_EPOCH_JD, UNIX_EPOCH_MJD,
+    UTC_INTERVAL_EPS,
+};
 use super::conversion::{
     try_tai_minus_utc_mjd, tt_mjd_to_utc_mjd_in_segment, utc_mjd_to_tt_mjd_in_segment,
-    GPS_EPOCH_TAI, J2000_JD_TT, JD_MINUS_MJD, TT_MINUS_TAI, UNIX_EPOCH_JD,
-    UNIX_EPOCH_MJD, UTC_INTERVAL_EPS,
 };
 use super::error::ConversionError;
 use super::representation::{GpsSeconds, Native, UnixSeconds, POSIX};
@@ -23,7 +25,10 @@ use super::time::Time;
 use crate::generated::time_data::UTC_TAI_SEGMENTS;
 use chrono::{DateTime, Utc};
 use qtty::time::{Days, Nanoseconds, Seconds};
-use qtty::unit::{Day, Nanosecond, Second};
+use qtty::unit::{Day, Nanosecond, Second as SecondUnit};
+use qtty::Second;
+
+const NANOS_PER_SECOND: Nanoseconds = Nanoseconds::new(1_000_000_000.0);
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -33,32 +38,30 @@ fn datetime_from_seconds_since_epoch(seconds_since_epoch: Seconds) -> Option<Dat
         return None;
     }
 
-    let nanos_per_second: Nanoseconds = Seconds::one().to::<Nanosecond>();
-
     let secs_floor = seconds_since_epoch.floor();
     let frac = seconds_since_epoch - secs_floor;
 
     let mut secs = secs_floor;
     let mut nanos: Nanoseconds = frac.to::<Nanosecond>().round();
 
-    // Normalize nanos into [0, nanos_per_second)
+    // Normalize nanos into [0, NANOS_PER_SECOND)
     if nanos < Nanoseconds::zero() {
         secs -= Seconds::one();
-        nanos += nanos_per_second;
-    } else if nanos >= nanos_per_second {
+        nanos += NANOS_PER_SECOND;
+    } else if nanos >= NANOS_PER_SECOND {
         secs += Seconds::one();
-        nanos -= nanos_per_second;
+        nanos -= NANOS_PER_SECOND;
     }
 
     DateTime::<Utc>::from_timestamp(
-        secs.erase_unit_raw() as i64,
-        nanos.erase_unit_raw() as u32,
+        (secs / Seconds::one()) as i64,
+        (nanos / Nanoseconds::one()) as u32,
     )
 }
 
 #[inline]
 fn datetime_from_utc_mjd(mjd_utc: Days) -> Option<DateTime<Utc>> {
-    datetime_from_seconds_since_epoch((mjd_utc - UNIX_EPOCH_MJD).to::<Second>())
+    datetime_from_seconds_since_epoch((mjd_utc - UNIX_EPOCH_MJD).to::<SecondUnit>())
 }
 
 /// Convert TAI-seconds-since-J2000-TT into a chrono DateTime<Utc>, preserving
@@ -72,10 +75,8 @@ fn utc_from_tai_seconds(tai_secs: Seconds) -> Result<DateTime<Utc>, ConversionEr
     let jd_tt: Days = J2000_JD_TT + (tai_secs + TT_MINUS_TAI).to::<Day>();
     let mjd_tt = jd_tt - JD_MINUS_MJD;
 
-    let first_start_tt = utc_mjd_to_tt_mjd_in_segment(
-        Days::new(UTC_TAI_SEGMENTS[0].start_mjd as f64),
-        UTC_TAI_SEGMENTS[0],
-    );
+    let first_start_tt =
+        utc_mjd_to_tt_mjd_in_segment(UTC_TAI_SEGMENTS[0].start_mjd_days(), UTC_TAI_SEGMENTS[0]);
     if mjd_tt < first_start_tt - UTC_INTERVAL_EPS {
         return Err(ConversionError::UtcHistoryUnsupported);
     }
@@ -84,34 +85,28 @@ fn utc_from_tai_seconds(tai_secs: Seconds) -> Result<DateTime<Utc>, ConversionEr
         let segment = window[0];
         let next = window[1];
         let end_mjd = segment
-            .end_mjd
+            .end_mjd_days()
             .expect("all non-terminal UTC-TAI segments must have an end");
-        let end_mjd = Days::new(end_mjd as f64);
         let end_tt = utc_mjd_to_tt_mjd_in_segment(end_mjd, segment);
         if mjd_tt < end_tt - UTC_INTERVAL_EPS {
             let mjd_utc = tt_mjd_to_utc_mjd_in_segment(mjd_tt, segment);
             return datetime_from_utc_mjd(mjd_utc).ok_or(ConversionError::OutOfRange);
         }
 
-        let next_start_tt = utc_mjd_to_tt_mjd_in_segment(Days::new(next.start_mjd as f64), next);
+        let next_start_tt = utc_mjd_to_tt_mjd_in_segment(next.start_mjd_days(), next);
         if mjd_tt < next_start_tt - UTC_INTERVAL_EPS {
             let boundary = datetime_from_utc_mjd(end_mjd).ok_or(ConversionError::OutOfRange)?;
             let base_secs = boundary.timestamp() - 1;
-            let nanos_per_second = Seconds::new(1.0).to::<Nanosecond>().erase_unit_raw();
-            let leap_nanos = nanos_per_second
-                + (mjd_tt - end_tt)
-                    .to::<Second>()
-                    .to::<Nanosecond>()
-                    .erase_unit_raw();
-            let window_nanos = ((next_start_tt - end_tt)
-                .to::<Second>()
+            let leap_nanos: Nanoseconds =
+                NANOS_PER_SECOND + (mjd_tt - end_tt).to::<SecondUnit>().to::<Nanosecond>();
+            let window_nanos: Nanoseconds = (next_start_tt - end_tt)
+                .to::<SecondUnit>()
                 .to::<Nanosecond>()
-                .erase_unit_raw())
                 .round()
-                .max(1.0);
-            let max_nanos = nanos_per_second + window_nanos - 1.0;
-            let nanos = leap_nanos.round().clamp(nanos_per_second, max_nanos);
-            return DateTime::<Utc>::from_timestamp(base_secs, nanos as u32)
+                .max(Nanoseconds::one());
+            let max_nanos: Nanoseconds = NANOS_PER_SECOND + window_nanos - Nanoseconds::one();
+            let nanos: Nanoseconds = leap_nanos.round().clamp(NANOS_PER_SECOND, max_nanos);
+            return DateTime::<Utc>::from_timestamp(base_secs, (nanos / Nanoseconds::one()) as u32)
                 .ok_or(ConversionError::OutOfRange);
         }
     }
@@ -125,17 +120,16 @@ fn utc_from_tai_seconds(tai_secs: Seconds) -> Result<DateTime<Utc>, ConversionEr
 
 /// Convert a chrono DateTime<Utc> to TAI-seconds-since-J2000-TT. Returns
 /// `(tai_secs, leap_flag)`.
-fn tai_seconds_from_utc(dt: DateTime<Utc>) -> Result<(f64, bool), ConversionError> {
+fn tai_seconds_from_utc(dt: DateTime<Utc>) -> Result<(Second, bool), ConversionError> {
     let base_jd_utc = UNIX_EPOCH_JD + Seconds::new(dt.timestamp() as f64).to::<Day>();
     let tai_minus_utc = try_tai_minus_utc_mjd(base_jd_utc - JD_MINUS_MJD)
         .ok_or(ConversionError::UtcHistoryUnsupported)?;
     let subsec_nanos = dt.timestamp_subsec_nanos();
     let mut leap = false;
     if subsec_nanos >= 1_000_000_000 {
-        let next = try_tai_minus_utc_mjd(
-            base_jd_utc - JD_MINUS_MJD + Seconds::new(1.0).to::<Day>(),
-        )
-        .ok_or(ConversionError::InvalidLeapSecond)?;
+        let next =
+            try_tai_minus_utc_mjd(base_jd_utc - JD_MINUS_MJD + Seconds::new(1.0).to::<Day>())
+                .ok_or(ConversionError::InvalidLeapSecond)?;
         if next - tai_minus_utc < Seconds::new(0.5) {
             return Err(ConversionError::InvalidLeapSecond);
         }
@@ -144,9 +138,9 @@ fn tai_seconds_from_utc(dt: DateTime<Utc>) -> Result<(f64, bool), ConversionErro
 
     // Storage(TAI)(P) = (JD_TAI(P) - J2000_JD_TT) * 86400
     //                 = (JD_UTC(P) - J2000_JD_TT) * 86400 + (TAI − UTC)(P)
-    let frac = Nanoseconds::new(subsec_nanos as f64).to::<Second>();
-    let tai_secs = (base_jd_utc - J2000_JD_TT).to::<Second>() + tai_minus_utc + frac;
-    Ok((tai_secs.erase_unit_raw(), leap))
+    let frac = Nanoseconds::new(subsec_nanos as f64).to::<SecondUnit>();
+    let tai_secs = (base_jd_utc - J2000_JD_TT).to::<SecondUnit>() + tai_minus_utc + frac;
+    Ok((tai_secs, leap))
 }
 
 // ── Time<UTC, Native>: chrono interop ────────────────────────────────────
@@ -164,10 +158,7 @@ impl Time<UTC, Native> {
     #[inline]
     pub fn try_from_chrono(dt: DateTime<Utc>) -> Result<Self, ConversionError> {
         let (tai_secs, leap) = tai_seconds_from_utc(dt)?;
-        Ok(Self::from_storage(Storage::new_unchecked(
-            Seconds::new(tai_secs),
-            leap,
-        )))
+        Ok(Self::from_storage(Storage::new_unchecked(tai_secs, leap)))
     }
 
     /// Convenience panicking wrapper over [`try_from_chrono`](Self::try_from_chrono).
@@ -205,15 +196,15 @@ impl Time<UTC, UnixSeconds<POSIX>> {
     /// A POSIX timestamp ignores leap seconds (one "Unix day" is always
     /// 86 400 ticks), matching C `time()`, Python `time.time()`, etc.
     #[inline]
-    pub fn from_unix_seconds(seconds: f64) -> Result<Self, ConversionError> {
+    pub fn from_unix_seconds(seconds: Second) -> Result<Self, ConversionError> {
         if !seconds.is_finite() {
             return Err(ConversionError::NonFinite);
         }
         // POSIX time → UTC MJD (no leap seconds): mjd_utc = 40587 + s/86400.
-        let mjd_utc = UNIX_EPOCH_MJD + Seconds::new(seconds).to::<Day>();
+        let mjd_utc = UNIX_EPOCH_MJD + seconds.to::<Day>();
         let tai_minus_utc =
             try_tai_minus_utc_mjd(mjd_utc).ok_or(ConversionError::UtcHistoryUnsupported)?;
-        let tai_secs = (mjd_utc + JD_MINUS_MJD - J2000_JD_TT).to::<Second>() + tai_minus_utc;
+        let tai_secs = (mjd_utc + JD_MINUS_MJD - J2000_JD_TT).to::<SecondUnit>() + tai_minus_utc;
         Ok(Self::from_storage(Storage::new_unchecked(tai_secs, false)))
     }
 
@@ -222,15 +213,10 @@ impl Time<UTC, UnixSeconds<POSIX>> {
     /// Inverse of [`from_unix_seconds`](Self::from_unix_seconds). Leap-second
     /// labels collapse onto the preceding integer second (standard POSIX).
     #[inline]
-    pub fn unix_seconds(self) -> Result<f64, ConversionError> {
+    pub fn unix_seconds(self) -> Result<Second, ConversionError> {
         let dt = utc_from_tai_seconds(self.storage().seconds)?;
         let nanos = dt.timestamp_subsec_nanos().min(999_999_999);
-        Ok(
-            dt.timestamp() as f64
-                + Nanoseconds::new(nanos as f64)
-                    .to::<Second>()
-                    .erase_unit_raw(),
-        )
+        Ok(Seconds::new(dt.timestamp() as f64) + Nanoseconds::new(nanos as f64).to::<SecondUnit>())
     }
 }
 
@@ -242,20 +228,20 @@ impl Time<TAI, GpsSeconds> {
     ///
     /// GPS runs at the same rate as TAI with a fixed offset (GPS = TAI − 19 s).
     #[inline]
-    pub fn from_gps_seconds(seconds: f64) -> Result<Self, ConversionError> {
+    pub fn from_gps_seconds(seconds: Second) -> Result<Self, ConversionError> {
         if !seconds.is_finite() {
             return Err(ConversionError::NonFinite);
         }
         Ok(Self::from_storage(Storage::new_unchecked(
-            Seconds::new(seconds) + GPS_EPOCH_TAI,
+            seconds + GPS_EPOCH_TAI,
             false,
         )))
     }
 
     /// Return GPS seconds since the GPS epoch for this instant.
     #[inline]
-    pub fn gps_seconds(self) -> f64 {
-        (self.storage().seconds - GPS_EPOCH_TAI).erase_unit_raw()
+    pub fn gps_seconds(self) -> Second {
+        self.storage().seconds - GPS_EPOCH_TAI
     }
 }
 
@@ -300,36 +286,44 @@ mod tests {
     #[test]
     fn unix_round_trip() {
         // 2024-01-01T00:00:00Z ≈ 1_704_067_200 POSIX seconds.
-        let secs = 1_704_067_200.0;
+        let secs = Second::new(1_704_067_200.0);
         let t = Time::<UTC, UnixSeconds<POSIX>>::from_unix_seconds(secs).unwrap();
         let out = t.unix_seconds().unwrap();
-        assert!((out - secs).abs() < 1e-3, "round trip diff {}", out - secs);
+        assert!(
+            (out - secs).abs() < Second::new(1e-3),
+            "round trip diff {:?}",
+            out - secs
+        );
     }
 
     #[test]
     fn unix_negative_fraction_round_trip() {
-        let secs = -0.25;
+        let secs = Second::new(-0.25);
         let t = Time::<UTC, UnixSeconds<POSIX>>::from_unix_seconds(secs).unwrap();
         let out = t.unix_seconds().unwrap();
-        assert!((out - secs).abs() < 1e-3, "round trip diff {}", out - secs);
+        assert!(
+            (out - secs).abs() < Second::new(1e-3),
+            "round trip diff {:?}",
+            out - secs
+        );
     }
 
     #[test]
     fn gps_round_trip() {
-        let t = Time::<TAI, GpsSeconds>::from_gps_seconds(1_000_000.0).unwrap();
-        assert!((t.gps_seconds() - 1_000_000.0).abs() < 1e-9);
+        let t = Time::<TAI, GpsSeconds>::from_gps_seconds(Second::new(1_000_000.0)).unwrap();
+        assert!((t.gps_seconds() - Second::new(1_000_000.0)).abs() < Second::new(1e-9));
     }
 
     #[test]
     fn gps_tai_offset_is_19s() {
         // GPS epoch in TAI seconds: (2024-01-01 GPS seconds) - (same TAI seconds) = 19 s.
-        let gps = Time::<TAI, GpsSeconds>::from_gps_seconds(0.0).unwrap();
+        let gps = Time::<TAI, GpsSeconds>::from_gps_seconds(Second::new(0.0)).unwrap();
         let tai = gps
             .repr::<super::super::representation::SISeconds>()
             .seconds();
         // TAI reading at GPS epoch (1980-01-06 00:00:19 TAI) in SI seconds since J2000 TT.
         let expected = GPS_EPOCH_TAI;
-        assert!(((tai - expected).abs()).erase_unit_raw() < 1e-6);
+        assert!((tai - expected).abs() < Second::new(1e-6));
     }
 
     #[test]
@@ -351,7 +345,7 @@ mod tests {
         let tt = Time::<TT>::from_si_seconds(qtty::Second::new(0.0)).unwrap();
         let ut1 = tt.to_with::<super::super::axis::UT1>(&ctx).unwrap();
         let tt_back = ut1.to_with::<TT>(&ctx).unwrap();
-        let diff = (tt - tt_back).abs().erase_unit_raw();
-        assert!(diff < 1e-9, "round trip diff = {diff}");
+        let diff = (tt - tt_back).abs();
+        assert!(diff < Second::new(1e-9), "round trip diff = {:?}", diff);
     }
 }
