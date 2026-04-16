@@ -58,6 +58,32 @@ define_civil_scale!(
     /// Leap-second-aware civil scale. `Time<UTC, F>` stores the value in
     /// format `F`; the leap-second flag is computed on demand from the
     /// UTC-TAI segment table. Direct arithmetic is intentionally absent.
+    ///
+    /// # Storage invariant
+    ///
+    /// `Time<UTC, F>` and `Time<TAI, F>` store **the same numerical value**
+    /// for the same physical instant: J2000 TT seconds (or the equivalent in
+    /// format `F`) on the continuous TAI axis. They are identical
+    /// bit-for-bit. Scale conversion between them is therefore a no-op at
+    /// the numeric level.
+    ///
+    /// This means `.si_seconds()` on a `Time<UTC>` returns a **TAI-based**
+    /// J2000 TT second count, *not* a UTC offset or a UTC coordinate value.
+    /// UTC differs from TAI by up to 37 s (as of 2017) due to leap seconds;
+    /// that discontinuous offset exists only in the *civil* interpretation.
+    ///
+    /// # Authoritative UTC API
+    ///
+    /// Use the civil layer for any operation that depends on the UTC-TAI
+    /// offset (i.e., leap seconds):
+    ///
+    /// * [`Time::<UTC>::from_chrono`] / [`try_from_chrono`] / [`try_to_chrono`]
+    /// * [`Time::<UTC>::from_unix_seconds`] / [`unix_seconds`]
+    ///
+    /// [`try_from_chrono`]: crate::Time::try_from_chrono
+    /// [`try_to_chrono`]: crate::Time::try_to_chrono
+    /// [`from_unix_seconds`]: crate::Time::from_unix_seconds
+    /// [`unix_seconds`]: crate::Time::unix_seconds
     UTC = "UTC"
 );
 

@@ -238,11 +238,18 @@ impl InfallibleScaleConvert<TT> for TCB {
 
 // ── UTC ↔ TAI (identity in J2000 TT seconds) ────────────────────────────
 //
-// In the new design, all scales store values as J2000 TT seconds internally
-// (the canonical representation). UTC and TAI differ only in their physical
-// meaning; the numerical value in J2000 TT seconds is the same instant.
-// The UTC-TAI offset handling happens at the civil layer (chrono interop,
-// Unix/GPS encoding) rather than in the scale conversion.
+// Both UTC and TAI store the same J2000 TT second value for the same
+// physical instant (see the `UTC` scale doc for the full invariant).
+// Scale conversion between them is therefore numerically a no-op.
+//
+// The UTC-TAI offset (leap seconds) is handled exclusively in the civil
+// layer (chrono interop, Unix/GPS encoding). It is never applied in these
+// scale-level conversions.
+//
+// Implication for callers: `.si_seconds()` on `Time<UTC>` returns a
+// **TAI-based** continuous count, not a UTC offset. Use the civil API
+// (`from_unix_seconds`, `from_chrono`, `unix_seconds`, `try_to_chrono`)
+// for any leap-second-aware UTC operation.
 
 impl InfallibleScaleConvert<TAI> for UTC {
     #[inline]

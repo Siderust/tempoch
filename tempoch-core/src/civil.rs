@@ -9,6 +9,21 @@
 //! * `Time::<UTC, F>::from_chrono` / `try_from_chrono` / `to_chrono`
 //! * `Time::<UTC, F>::from_unix_seconds` / `unix_seconds`
 //! * `Time::<TAI, F>::from_gps_seconds` / `gps_seconds`
+//!
+//! # UTC storage invariant
+//!
+//! `Time<UTC, F>` and `Time<TAI, F>` store **the same numerical value** for
+//! the same physical instant (see the [`UTC`](super::scale::UTC) scale doc).
+//! In particular, `.si_seconds()` on a `Time<UTC>` returns a continuous
+//! TAI-based J2000 TT second count — **not** a UTC coordinate value and
+//! **not** a POSIX timestamp. Use this civil API for any operation that
+//! requires the discontinuous UTC-TAI offset (i.e., leap seconds):
+//!
+//! | Need                          | Method                             |
+//! |-------------------------------|------------------------------------|
+//! | chrono `DateTime<Utc>`        | `try_from_chrono` / `try_to_chrono`|
+//! | POSIX timestamp               | `from_unix_seconds` / `unix_seconds`|
+//! | GPS timestamp                 | `Time::<TAI>::from_gps_seconds`    |
 
 use super::constats::{GPS_EPOCH_TAI, TT_MINUS_TAI, UTC_INTERVAL_EPS};
 use super::encoding::{

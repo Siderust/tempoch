@@ -208,7 +208,16 @@ impl<S: Scale> Time<S, super::format::J2000s> {
         }
     }
 
-    /// SI seconds since J2000 TT.
+    /// SI seconds since J2000 TT on the internal (TAI-based) axis.
+    ///
+    /// For most scales this is directly the scale-coordinate value.
+    ///
+    /// **UTC caveat:** `Time<UTC>` stores the same numerical value as
+    /// `Time<TAI>` for the same instant (see the [`UTC`](super::scale::UTC)
+    /// scale doc). Therefore `.si_seconds()` on a `Time<UTC>` is **not** a
+    /// UTC coordinate value — it differs from a true UTC timestamp by the
+    /// accumulated leap-second offset (TAI − UTC). Use the civil API
+    /// ([`unix_seconds`](super::civil)) for a POSIX-compatible timestamp.
     #[inline]
     pub fn si_seconds(self) -> Seconds {
         self.value

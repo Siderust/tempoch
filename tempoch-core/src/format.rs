@@ -85,9 +85,28 @@ define_format!(
     /// Unix/POSIX seconds since 1970-01-01T00:00:00 UTC.
     ///
     /// Storage: `Quantity<Second, i64>` — natural integer representation.
+    ///
+    /// # Scale semantics warning
+    ///
+    /// The `UnixSecs` format applies a **constant epoch offset** (J2000 TT →
+    /// Unix epoch) with no leap-second correction. This offset is only
+    /// physically correct on the **UTC scale** and only for dates within the
+    /// compiled UTC-TAI history.
+    ///
+    /// Using `UnixSecs` on any other scale (TAI, TT, …) or calling
+    /// `.reformat::<UnixSecs>()` on such a `Time<S>` will produce a value
+    /// that is *not* a valid POSIX timestamp — it differs from true POSIX by
+    /// the accumulated TAI-UTC offset (up to 37 s as of 2017).
+    ///
+    /// **Authoritative POSIX mapping:** use the civil API:
+    /// [`Time::<UTC>::from_unix_seconds`] / [`.unix_seconds()`].
+    ///
     /// Scale conversions are not directly available on this format;
     /// use `.reformat::<J2000s>()` first to make the precision trade-off
     /// explicit.
+    ///
+    /// [`Time::<UTC>::from_unix_seconds`]: crate::Time::from_unix_seconds
+    /// [`.unix_seconds()`]: crate::Time::unix_seconds
     UnixSecs,
     QuantityI64<Second>,
     "Unix"
@@ -97,6 +116,26 @@ define_format!(
     /// GPS seconds since the GPS epoch (1980-01-06T00:00:00 UTC).
     ///
     /// Storage: `Quantity<Second, f64>`.
+    ///
+    /// # Scale semantics warning
+    ///
+    /// GPS time runs at exactly the TAI rate with a fixed 19-second offset.
+    /// The `GpsSecs` format's epoch constant (`GPS_EPOCH_TAI`) is calibrated
+    /// on the **TAI axis**. Using this format on any other scale (TT, TDB,
+    /// UTC, …) will store a value that is *not* a valid GPS timestamp — it
+    /// will differ from true GPS by `TT−TAI = 32.184 s` (for `Time<TT>`),
+    /// `TDB−TT` (for `Time<TDB>`), etc.
+    ///
+    /// **Authoritative GPS mapping:** use the civil API:
+    /// [`Time::<TAI>::from_gps_seconds`] / [`.gps_seconds()`].
+    ///
+    /// Format-only conversions (`.reformat::<GpsSecs>()` from another format
+    /// *on the same scale*) are available, but scale conversions
+    /// (`to_scale::<S2>()`) require an explicit `.reformat::<J2000s>()`
+    /// first, making the scale-semantic trade-off visible at the call site.
+    ///
+    /// [`Time::<TAI>::from_gps_seconds`]: crate::Time::from_gps_seconds
+    /// [`.gps_seconds()`]: crate::Time::gps_seconds
     GpsSecs,
     Quantity<Second, f64>,
     "GPS"

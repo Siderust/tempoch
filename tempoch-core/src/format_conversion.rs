@@ -9,6 +9,28 @@
 //!   `F2` within any scale (pure arithmetic: epoch offsets, unit scaling).
 //! * [`CanonicalRoundtrip`] — witnesses that a format can round-trip through
 //!   the canonical `J2000s` representation, enabling scale conversions.
+//!
+//! # Scale-conversion eligibility
+//!
+//! Not all formats implement [`CanonicalRoundtrip`]:
+//!
+//! | Format      | `CanonicalRoundtrip` | Note |
+//! |-------------|----------------------|------|
+//! | `J2000s`    | ✓                    | canonical |
+//! | `Jd`        | ✓                    | lossless f64 roundtrip |
+//! | `Mjd`       | ✓                    | lossless f64 roundtrip |
+//! | `GpsSecs`   | ✗                    | GPS epoch is TAI-axis-specific; `.reformat::<J2000s>()` first |
+//! | `UnixSecs`  | ✗                    | i64 precision loss; `.reformat::<J2000s>()` first |
+//! | `DayCount`  | ✗                    | i32 precision loss; `.reformat::<Mjd>()` or `J2000s` first |
+//!
+//! `GpsSecs` intentionally does **not** implement `CanonicalRoundtrip`, for
+//! the same reason as `UnixSecs`: its epoch offset (`GPS_EPOCH_TAI`) is only
+//! physically meaningful on the TAI axis. Allowing `.to_scale::<S2>()` on
+//! `Time<UTC, GpsSecs>` or `Time<TT, GpsSecs>` would silently produce
+//! incorrect values. Use the civil API ([`Time::<TAI>::from_gps_seconds`])
+//! or `.reformat::<J2000s>()` explicitly before calling `to_scale`.
+//!
+//! [`Time::<TAI>::from_gps_seconds`]: crate::Time::from_gps_seconds
 
 use super::constats::{GPS_EPOCH_TAI, J2000_JD_TT, JD_MINUS_MJD};
 use super::encoding::{
@@ -26,8 +48,11 @@ use qtty::{QuantityI32, QuantityI64};
 /// (`Quantity<Second, f64>`). Required for scale conversions.
 ///
 /// Integer-based formats (`UnixSecs`, `DayCount`) do **not** implement this
-/// trait. Users must `.reformat::<J2000s>()` first, making the precision
-/// trade-off explicit at the call site.
+/// trait. `GpsSecs` also does **not** implement this trait because its epoch
+/// offset (`GPS_EPOCH_TAI`) is calibrated on the TAI axis — allowing scale
+/// conversions on `Time<UTC, GpsSecs>` etc. would silently produce incorrect
+/// values. Users must `.reformat::<J2000s>()` first, making the precision
+/// and scale-semantic trade-off explicit at the call site.
 pub(crate) trait CanonicalRoundtrip: super::format::Format {
     fn to_j2000s(src: Self::Storage) -> Seconds;
     fn from_j2000s(secs: Seconds) -> Self::Storage;
@@ -63,19 +88,6 @@ impl CanonicalRoundtrip for Mjd {
     #[inline]
     fn from_j2000s(secs: Seconds) -> Days {
         j2000_seconds_to_mjd(secs)
-    }
-}
-
-impl CanonicalRoundtrip for GpsSecs {
-    #[inline]
-    fn to_j2000s(src: Seconds) -> Seconds {
-        // GPS seconds are referenced to the GPS epoch on the TAI axis.
-        // GPS_EPOCH_TAI is already expressed as J2000 TT seconds.
-        src + GPS_EPOCH_TAI
-    }
-    #[inline]
-    fn from_j2000s(secs: Seconds) -> Seconds {
-        secs - GPS_EPOCH_TAI
     }
 }
 
