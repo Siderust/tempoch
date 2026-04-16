@@ -5,11 +5,27 @@
 //!
 //! Piecewise model combining:
 //!
-//! * **Pre-1620**: Stephenson & Houlden (1986) quadratic approximations.
+//! * **Pre-948 CE**: Stephenson & Houlden (1986) quadratic with epoch 948.
+//! * **948–1619**: Stephenson & Houlden (1986) quadratic with epoch 1850.
 //! * **1620–1973**: Biennial interpolation table (Meeus ch. 9).
-//! * **1973 onward**: generated modern data (USNO monthly determinations).
-//! * **Beyond the last published prediction**: quadratic continuation of the
+//! * **1973 onward**: Generated modern data (USNO monthly determinations).
+//! * **Beyond the last published prediction**: Quadratic continuation of the
 //!   last 12 prediction points.
+//!
+//! ## C0 continuity corrections
+//!
+//! The three pre-modern sub-models are independent historical approximations
+//! (Stephenson & Houlden 1986; Meeus *Astronomical Algorithms* 2nd ed.) and do
+//! not agree exactly at their boundary epochs.  To avoid non-physical
+//! discontinuities, constant additive offsets are applied to each formula:
+//!
+//! | Offset | Value | Matched boundary |
+//! |---|---|---|
+//! | `MEDIEVAL_OFFSET` | +4.979 251 s | medieval formula → `DELTA_T[0]` at 1620 CE |
+//! | `ANCIENT_OFFSET`  | +5.460 454 s | ancient formula → corrected medieval at 948 CE |
+//!
+//! Both corrections are well within the stated accuracy of their respective
+//! sub-models (±15 s for 948–1620; ±hundreds of seconds before 948).
 
 use crate::constats::DAYS_PER_JC;
 use crate::encoding::jd_to_mjd;
@@ -22,6 +38,13 @@ const JD_EPOCH_948_UT: Day = Day::new(2_067_314.5);
 const JD_EPOCH_1850_UT: Day = Day::new(2_396_758.5);
 const JD_TABLE_START_1620: Day = Day::new(2_312_752.5);
 const BIENNIAL_STEP_D: Day = Day::new(730.5);
+
+// C0 continuity offsets (see module doc).
+// MEDIEVAL_OFFSET = DELTA_T[0] − medieval(JD_TABLE_START_1620) = 124.0 − 119.020750
+const MEDIEVAL_OFFSET: f64 = 4.979_250_475_399_4;
+// ANCIENT_OFFSET = (medieval(JD_EPOCH_948_UT) + MEDIEVAL_OFFSET) − ancient(JD_EPOCH_948_UT)
+//               = 1835.460454 − 1830.0
+const ANCIENT_OFFSET: f64 = 5.460_453_937_909_5;
 
 const TERMS: usize = 187;
 
@@ -54,14 +77,14 @@ fn delta_t_ancient(jd_ut: Day) -> Second {
     const DT_A1: f64 = -405.0;
     const DT_A2: f64 = 46.5;
     let c = (jd_ut - JD_EPOCH_948_UT) / DAYS_PER_JC;
-    Second::new(DT_A0 + DT_A1 * c + DT_A2 * c * c)
+    Second::new(DT_A0 + ANCIENT_OFFSET + DT_A1 * c + DT_A2 * c * c)
 }
 
 #[inline]
 fn delta_t_medieval(jd_ut: Day) -> Second {
     const DT_A2: f64 = 22.5;
     let c = (jd_ut - JD_EPOCH_1850_UT) / DAYS_PER_JC;
-    Second::new(DT_A2 * c * c)
+    Second::new(DT_A2 * c * c + MEDIEVAL_OFFSET)
 }
 
 #[inline]
@@ -70,12 +93,24 @@ fn delta_t_table(jd_ut: Day) -> Second {
     if i > TERMS - 3 {
         i = TERMS - 3;
     }
+    // Three-point Lagrange interpolation anchored at DELTA_T[i]:
+    //
+    //   a = Δy_i     = DELTA_T[i+1] − DELTA_T[i]    (first forward difference)
+    //   b = Δy_{i+1} = DELTA_T[i+2] − DELTA_T[i+1]  (first forward difference at i+1)
+    //   c = Δ²y_i    = b − a                          (second difference)
+    //
+    //   P(n) = DELTA_T[i] + n·a + n(n−1)/2 · c
+    //
+    // n ∈ [0, 1) is the fractional position within the interval starting at
+    // knot i. Boundary invariants: P(0) = DELTA_T[i], P(1) = DELTA_T[i+1].
+    // When i is clamped to TERMS−3, n may exceed 1, giving a smooth quadratic
+    // extension through the last two knots.
     let a = DELTA_T[i + 1] - DELTA_T[i];
     let b = DELTA_T[i + 2] - DELTA_T[i + 1];
-    let c = a - b;
+    let c = b - a; // second difference (sign intentional: b−a, not a−b)
     let step_start = JD_TABLE_START_1620 + BIENNIAL_STEP_D * i as f64;
     let n = (jd_ut - step_start) / BIENNIAL_STEP_D;
-    Second::new(DELTA_T[i + 1] + n / 2.0 * (a + b + n * c))
+    Second::new(DELTA_T[i] + n * a + n * (n - 1.0) * c / 2.0)
 }
 
 #[inline]
@@ -217,3 +252,127 @@ pub(crate) fn delta_t_seconds(jd_ut: Day) -> Second {
 
 /// MJD of the last compiled ΔT prediction point.
 pub const DELTA_T_PREDICTION_HORIZON_MJD: Day = MODERN_DELTA_T_END_MJD;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Convert a JD float to a `Day` for passing to `delta_t_seconds`.
+    fn jd(jd: f64) -> Day {
+        Day::new(jd)
+    }
+
+    /// `delta_t_table` anchor at 1620 CE: P(0) must equal DELTA_T[0] = 124.0 s.
+    #[test]
+    fn delta_t_table_knot_0_is_124() {
+        let dt = delta_t_seconds(JD_TABLE_START_1620);
+        assert!(
+            (dt.value() - 124.0).abs() < 1e-9,
+            "ΔT at 1620 CE (knot 0) expected 124.0 s, got {:.6} s",
+            dt.value()
+        );
+    }
+
+    /// `delta_t_table` anchor at 1622 CE: P(0) at the second knot must equal DELTA_T[1] = 115.0 s.
+    #[test]
+    fn delta_t_table_knot_1_is_115() {
+        let dt = delta_t_seconds(JD_TABLE_START_1620 + BIENNIAL_STEP_D);
+        assert!(
+            (dt.value() - 115.0).abs() < 1e-9,
+            "ΔT at 1622 CE (knot 1) expected 115.0 s, got {:.6} s",
+            dt.value()
+        );
+    }
+
+    /// `delta_t_table` anchor at 1624 CE: P(0) at the third knot must equal DELTA_T[2] = 106.0 s.
+    #[test]
+    fn delta_t_table_knot_2_is_106() {
+        let dt = delta_t_seconds(JD_TABLE_START_1620 + BIENNIAL_STEP_D * 2.0);
+        assert!(
+            (dt.value() - 106.0).abs() < 1e-9,
+            "ΔT at 1624 CE (knot 2) expected 106.0 s, got {:.6} s",
+            dt.value()
+        );
+    }
+
+    /// Midpoint of the first biennial interval (n = 0.5): pure quadratic interpolation
+    /// between DELTA_T[0]=124, DELTA_T[1]=115, DELTA_T[2]=106 gives 119.5 s.
+    ///
+    /// Calculation: a=-9, b=-9, c=0 → P(0.5) = 124 + 0.5·(−9) = 119.5.
+    #[test]
+    fn delta_t_table_midpoint_interval_0_is_119_5() {
+        let dt = delta_t_seconds(JD_TABLE_START_1620 + BIENNIAL_STEP_D * 0.5);
+        assert!(
+            (dt.value() - 119.5).abs() < 1e-9,
+            "ΔT at midpoint of [1620,1622] expected 119.5 s, got {:.6} s",
+            dt.value()
+        );
+    }
+
+    /// Continuity at every biennial knot: the value approaching from the left
+    /// (n → 1⁻) must equal the value at n = 0 from the right.
+    #[test]
+    fn delta_t_table_boundary_continuity() {
+        // Test the first 10 internal knot boundaries.
+        for k in 1..10usize {
+            let jd_knot = JD_TABLE_START_1620 + BIENNIAL_STEP_D * k as f64;
+            let left = delta_t_table(jd_knot - Day::new(1e-6)).value();
+            let right = delta_t_table(jd_knot + Day::new(1e-6)).value();
+            let exact = delta_t_table(jd_knot).value();
+            assert!(
+                (left - exact).abs() < 1e-3,
+                "Discontinuity at knot {k}: left={left:.6}, exact={exact:.6}"
+            );
+            assert!(
+                (right - exact).abs() < 1e-3,
+                "Discontinuity at knot {k}: right={right:.6}, exact={exact:.6}"
+            );
+        }
+    }
+
+    /// Monotone early segment: ΔT should decrease from 1620 to 1900 as the
+    /// table values go from 124 s down to ≈ 2.6 s.
+    #[test]
+    fn delta_t_table_decreases_1620_to_1900() {
+        let dt_1620 = delta_t_seconds(JD_TABLE_START_1620).value();
+        let jd_1900 = 2_415_020.5; // 1900 Jan 0.5 (standard epoch)
+        let dt_1900 = delta_t_seconds(jd(jd_1900)).value();
+        assert!(
+            dt_1620 > dt_1900,
+            "ΔT should decrease 1620→1900, got {dt_1620:.2} > {dt_1900:.2}"
+        );
+    }
+
+    /// C0 continuity at the 1620 CE regime boundary: medieval→table.
+    ///
+    /// Immediately before 1620 the medieval formula (with offset) returns the
+    /// same value as `DELTA_T[0] = 124.0 s` immediately after. The allowed
+    /// tolerance is 1 ms (float arithmetic near the boundary).
+    #[test]
+    fn regime_boundary_1620_is_continuous() {
+        let eps = Day::new(1e-4); // ~8.6 seconds before/after
+        let before = delta_t_seconds(JD_TABLE_START_1620 - eps).value();
+        let after  = delta_t_seconds(JD_TABLE_START_1620 + eps).value();
+        assert!(
+            (before - after).abs() < 1e-3,
+            "ΔT regime gap at 1620 CE: {before:.6} → {after:.6} s (gap {:.6} s)",
+            (before - after).abs()
+        );
+    }
+
+    /// C0 continuity at the 948 CE regime boundary: ancient→medieval.
+    ///
+    /// Both sub-models with their continuity offsets must agree to within 1 ms
+    /// when evaluated just before and just after 948 CE.
+    #[test]
+    fn regime_boundary_948_is_continuous() {
+        let eps = Day::new(1e-4);
+        let before = delta_t_seconds(JD_EPOCH_948_UT - eps).value();
+        let after  = delta_t_seconds(JD_EPOCH_948_UT + eps).value();
+        assert!(
+            (before - after).abs() < 1e-3,
+            "ΔT regime gap at 948 CE: {before:.6} → {after:.6} s (gap {:.6} s)",
+            (before - after).abs()
+        );
+    }
+}

@@ -12,7 +12,7 @@ use chrono::{DateTime, Utc};
 use qtty::time::Seconds;
 use qtty::Day;
 use tempoch::{
-    ConversionError, Time, TimeContext, TAI,
+    ConversionError, J2000s, Jd, Mjd, Time, TimeContext, TAI,
     TCB, TCG, TDB, TT, UT1, UTC,
 };
 
@@ -103,12 +103,12 @@ fn unix_seconds_to_utc(seconds: Seconds) -> Option<DateTime<Utc>> {
 
 #[inline]
 fn tt_from_jd(jd: f64) -> Result<Time<TT>, ConversionError> {
-    Time::<TT>::from_julian_days(Day::new(jd))
+    Time::<TT, Jd>::from_julian_days(Day::new(jd)).map(|t| t.reformat())
 }
 
 #[inline]
 fn tt_to_jd(tt: Time<TT>) -> f64 {
-    tt.julian_days() / Day::new(1.0)
+    tt.reformat::<Jd>().julian_days() / Day::new(1.0)
 }
 
 #[inline]
@@ -120,29 +120,30 @@ fn scale_value_to_tt(
     match scale {
         TempochScaleId::JD | TempochScaleId::JDE | TempochScaleId::TT => tt_from_jd(value),
         TempochScaleId::MJD => {
-            Time::<TT>::from_modified_julian_days(Day::new(value))
+            Time::<TT, Mjd>::from_modified_julian_days(Day::new(value)).map(|t| t.reformat())
         }
         TempochScaleId::TDB => {
-            Time::<TDB>::from_julian_days(Day::new(value)).map(|t| t.to::<TT>())
+            Time::<TDB, Jd>::from_julian_days(Day::new(value)).map(|t| t.reformat::<J2000s>().to_scale::<TT>())
         }
         TempochScaleId::TAI => {
-            Time::<TAI>::from_julian_days(Day::new(value)).map(|t| t.to::<TT>())
+            Time::<TAI, Jd>::from_julian_days(Day::new(value)).map(|t| t.reformat::<J2000s>().to_scale::<TT>())
         }
         TempochScaleId::TCG => {
-            Time::<TCG>::from_julian_days(Day::new(value)).map(|t| t.to::<TT>())
+            Time::<TCG, Jd>::from_julian_days(Day::new(value)).map(|t| t.reformat::<J2000s>().to_scale::<TT>())
         }
         TempochScaleId::TCB => {
-            Time::<TCB>::from_julian_days(Day::new(value)).map(|t| t.to::<TT>())
+            Time::<TCB, Jd>::from_julian_days(Day::new(value)).map(|t| t.reformat::<J2000s>().to_scale::<TT>())
         }
         TempochScaleId::GPS => {
-            Time::<TAI>::from_julian_days(Day::new(value + GPS_EPOCH_TAI_JD))
-                .map(|t| t.to::<TT>())
+            Time::<TAI, Jd>::from_julian_days(Day::new(value + GPS_EPOCH_TAI_JD))
+                .map(|t| t.reformat::<J2000s>().to_scale::<TT>())
         }
-        TempochScaleId::UT => Time::<UT1>::from_julian_days(Day::new(value))
-            .and_then(|time| time.to_with::<TT>(ctx)),
+        TempochScaleId::UT => Time::<UT1, Jd>::from_julian_days(Day::new(value))
+            .map(|t| t.reformat())
+            .and_then(|time: Time<UT1>| time.to_scale_with::<TT>(ctx)),
         TempochScaleId::UnixTime => {
             Time::<UTC>::from_unix_seconds(Seconds::new(value))
-                .map(|t| t.to::<TT>())
+                .map(|t| t.to_scale::<TT>())
         }
     }
 }
@@ -155,17 +156,17 @@ fn tt_to_scale_value(
 ) -> Result<f64, ConversionError> {
     match scale {
         TempochScaleId::JD | TempochScaleId::JDE | TempochScaleId::TT => Ok(tt_to_jd(tt)),
-        TempochScaleId::MJD => Ok(tt.modified_julian_days() / Day::new(1.0)),
-        TempochScaleId::TDB => Ok(tt.to::<TDB>().julian_days() / Day::new(1.0)),
-        TempochScaleId::TAI => Ok(tt.to::<TAI>().julian_days() / Day::new(1.0)),
-        TempochScaleId::TCG => Ok(tt.to::<TCG>().julian_days() / Day::new(1.0)),
-        TempochScaleId::TCB => Ok(tt.to::<TCB>().julian_days() / Day::new(1.0)),
+        TempochScaleId::MJD => Ok(tt.reformat::<Mjd>().modified_julian_days() / Day::new(1.0)),
+        TempochScaleId::TDB => Ok(tt.to_scale::<TDB>().reformat::<Jd>().julian_days() / Day::new(1.0)),
+        TempochScaleId::TAI => Ok(tt.to_scale::<TAI>().reformat::<Jd>().julian_days() / Day::new(1.0)),
+        TempochScaleId::TCG => Ok(tt.to_scale::<TCG>().reformat::<Jd>().julian_days() / Day::new(1.0)),
+        TempochScaleId::TCB => Ok(tt.to_scale::<TCB>().reformat::<Jd>().julian_days() / Day::new(1.0)),
         TempochScaleId::GPS => {
-            Ok(tt.to::<TAI>().julian_days() / Day::new(1.0) - GPS_EPOCH_TAI_JD)
+            Ok(tt.to_scale::<TAI>().reformat::<Jd>().julian_days() / Day::new(1.0) - GPS_EPOCH_TAI_JD)
         }
-        TempochScaleId::UT => Ok(tt.to_with::<UT1>(ctx)?.julian_days() / Day::new(1.0)),
+        TempochScaleId::UT => Ok(tt.to_scale_with::<UT1>(ctx)?.reformat::<Jd>().julian_days() / Day::new(1.0)),
         TempochScaleId::UnixTime => Ok(
-            utc_to_unix_seconds(tt.to::<UTC>().try_to_chrono()?) / Seconds::new(1.0),
+            utc_to_unix_seconds(tt.to_scale::<UTC>().try_to_chrono()?) / Seconds::new(1.0),
         ),
     }
 }
@@ -193,7 +194,7 @@ pub(crate) fn time_from_utc_value(datetime: DateTime<Utc>, scale: TempochScaleId
     }
 
     let ctx = default_context();
-    let tt = Time::<UTC>::try_from_chrono(datetime).ok()?.to::<TT>();
+    let tt = Time::<UTC>::try_from_chrono(datetime).ok()?.to_scale::<TT>();
     tt_to_scale_value(tt, scale, &ctx).ok()
 }
 
@@ -206,7 +207,7 @@ pub(crate) fn time_to_utc_value(value: f64, scale: TempochScaleId) -> Option<Dat
     let ctx = default_context();
     scale_value_to_tt(value, scale, &ctx)
         .ok()?
-        .to::<UTC>()
+        .to_scale::<UTC>()
         .try_to_chrono()
         .ok()
 }

@@ -207,8 +207,23 @@ def build_modern_delta_t_points(
     observed_points: list[tuple[float, float]],
     predicted_points: list[tuple[float, float]],
 ) -> list[tuple[float, float]]:
-    last_observed_mjd = observed_points[-1][0]
+    last_observed_mjd, last_observed_dt = observed_points[-1]
     future_predictions = [point for point in predicted_points if point[0] > last_observed_mjd]
+
+    if future_predictions:
+        # Enforce C0 continuity at the stitch: interpolate the prediction model
+        # back to last_observed_mjd and compute a constant offset so the first
+        # prediction point meets the last observed value exactly.
+        m0, d0 = future_predictions[0]
+        if len(future_predictions) >= 2:
+            m1, d1 = future_predictions[1]
+        else:
+            m1, d1 = m0, d0
+        frac = (last_observed_mjd - m0) / (m1 - m0) if m1 != m0 else 0.0
+        pred_at_stitch = d0 + frac * (d1 - d0)
+        continuity_offset = last_observed_dt - pred_at_stitch
+        future_predictions = [(m, d + continuity_offset) for m, d in future_predictions]
+
     combined = observed_points + future_predictions
     if len(combined) < 2:
         raise ValueError("modern Delta T series must contain at least two points")

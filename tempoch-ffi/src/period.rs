@@ -7,7 +7,7 @@ use crate::catch_panic;
 use crate::error::TempochStatus;
 use qtty::Day;
 use qtty_ffi::{QttyQuantity, UnitId};
-use tempoch::{Interval, Time, TT};
+use tempoch::{Interval, Mjd, Time, TT};
 
 type MjdPeriod = Interval<Time<TT>>;
 
@@ -25,16 +25,18 @@ impl TempochPeriodMjd {
     /// Convert from a Rust MJD interval to the C-repr struct.
     pub fn from_period(p: &MjdPeriod) -> Self {
         Self {
-            start_mjd: p.start.modified_julian_days() / Day::new(1.0),
-            end_mjd: p.end.modified_julian_days() / Day::new(1.0),
+            start_mjd: p.start.reformat::<Mjd>().modified_julian_days() / Day::new(1.0),
+            end_mjd: p.end.reformat::<Mjd>().modified_julian_days() / Day::new(1.0),
         }
     }
 
     fn try_to_period(&self) -> Result<MjdPeriod, TempochStatus> {
         let start =
-            Time::<TT>::from_modified_julian_days(Day::new(self.start_mjd))
+            Time::<TT, Mjd>::from_modified_julian_days(Day::new(self.start_mjd))
+                .map(|t| t.reformat())
                 .map_err(|_| TempochStatus::InvalidPeriod)?;
-        let end = Time::<TT>::from_modified_julian_days(Day::new(self.end_mjd))
+        let end = Time::<TT, Mjd>::from_modified_julian_days(Day::new(self.end_mjd))
+            .map(|t| t.reformat())
             .map_err(|_| TempochStatus::InvalidPeriod)?;
         Interval::try_new(start, end).map_err(|_| TempochStatus::InvalidPeriod)
     }

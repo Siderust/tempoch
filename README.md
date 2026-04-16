@@ -8,16 +8,19 @@ Typed astronomical time primitives for Rust.
 
 `tempoch` provides:
 
-- `Time<A>` instants parameterized by a physical or civil axis (`TT`, `TAI`,
-  `UTC`, `UT1`, `TDB`, `TCG`, `TCB`).
-- Compile-time conversion witnesses for infallible (`to`) and
-  context-required (`to_with`) routes.
+- `Time<S, F>` instants parameterized by a physical or civil scale (`TT`,
+  `TAI`, `UTC`, `UT1`, `TDB`, `TCG`, `TCB`) and a numeric format (`J2000s`,
+  `Jd`, `Mjd`).
+- Compile-time conversion witnesses for infallible (`.to_scale::<S>()`) and
+  context-required (`.to_scale_with::<S>(ctx)`) routes.
+- Format re-encoding (`.reformat::<F>()`) to switch between `J2000s`, `Jd`,
+  and `Mjd` representations without changing the physical scale.
 - UTC conversion through `chrono`, covering 1961 onward and leap-second
   aware; round-trip precision is limited by `f64` storage (~100 µs near J2000).
 - Automatic `ΔT = TT - UT1` handling for `UT1` conversions via an explicit
   `TimeContext`.
-- Julian Day, Modified Julian Day, and SI-second accessors as direct methods
-  on `Time<A>` for continuous axes.
+- Julian Day, Modified Julian Day, and SI-second accessors on their
+  respective format types (`Time<S, Jd>`, `Time<S, Mjd>`, `Time<S, J2000s>`).
 - Unix/POSIX timestamps via `Time::<UTC>::from_unix_seconds` / `unix_seconds`.
 - GPS transport values via `Time::<TAI>::from_gps_seconds` / `gps_seconds`.
 - Compiled time-data tables generated from official UTC-TAI and Delta T
@@ -48,38 +51,39 @@ tempoch = "0.4"
 
 ```rust
 use chrono::Utc;
-use tempoch::{Time, TT, UTC};
+use tempoch::{Jd, Mjd, Time, TT, UTC};
 
 let utc_now = Time::<UTC>::from_chrono(Utc::now());
-let tt_now = utc_now.to::<TT>();
+let tt_now: Time<TT> = utc_now.to_scale();
 
-println!("UTC: {}", utc_now.to_chrono().unwrap());
-println!("JD(TT):  {:.9}", tt_now.julian_days());
-println!("MJD(TT): {:.9}", tt_now.modified_julian_days());
+// Reformat to JD / MJD for display (scale unchanged)
+let tt_jd: Time<TT, Jd> = tt_now.reformat();
+let tt_mjd: Time<TT, Mjd> = tt_now.reformat();
+
+println!("UTC       : {}", utc_now.to_chrono().unwrap());
+println!("JD(TT)    : {:.9}", tt_jd.julian_days());
+println!("MJD(TT)   : {:.9}", tt_mjd.modified_julian_days());
 ```
 
 ## Period Operations
 
 ```rust
-use qtty::Day;
-use tempoch::{complement_within, intersect_periods, Interval, Time, TT};
+use tempoch::{
+    complement_within, intersect_periods, Period, Mjd, TT,
+};
 
-fn mjd(value: f64) -> Time<TT> {
-    Time::<TT>::from_modified_julian_days(Day::new(value)).unwrap()
-}
-
-let outer = Interval::new(mjd(0.0), mjd(10.0));
+let day = Period::<TT, Mjd>::new(61_000.0, 61_001.0);
 let a = vec![
-    Interval::new(mjd(1.0), mjd(4.0)),
-    Interval::new(mjd(6.0), mjd(9.0)),
+    Period::<TT, Mjd>::new(61_000.1, 61_000.4),
+    Period::<TT, Mjd>::new(61_000.6, 61_000.9),
 ];
 let b = vec![
-    Interval::new(mjd(2.0), mjd(3.0)),
-    Interval::new(mjd(7.0), mjd(8.0)),
+    Period::<TT, Mjd>::new(61_000.2, 61_000.3),
+    Period::<TT, Mjd>::new(61_000.7, 61_000.8),
 ];
 
 let overlap = intersect_periods(&a, &b);
-let gaps = complement_within(outer, &a);
+let gaps = complement_within(day, &a);
 
 assert_eq!(overlap.len(), 2);
 assert_eq!(gaps.len(), 3);

@@ -80,19 +80,30 @@ pub(crate) fn try_tai_minus_utc_mjd(mjd_utc: Days) -> Option<Seconds> {
 
 // ── TDB ↔ TT: truncated Fairhead–Bretagnon (USNO Circular 179 §2.6) ─────────
 //
-// Three dominant terms, max error < 30 µs:
-//   amplitude   angular frequency (rad/cy)   phase (rad)
-//   0.001657    628.3076  (Earth mean anomaly)     6.2401
-//   0.000022    575.3385  (Earth-Jupiter synodic)  4.7027
-//   0.000014   1256.6152  (2× Earth mean anomaly)  6.2401
+// Seven-term truncated series, max error < 2 µs over 1600–2200 CE.
+// Terms are listed in order of decreasing amplitude; the last term is
+// secular (amplitude proportional to T).
+//
+//   amplitude        angular frequency (rad/cy)   phase (rad)
+//   0.001657         628.3076  (Earth mean anomaly)    6.2401
+//   0.000022         575.3385  (Earth-Jupiter synodic) 4.2970
+//   0.000014        1256.6152  (2× Earth mean anomaly) 6.1969
+//   0.000005         606.9777                          4.0212
+//   0.000005          52.9691                          0.4444
+//   0.000002          21.3299                          5.5431
+//   0.000010·T       628.3076  (secular correction)    4.2490
 
 #[inline]
 fn tdb_minus_tt_seconds(jd_tt: Days) -> Seconds {
     let t = jd_to_julian_centuries(jd_tt);
     Seconds::new(
         0.001_657 * (628.3076 * t + 6.2401).sin()
-            + 0.000_022 * (575.3385 * t + 4.7027).sin()
-            + 0.000_014 * (1256.6152 * t + 6.2401).sin(),
+            + 0.000_022 * (575.3385 * t + 4.2970).sin()
+            + 0.000_014 * (1256.6152 * t + 6.1969).sin()
+            + 0.000_005 * (606.9777 * t + 4.0212).sin()
+            + 0.000_005 * (52.9691 * t + 0.4444).sin()
+            + 0.000_002 * (21.3299 * t + 5.5431).sin()
+            + 0.000_010 * t * (628.3076 * t + 4.2490).sin(),
     )
 }
 
@@ -365,3 +376,37 @@ ut1_through_tt!(TDB);
 ut1_through_tt!(TCG);
 ut1_through_tt!(TCB);
 ut1_through_tt!(UTC);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use qtty::time::Days;
+
+    /// TDB-TT at J2000.0: reference value from USNO Circular 179 §2.6 seven-term
+    /// truncated series. At t=0 the secular term vanishes, leaving the periodic
+    /// sum. Expected value ≈ −0.000095757 s; tolerance ±2 µs.
+    #[test]
+    fn tdb_minus_tt_at_j2000() {
+        let jd_j2000 = Days::new(2_451_545.0);
+        let result = tdb_minus_tt_seconds(jd_j2000).value();
+        let expected = -0.000_095_757_f64;
+        assert!(
+            (result - expected).abs() < 2e-6,
+            "TDB-TT at J2000.0: got {result:.9} s, expected {expected:.9} s ± 2 µs"
+        );
+    }
+
+    /// TDB-TT at J2100.0 (t=1 JC): secular term contributes, result should be
+    /// within 2 µs of the Circular 179 reference −0.000070935 s.
+    #[test]
+    fn tdb_minus_tt_at_j2100() {
+        // J2100.0 = J2000.0 + 36525 days
+        let jd_j2100 = Days::new(2_451_545.0 + 36_525.0);
+        let result = tdb_minus_tt_seconds(jd_j2100).value();
+        let expected = -0.000_070_935_f64;
+        assert!(
+            (result - expected).abs() < 2e-6,
+            "TDB-TT at J2100.0: got {result:.9} s, expected {expected:.9} s ± 2 µs"
+        );
+    }
+}

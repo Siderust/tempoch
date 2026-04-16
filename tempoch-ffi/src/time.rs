@@ -16,7 +16,7 @@ use crate::error::TempochStatus;
 use chrono::{NaiveDate, Utc};
 use qtty::Day;
 use qtty_ffi::{QttyQuantity, UnitId};
-use tempoch::{Time, TimeContext, TT, UT1};
+use tempoch::{Jd, J2000s, Time, TimeContext, TT, UT1};
 
 const J2000_JD_TT: f64 = 2_451_545.0;
 const JULIAN_CENTURY_DAYS: f64 = 36_525.0;
@@ -440,11 +440,11 @@ pub extern "C" fn tempoch_unix_to_seconds(unix: f64) -> f64 {
 #[no_mangle]
 pub extern "C" fn tempoch_delta_t_seconds(jd: f64) -> f64 {
     let ctx = TimeContext::new();
-    let tt = match Time::<TT>::from_julian_days(Day::new(jd)) {
-        Ok(time) => time,
+    let tt: Time<TT, J2000s> = match Time::<TT, Jd>::from_julian_days(Day::new(jd)) {
+        Ok(t) => t.reformat(),
         Err(_) => return f64::NAN,
     };
-    match tt.to_with::<UT1>(&ctx) {
+    match tt.to_scale_with::<UT1>(&ctx) {
         Ok(ut1) => (tt.si_seconds() - ut1.si_seconds()) / qtty::Second::new(1.0),
         Err(_) => f64::NAN,
     }
