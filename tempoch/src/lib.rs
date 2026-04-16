@@ -12,8 +12,7 @@
 
 pub use tempoch_core::{
     complement_within, constats, intersect_periods, normalize_periods, validate_period_list,
-    ConversionError, ContinuousScale, DayCount, Format, GpsSecs, Interval, InvalidIntervalError,
+    ContinuousScale, ConversionError, DayCount, Format, GpsSecs, Interval, InvalidIntervalError,
     InvalidPeriodError, J2000s, Jd, Mjd, Period, PeriodListError, Scale, Time, TimeContext,
-    UnixSecs,
-    DELTA_T_PREDICTION_HORIZON_MJD, TAI, TCB, TCG, TDB, TT, UT1, UTC,
+    UnixSecs, DELTA_T_PREDICTION_HORIZON_MJD, TAI, TCB, TCG, TDB, TT, UT1, UTC,
 };

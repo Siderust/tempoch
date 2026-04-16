@@ -31,10 +31,9 @@ impl TempochPeriodMjd {
     }
 
     fn try_to_period(&self) -> Result<MjdPeriod, TempochStatus> {
-        let start =
-            Time::<TT, Mjd>::from_modified_julian_days(Day::new(self.start_mjd))
-                .map(|t| t.reformat())
-                .map_err(|_| TempochStatus::InvalidPeriod)?;
+        let start = Time::<TT, Mjd>::from_modified_julian_days(Day::new(self.start_mjd))
+            .map(|t| t.reformat())
+            .map_err(|_| TempochStatus::InvalidPeriod)?;
         let end = Time::<TT, Mjd>::from_modified_julian_days(Day::new(self.end_mjd))
             .map(|t| t.reformat())
             .map_err(|_| TempochStatus::InvalidPeriod)?;

@@ -11,8 +11,8 @@ use super::format::{DayCount, Format, GpsSecs, J2000s, Jd, Mjd, UnixSecs};
 use super::format_conversion::{CanonicalRoundtrip, FormatConvertible};
 use super::scale::{ContinuousScale, Scale};
 use super::scale_conversion::{ContextScaleConvert, InfallibleScaleConvert};
-use qtty::{Day, QuantityI32, QuantityI64, Second};
 use qtty::time::Seconds;
+use qtty::{Day, QuantityI32, QuantityI64, Second};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Time
@@ -50,7 +50,7 @@ where
 {
     #[inline]
     fn clone(&self) -> Self {
-        Self { value: self.value.clone(), _scale: PhantomData }
+        *self
     }
 }
 
@@ -89,7 +89,10 @@ impl<S: Scale, F: Format> Time<S, F> {
     /// Build a `Time<S, F>` from a raw storage value.
     #[inline]
     pub fn new(value: F::Storage) -> Self {
-        Self { value, _scale: PhantomData }
+        Self {
+            value,
+            _scale: PhantomData,
+        }
     }
 
     /// Extract the raw storage value.
@@ -283,10 +286,7 @@ impl<S: Scale, F: Format + CanonicalRoundtrip> Time<S, F> {
     /// Context-required scale conversion (UT1 routes).
     #[allow(private_bounds)]
     #[inline]
-    pub fn to_scale_with<S2: Scale>(
-        self,
-        ctx: &TimeContext,
-    ) -> Result<Time<S2, F>, ConversionError>
+    pub fn to_scale_with<S2: Scale>(self, ctx: &TimeContext) -> Result<Time<S2, F>, ConversionError>
     where
         S: ContextScaleConvert<S2>,
     {

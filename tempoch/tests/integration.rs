@@ -35,7 +35,9 @@ fn public_constats_epochs_are_usable() {
     let tai_s: Time<TAI> = j2000_s.to_scale();
 
     assert_eq!(j2000.julian_days(), J2000_JD_TT);
-    assert!(((j2000_s.si_seconds() - tai_s.si_seconds()) - TT_MINUS_TAI).abs() < Second::new(1e-12));
+    assert!(
+        ((j2000_s.si_seconds() - tai_s.si_seconds()) - TT_MINUS_TAI).abs() < Second::new(1e-12)
+    );
 }
 
 #[test]

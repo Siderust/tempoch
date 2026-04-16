@@ -72,8 +72,14 @@ fn main() {
 
     println!();
     println!("── 3. Modified Julian Day (MJD) ──────────────────────────────");
-    println!("  J2000 MJD(TT)  : {:.9}", j2000_from_mjd.modified_julian_days());
-    println!("  Unix epoch MJD : {:.9}", unix_epoch_mjd.modified_julian_days());
+    println!(
+        "  J2000 MJD(TT)  : {:.9}",
+        j2000_from_mjd.modified_julian_days()
+    );
+    println!(
+        "  Unix epoch MJD : {:.9}",
+        unix_epoch_mjd.modified_julian_days()
+    );
     // Cross-format comparison: reformat JD to MJD
     let j2000_as_mjd: Time<TT, Mjd> = j2000_from_jd.reformat();
     println!(
@@ -92,10 +98,22 @@ fn main() {
 
     println!();
     println!("── 4. POSIX / Unix seconds (UTC) ─────────────────────────────");
-    println!("  Unix epoch       : {:.3}", unix_epoch_utc.unix_seconds().unwrap());
-    println!("  2024-01-01 UTC   : {:.3}", y2024_utc.unix_seconds().unwrap());
-    println!("  Now              : {:.3}", now_utc.unix_seconds().unwrap());
-    println!("  Reconstructed UTC: {}", unix_epoch_utc.to_chrono().unwrap());
+    println!(
+        "  Unix epoch       : {:.3}",
+        unix_epoch_utc.unix_seconds().unwrap()
+    );
+    println!(
+        "  2024-01-01 UTC   : {:.3}",
+        y2024_utc.unix_seconds().unwrap()
+    );
+    println!(
+        "  Now              : {:.3}",
+        now_utc.unix_seconds().unwrap()
+    );
+    println!(
+        "  Reconstructed UTC: {}",
+        unix_epoch_utc.to_chrono().unwrap()
+    );
 
     // ─────────────────────────────────────────────────────────────────────────
     // 5. GPS seconds (TAI scale only)
@@ -110,7 +128,10 @@ fn main() {
     println!();
     println!("── 5. GPS seconds (TAI) ──────────────────────────────────────");
     println!("  GPS epoch TAI offset : {:.3}", GPS_EPOCH_TAI);
-    println!("  GPS epoch gps_seconds: {:.3}", gps_epoch_tai.gps_seconds());
+    println!(
+        "  GPS epoch gps_seconds: {:.3}",
+        gps_epoch_tai.gps_seconds()
+    );
     println!("  J2000 GPS seconds    : {:.3}", gps_j2000.gps_seconds());
     println!("  Now GPS seconds      : {:.3}", now_gps.gps_seconds());
 

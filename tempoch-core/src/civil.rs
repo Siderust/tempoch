@@ -27,14 +27,16 @@
 
 use super::constats::{GPS_EPOCH_TAI, TT_MINUS_TAI, UTC_INTERVAL_EPS};
 use super::encoding::{
-    j2000_seconds_to_jd, jd_to_j2000_seconds, jd_to_mjd, mjd_to_j2000_seconds,
-    mjd_to_unix_seconds, unix_seconds_to_jd, unix_seconds_to_mjd,
+    j2000_seconds_to_jd, jd_to_j2000_seconds, jd_to_mjd, mjd_to_j2000_seconds, mjd_to_unix_seconds,
+    unix_seconds_to_jd, unix_seconds_to_mjd,
 };
 use super::error::ConversionError;
 use super::format::Format;
 use super::format_conversion::CanonicalRoundtrip;
 use super::scale::{TAI, UTC};
-use super::scale_conversion::{try_tai_minus_utc_mjd, tt_mjd_to_utc_mjd_in_segment, utc_mjd_to_tt_mjd_in_segment};
+use super::scale_conversion::{
+    try_tai_minus_utc_mjd, tt_mjd_to_utc_mjd_in_segment, utc_mjd_to_tt_mjd_in_segment,
+};
 use super::time::Time;
 use crate::generated::time_data::UTC_TAI_SEGMENTS;
 use chrono::{DateTime, Utc};
@@ -165,9 +167,8 @@ fn tai_seconds_from_utc(dt: DateTime<Utc>) -> Result<Second, ConversionError> {
         .ok_or(ConversionError::UtcHistoryUnsupported)?;
     let subsec_nanos = dt.timestamp_subsec_nanos();
     if subsec_nanos >= 1_000_000_000 {
-        let next =
-            try_tai_minus_utc_mjd(jd_to_mjd(base_jd_utc) + Seconds::new(1.0).to::<Day>())
-                .ok_or(ConversionError::InvalidLeapSecond)?;
+        let next = try_tai_minus_utc_mjd(jd_to_mjd(base_jd_utc) + Seconds::new(1.0).to::<Day>())
+            .ok_or(ConversionError::InvalidLeapSecond)?;
         if next - tai_minus_utc < Seconds::new(0.5) {
             return Err(ConversionError::InvalidLeapSecond);
         }
@@ -287,8 +288,8 @@ impl Time<TAI> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::scale::{TAI, TT};
     use super::super::context::TimeContext;
+    use super::super::scale::{TAI, TT};
     use super::*;
     use chrono::{NaiveDate, TimeZone};
 

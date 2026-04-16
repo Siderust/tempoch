@@ -103,10 +103,7 @@ impl<T: Copy + PartialOrd> Interval<T> {
 
     /// Validating constructor: rejects `start > end` and NaN endpoints.
     #[inline]
-    pub fn try_new<S: Into<T>, E: Into<T>>(
-        start: S,
-        end: E,
-    ) -> Result<Self, InvalidIntervalError> {
+    pub fn try_new<S: Into<T>, E: Into<T>>(start: S, end: E) -> Result<Self, InvalidIntervalError> {
         let start = start.into();
         let end = end.into();
         if start <= end {

@@ -15,8 +15,7 @@
 use chrono::Utc;
 use qtty::Second;
 use tempoch::{
-    constats::J2000_JD_TT,
-    Jd, Mjd, Time, TimeContext, TAI, TCB, TCG, TDB, TT, UT1, UTC,
+    constats::J2000_JD_TT, Jd, Mjd, Time, TimeContext, TAI, TCB, TCG, TDB, TT, UT1, UTC,
 };
 
 fn main() {
@@ -41,7 +40,10 @@ fn main() {
     println!();
     println!("── TAI: International Atomic Time ────────────────────────────");
     println!("  SI(s)       : {:.3}", tai.si_seconds());
-    println!("  TT − TAI    : {:.3}", j2000_tt_s.si_seconds() - tai.si_seconds());
+    println!(
+        "  TT − TAI    : {:.3}",
+        j2000_tt_s.si_seconds() - tai.si_seconds()
+    );
     println!("  GPS seconds : {:.3}", tai.gps_seconds());
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -76,7 +78,10 @@ fn main() {
     println!();
     println!("── TDB: Barycentric Dynamical Time ───────────────────────────");
     println!("  SI(s)   : {:.6}", tdb.si_seconds());
-    println!("  TT−TDB  : {:.9}", j2000_tt_s.si_seconds() - tdb.si_seconds());
+    println!(
+        "  TT−TDB  : {:.9}",
+        j2000_tt_s.si_seconds() - tdb.si_seconds()
+    );
 
     // ─────────────────────────────────────────────────────────────────────────
     // TCG — Geocentric Coordinate Time
@@ -96,7 +101,10 @@ fn main() {
     println!();
     println!("── TCB: Barycentric Coordinate Time ──────────────────────────");
     println!("  SI(s)    : {:.6}", tcb.si_seconds());
-    println!("  TT − TCB : {:.3}", j2000_tt_s.si_seconds() - tcb.si_seconds());
+    println!(
+        "  TT − TCB : {:.3}",
+        j2000_tt_s.si_seconds() - tcb.si_seconds()
+    );
 
     // ─────────────────────────────────────────────────────────────────────────
     // Live snapshot: current UTC and its TDB equivalent.

@@ -16,7 +16,9 @@
 use super::constats::{IAU_TIME_EPOCH_T0_JD, L_B, L_G, TDB0, TT_MINUS_TAI};
 use super::context::TimeContext;
 use super::delta_t::{delta_t_seconds, DELTA_T_PREDICTION_HORIZON_MJD};
-use super::encoding::{j2000_seconds_to_jd, jd_to_j2000_seconds, jd_to_julian_centuries, jd_to_mjd};
+use super::encoding::{
+    j2000_seconds_to_jd, jd_to_j2000_seconds, jd_to_julian_centuries, jd_to_mjd,
+};
 use super::error::ConversionError;
 use super::scale::{Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
 use super::sealed::Sealed;
@@ -351,20 +353,14 @@ macro_rules! ut1_through_tt {
     ($scale:ty) => {
         impl ContextScaleConvert<$scale> for UT1 {
             #[inline]
-            fn convert_with(
-                src: Seconds,
-                ctx: &TimeContext,
-            ) -> Result<Seconds, ConversionError> {
+            fn convert_with(src: Seconds, ctx: &TimeContext) -> Result<Seconds, ConversionError> {
                 let tt = <UT1 as ContextScaleConvert<TT>>::convert_with(src, ctx)?;
                 Ok(<TT as InfallibleScaleConvert<$scale>>::convert(tt))
             }
         }
         impl ContextScaleConvert<UT1> for $scale {
             #[inline]
-            fn convert_with(
-                src: Seconds,
-                ctx: &TimeContext,
-            ) -> Result<Seconds, ConversionError> {
+            fn convert_with(src: Seconds, ctx: &TimeContext) -> Result<Seconds, ConversionError> {
                 let tt = <$scale as InfallibleScaleConvert<TT>>::convert(src);
                 <TT as ContextScaleConvert<UT1>>::convert_with(tt, ctx)
             }

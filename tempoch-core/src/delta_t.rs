@@ -352,7 +352,7 @@ mod tests {
     fn regime_boundary_1620_is_continuous() {
         let eps = Day::new(1e-4); // ~8.6 seconds before/after
         let before = delta_t_seconds(JD_TABLE_START_1620 - eps).value();
-        let after  = delta_t_seconds(JD_TABLE_START_1620 + eps).value();
+        let after = delta_t_seconds(JD_TABLE_START_1620 + eps).value();
         assert!(
             (before - after).abs() < 1e-3,
             "ΔT regime gap at 1620 CE: {before:.6} → {after:.6} s (gap {:.6} s)",
@@ -368,7 +368,7 @@ mod tests {
     fn regime_boundary_948_is_continuous() {
         let eps = Day::new(1e-4);
         let before = delta_t_seconds(JD_EPOCH_948_UT - eps).value();
-        let after  = delta_t_seconds(JD_EPOCH_948_UT + eps).value();
+        let after = delta_t_seconds(JD_EPOCH_948_UT + eps).value();
         assert!(
             (before - after).abs() < 1e-3,
             "ΔT regime gap at 948 CE: {before:.6} → {after:.6} s (gap {:.6} s)",
