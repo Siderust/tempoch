@@ -1177,9 +1177,6 @@ mod tests {
     #[test]
     fn delta_t_seconds_past_horizon_is_finite() {
         let dt = tempoch_delta_t_seconds(2_465_000.0);
-        assert!(
-            dt.is_finite(),
-            "expected finite ΔT past horizon, got {dt}"
-        );
+        assert!(dt.is_finite(), "expected finite ΔT past horizon, got {dt}");
     }
 }

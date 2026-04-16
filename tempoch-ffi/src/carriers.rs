@@ -175,19 +175,13 @@ fn tt_to_scale_value(
 }
 
 /// Convert a JD(TT) value to the requested scale's native scalar.
-pub(crate) fn jd_to_scale_value(
-    jd: f64,
-    scale: TempochScaleId,
-) -> Result<f64, ConversionError> {
+pub(crate) fn jd_to_scale_value(jd: f64, scale: TempochScaleId) -> Result<f64, ConversionError> {
     let ctx = default_context();
     tt_from_jd(jd).and_then(|tt| tt_to_scale_value(tt, scale, &ctx))
 }
 
 /// Convert a native scalar in the given scale to JD(TT).
-pub(crate) fn scale_value_to_jd(
-    value: f64,
-    scale: TempochScaleId,
-) -> Result<f64, ConversionError> {
+pub(crate) fn scale_value_to_jd(value: f64, scale: TempochScaleId) -> Result<f64, ConversionError> {
     let ctx = default_context();
     scale_value_to_tt(value, scale, &ctx).map(tt_to_jd)
 }
@@ -278,11 +272,8 @@ mod tests {
 
     #[test]
     fn gps_scale_uses_days_since_epoch() {
-        let gps = jd_to_scale_value(
-            2_444_244.5 + 51.184 / SECONDS_PER_DAY,
-            TempochScaleId::GPS,
-        )
-        .unwrap();
+        let gps =
+            jd_to_scale_value(2_444_244.5 + 51.184 / SECONDS_PER_DAY, TempochScaleId::GPS).unwrap();
         assert!(gps.abs() < 1e-9);
     }
 }

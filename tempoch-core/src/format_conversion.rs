@@ -281,7 +281,6 @@ impl FormatConvertible<GpsSecs> for DayCount {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
