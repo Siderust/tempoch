@@ -29,6 +29,7 @@
 
 use crate::constats::DAYS_PER_JC;
 use crate::encoding::jd_to_mjd;
+use crate::error::ConversionError;
 use crate::generated::time_data::MODERN_DELTA_T_POINTS;
 use crate::generated::{MODERN_DELTA_T_END_MJD, MODERN_DELTA_T_START_MJD};
 use qtty::{Day, Second};
@@ -144,6 +145,9 @@ fn interpolate_modern_delta_t(mjd: Day) -> Option<Second> {
 
 #[inline]
 fn delta_t_modern_series(jd_ut: Day) -> Second {
+    // Source: USNO monthly determinations (MODERN_DELTA_T_POINTS).
+    // Points up to MODERN_DELTA_T_OBSERVED_END_MJD are confirmed observations;
+    // later points are C0-adjusted USNO predictions (see update_time_data.py).
     let mjd = jd_to_mjd(jd_ut);
     interpolate_modern_delta_t(mjd).expect("modern Delta T interpolation requires in-range MJD")
 }
@@ -223,17 +227,50 @@ fn delta_t_extrapolated(jd_ut: Day) -> Second {
 
 /// ΔT = TT − UT1, in seconds, for a Julian Day on the UT1 axis.
 ///
-/// Piecewise dispatch:
+/// Returns `Err(ConversionError::Ut1HorizonExceeded)` for any date beyond
+/// [`DELTA_T_PREDICTION_HORIZON_MJD`], consistent with the behaviour of
+/// [`Time::to_scale_with::<UT1>`] scale conversions.
+///
+/// For dates that require an unconstrained extrapolation beyond the horizon,
+/// use [`delta_t_seconds_extrapolated`] instead — but note that those values
+/// are scientifically unsupported.
+///
+/// Piecewise dispatch within the supported range:
 /// * **Before 948 CE** — Stephenson & Houlden (1986) quadratic with epoch 948.
 /// * **948 CE – 1619** — Stephenson & Houlden (1986) quadratic with epoch 1850
 ///   (`22.5 c²`). Extends to the start of the biennial table rather than
 ///   terminating at 1461, since the biennial table begins at 1620.
 /// * **1620 – modern table end** — biennial interpolation (Meeus ch. 9) then
 ///   USNO monthly data.
-/// * **Beyond table** — quadratic tail-fit extrapolation (unconstrained;
-///   accuracy degrades rapidly past the compiled horizon).
 #[inline]
-pub fn delta_t_seconds(jd_ut: Day) -> Second {
+pub fn delta_t_seconds(jd_ut: Day) -> Result<Second, ConversionError> {
+    let mjd = jd_to_mjd(jd_ut);
+    if mjd > DELTA_T_PREDICTION_HORIZON_MJD {
+        return Err(ConversionError::Ut1HorizonExceeded);
+    }
+    Ok(delta_t_seconds_unconstrained(jd_ut))
+}
+
+/// ΔT = TT − UT1, in seconds, with quadratic tail-fit extrapolation beyond
+/// the last published prediction point.
+///
+/// Unlike [`delta_t_seconds`], this function never returns an error: for
+/// dates beyond [`DELTA_T_PREDICTION_HORIZON_MJD`] it applies a quadratic
+/// continuation fit to the last 12 compiled prediction points.
+///
+/// # ⚠ Accuracy warning
+///
+/// The extrapolated values are **not from any official source**. Accuracy
+/// degrades rapidly past the compiled horizon and is not bounded. Do **not**
+/// use these values where scientific validity is required.
+#[inline]
+pub fn delta_t_seconds_extrapolated(jd_ut: Day) -> Second {
+    delta_t_seconds_unconstrained(jd_ut)
+}
+
+/// Unconstrained dispatch — shared by the fallible and extrapolated APIs.
+#[inline]
+fn delta_t_seconds_unconstrained(jd_ut: Day) -> Second {
     let mjd = jd_to_mjd(jd_ut);
     if jd_ut < JD_EPOCH_948_UT {
         delta_t_ancient(jd_ut)
@@ -266,7 +303,7 @@ mod tests {
     /// `delta_t_table` anchor at 1620 CE: P(0) must equal DELTA_T[0] = 124.0 s.
     #[test]
     fn delta_t_table_knot_0_is_124() {
-        let dt = delta_t_seconds(JD_TABLE_START_1620);
+        let dt = delta_t_seconds_extrapolated(JD_TABLE_START_1620);
         assert!(
             (dt.value() - 124.0).abs() < 1e-9,
             "ΔT at 1620 CE (knot 0) expected 124.0 s, got {:.6} s",
@@ -277,7 +314,7 @@ mod tests {
     /// `delta_t_table` anchor at 1622 CE: P(0) at the second knot must equal DELTA_T[1] = 115.0 s.
     #[test]
     fn delta_t_table_knot_1_is_115() {
-        let dt = delta_t_seconds(JD_TABLE_START_1620 + BIENNIAL_STEP_D);
+        let dt = delta_t_seconds_extrapolated(JD_TABLE_START_1620 + BIENNIAL_STEP_D);
         assert!(
             (dt.value() - 115.0).abs() < 1e-9,
             "ΔT at 1622 CE (knot 1) expected 115.0 s, got {:.6} s",
@@ -288,7 +325,7 @@ mod tests {
     /// `delta_t_table` anchor at 1624 CE: P(0) at the third knot must equal DELTA_T[2] = 106.0 s.
     #[test]
     fn delta_t_table_knot_2_is_106() {
-        let dt = delta_t_seconds(JD_TABLE_START_1620 + BIENNIAL_STEP_D * 2.0);
+        let dt = delta_t_seconds_extrapolated(JD_TABLE_START_1620 + BIENNIAL_STEP_D * 2.0);
         assert!(
             (dt.value() - 106.0).abs() < 1e-9,
             "ΔT at 1624 CE (knot 2) expected 106.0 s, got {:.6} s",
@@ -302,7 +339,7 @@ mod tests {
     /// Calculation: a=-9, b=-9, c=0 → P(0.5) = 124 + 0.5·(−9) = 119.5.
     #[test]
     fn delta_t_table_midpoint_interval_0_is_119_5() {
-        let dt = delta_t_seconds(JD_TABLE_START_1620 + BIENNIAL_STEP_D * 0.5);
+        let dt = delta_t_seconds_extrapolated(JD_TABLE_START_1620 + BIENNIAL_STEP_D * 0.5);
         assert!(
             (dt.value() - 119.5).abs() < 1e-9,
             "ΔT at midpoint of [1620,1622] expected 119.5 s, got {:.6} s",
@@ -335,9 +372,9 @@ mod tests {
     /// table values go from 124 s down to ≈ 2.6 s.
     #[test]
     fn delta_t_table_decreases_1620_to_1900() {
-        let dt_1620 = delta_t_seconds(JD_TABLE_START_1620).value();
+        let dt_1620 = delta_t_seconds_extrapolated(JD_TABLE_START_1620).value();
         let jd_1900 = 2_415_020.5; // 1900 Jan 0.5 (standard epoch)
-        let dt_1900 = delta_t_seconds(jd(jd_1900)).value();
+        let dt_1900 = delta_t_seconds_extrapolated(jd(jd_1900)).value();
         assert!(
             dt_1620 > dt_1900,
             "ΔT should decrease 1620→1900, got {dt_1620:.2} > {dt_1900:.2}"
@@ -352,8 +389,8 @@ mod tests {
     #[test]
     fn regime_boundary_1620_is_continuous() {
         let eps = Day::new(1e-4); // ~8.6 seconds before/after
-        let before = delta_t_seconds(JD_TABLE_START_1620 - eps).value();
-        let after = delta_t_seconds(JD_TABLE_START_1620 + eps).value();
+        let before = delta_t_seconds_extrapolated(JD_TABLE_START_1620 - eps).value();
+        let after = delta_t_seconds_extrapolated(JD_TABLE_START_1620 + eps).value();
         assert!(
             (before - after).abs() < 1e-3,
             "ΔT regime gap at 1620 CE: {before:.6} → {after:.6} s (gap {:.6} s)",
@@ -368,12 +405,64 @@ mod tests {
     #[test]
     fn regime_boundary_948_is_continuous() {
         let eps = Day::new(1e-4);
-        let before = delta_t_seconds(JD_EPOCH_948_UT - eps).value();
-        let after = delta_t_seconds(JD_EPOCH_948_UT + eps).value();
+        let before = delta_t_seconds_extrapolated(JD_EPOCH_948_UT - eps).value();
+        let after = delta_t_seconds_extrapolated(JD_EPOCH_948_UT + eps).value();
         assert!(
             (before - after).abs() < 1e-3,
             "ΔT regime gap at 948 CE: {before:.6} → {after:.6} s (gap {:.6} s)",
             (before - after).abs()
+        );
+    }
+
+    /// `delta_t_seconds` returns `Err(Ut1HorizonExceeded)` for dates beyond the
+    /// compiled prediction horizon, and `Ok` for dates within it.
+    #[test]
+    fn delta_t_seconds_horizon_guard() {
+        use crate::error::ConversionError;
+        // JD 2_465_000 ≈ 2026 is well beyond any reasonable compiled horizon.
+        let past = delta_t_seconds(Day::new(2_465_000.0));
+        assert!(
+            matches!(past, Err(ConversionError::Ut1HorizonExceeded)),
+            "expected Ut1HorizonExceeded past horizon, got {past:?}"
+        );
+        // J2000 (2000-01-01) must be well within the supported range.
+        let present = delta_t_seconds(Day::new(2_451_545.0));
+        assert!(present.is_ok(), "expected Ok within horizon, got {present:?}");
+    }
+
+    /// C0 continuity at the 1973 biennial→modern stitch.
+    ///
+    /// The biennial table ends near 1973 (MODERN_DELTA_T_START_MJD); the modern
+    /// USNO series begins there.  The two must agree to within 0.01 s at that
+    /// boundary.
+    #[test]
+    fn regime_boundary_1973_biennial_to_modern_is_continuous() {
+        use crate::constats::JD_MINUS_MJD;
+        use crate::generated::MODERN_DELTA_T_START_MJD;
+        // Convert MJD start to JD.
+        let jd_start = MODERN_DELTA_T_START_MJD + JD_MINUS_MJD;
+        let eps = Day::new(1e-4); // ~8.6 s
+        let before = delta_t_seconds_extrapolated(jd_start - eps).value();
+        let after = delta_t_seconds_extrapolated(jd_start + eps).value();
+        assert!(
+            (before - after).abs() < 0.01,
+            "ΔT gap at 1973 biennial→modern stitch: {before:.6} → {after:.6} s (gap {:.6} s)",
+            (before - after).abs()
+        );
+    }
+
+    /// `MODERN_DELTA_T_OBSERVED_END_MJD` must lie strictly inside the compiled
+    /// point array (so delta_t lookup works at that boundary).
+    #[test]
+    fn modern_delta_t_observed_end_is_in_range() {
+        use crate::generated::MODERN_DELTA_T_OBSERVED_END_MJD;
+        assert!(
+            MODERN_DELTA_T_OBSERVED_END_MJD > MODERN_DELTA_T_START_MJD,
+            "observed end must be after series start"
+        );
+        assert!(
+            MODERN_DELTA_T_OBSERVED_END_MJD < MODERN_DELTA_T_END_MJD,
+            "observed end must be before prediction horizon"
         );
     }
 }

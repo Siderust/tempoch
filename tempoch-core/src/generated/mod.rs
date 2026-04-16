@@ -11,6 +11,8 @@ pub(crate) const PRE_1961_TAI_MINUS_UTC_APPROX: Second =
 pub(crate) const UTC_TAI_HISTORY_START_MJD: Day =
     Day::new(time_data::UTC_TAI_HISTORY_START_MJD as f64);
 pub(crate) const MODERN_DELTA_T_START_MJD: Day = Day::new(time_data::MODERN_DELTA_T_START_MJD);
+pub const MODERN_DELTA_T_OBSERVED_END_MJD: Day =
+    Day::new(time_data::MODERN_DELTA_T_OBSERVED_END_MJD);
 pub(crate) const MODERN_DELTA_T_END_MJD: Day = Day::new(time_data::MODERN_DELTA_T_END_MJD);
 
 impl time_data::UtcTaiSegment {

@@ -124,6 +124,25 @@ define_continuous_scale!(
     /// Continuous in SI seconds, but `UT1 ↔ TT` requires a `TimeContext`
     /// because the mapping depends on the compiled ΔT model (and, in future
     /// phases, observed-ΔT data).
+    ///
+    /// # Accuracy and modeling limitations
+    ///
+    /// UT1 conversions are backed by a piecewise ΔT model:
+    ///
+    /// * **Historical (pre-1973)**: polynomial approximations (Stephenson &
+    ///   Houlden 1986; Meeus *Astronomical Algorithms*). Accuracy varies from
+    ///   ±15 s (1620–1973) to ±hundreds of seconds (pre-948).
+    /// * **Modern (1973 – horizon)**: USNO monthly determinations with linear
+    ///   interpolation. Observed points are accurate to ~0.01 s; prediction
+    ///   points (beyond `MODERN_DELTA_T_OBSERVED_END_MJD`) carry growing
+    ///   uncertainty. See [`DELTA_T_PREDICTION_HORIZON_MJD`] for the hard stop.
+    ///
+    /// This model is suitable for archival astronomy and telescope scheduling,
+    /// but **not** for precision geodesy, VLBI, or pulsar timing, which
+    /// require daily IERS EOP (DUT1) solutions. The compiled monthly series
+    /// can differ from daily IERS values by up to ~1 s in recent years.
+    ///
+    /// [`DELTA_T_PREDICTION_HORIZON_MJD`]: crate::DELTA_T_PREDICTION_HORIZON_MJD
     UT1 = "UT1"
 );
 

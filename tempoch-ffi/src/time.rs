@@ -16,7 +16,7 @@ use crate::error::TempochStatus;
 use chrono::{NaiveDate, Utc};
 use qtty::Day;
 use qtty_ffi::{QttyQuantity, UnitId};
-use tempoch::{delta_t_seconds, ConversionError};
+use tempoch::{delta_t_seconds_extrapolated, ConversionError};
 
 const J2000_JD_TT: f64 = 2_451_545.0;
 const JULIAN_CENTURY_DAYS: f64 = 36_525.0;
@@ -452,7 +452,7 @@ pub extern "C" fn tempoch_delta_t_seconds(jd: f64) -> f64 {
     if !jd.is_finite() {
         return 0.0;
     }
-    delta_t_seconds(Day::new(jd)) / qtty::Second::new(1.0)
+    delta_t_seconds_extrapolated(Day::new(jd)) / qtty::Second::new(1.0)
 }
 
 /// Map a `ConversionError` to the appropriate `TempochStatus` code.

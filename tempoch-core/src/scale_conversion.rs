@@ -15,9 +15,9 @@
 
 use super::constats::{IAU_TIME_EPOCH_T0_JD, L_B, L_G, TDB0, TT_MINUS_TAI};
 use super::context::TimeContext;
-use super::delta_t::{delta_t_seconds, DELTA_T_PREDICTION_HORIZON_MJD};
+use super::delta_t::delta_t_seconds;
 use super::encoding::{
-    j2000_seconds_to_jd, jd_to_j2000_seconds, jd_to_julian_centuries, jd_to_mjd,
+    j2000_seconds_to_jd, jd_to_j2000_seconds, jd_to_julian_centuries,
 };
 use super::error::ConversionError;
 use super::scale::{Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
@@ -294,17 +294,8 @@ utc_through_tai!(TCB);
 
 // ── UT1 ↔ TT (context-required, ΔT model) ────────────────────────────────
 //
-// ΔT = TT − UT1 is a function of the UT1-axis JD. Out-of-horizon epochs
-// return `Ut1HorizonExceeded`.
-
-#[inline]
-fn check_ut1_horizon(mjd: Days) -> Result<(), ConversionError> {
-    if mjd <= DELTA_T_PREDICTION_HORIZON_MJD {
-        Ok(())
-    } else {
-        Err(ConversionError::Ut1HorizonExceeded)
-    }
-}
+// ΔT = TT − UT1 is a function of the UT1-axis JD. `delta_t_seconds` returns
+// `Err(Ut1HorizonExceeded)` for dates beyond the compiled prediction horizon.
 
 impl ContextScaleConvert<TT> for UT1 {
     #[inline]
@@ -313,8 +304,7 @@ impl ContextScaleConvert<TT> for UT1 {
             return Err(ConversionError::NonFinite);
         }
         let jd_ut1: Days = j2000_seconds_to_jd(src);
-        check_ut1_horizon(jd_to_mjd(jd_ut1))?;
-        let dt = delta_t_seconds(jd_ut1);
+        let dt = delta_t_seconds(jd_ut1)?;
         Ok(src + dt)
     }
 }
@@ -330,11 +320,9 @@ impl ContextScaleConvert<UT1> for TT {
         let mut ut1_secs = src;
         for _ in 0..3 {
             let jd_ut1: Days = j2000_seconds_to_jd(ut1_secs);
-            let dt = delta_t_seconds(jd_ut1);
+            let dt = delta_t_seconds(jd_ut1)?;
             ut1_secs = src - dt;
         }
-        let final_jd = j2000_seconds_to_jd(ut1_secs);
-        check_ut1_horizon(jd_to_mjd(final_jd))?;
         Ok(ut1_secs)
     }
 }
