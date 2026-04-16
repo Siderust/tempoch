@@ -16,7 +16,7 @@ use crate::error::TempochStatus;
 use chrono::{NaiveDate, Utc};
 use qtty::Day;
 use qtty_ffi::{QttyQuantity, UnitId};
-use tempoch::{J2000s, Jd, Time, TimeContext, TT, UT1};
+use tempoch::{delta_t_seconds, ConversionError};
 
 const J2000_JD_TT: f64 = 2_451_545.0;
 const JULIAN_CENTURY_DAYS: f64 = 36_525.0;
@@ -103,7 +103,7 @@ pub extern "C" fn tempoch_jd_j2000() -> f64 {
 /// Convert a Julian Date to a Modified Julian Date.
 #[no_mangle]
 pub extern "C" fn tempoch_jd_to_mjd(jd: f64) -> f64 {
-    jd_to_scale_value(jd, TempochScaleId::MJD)
+    jd_to_scale_value(jd, TempochScaleId::MJD).unwrap_or(f64::NAN)
 }
 
 /// Create a Julian Date from a UTC date-time.
@@ -158,7 +158,7 @@ pub extern "C" fn tempoch_mjd_new(value: f64) -> f64 {
 /// Convert a Modified Julian Date to a Julian Date.
 #[no_mangle]
 pub extern "C" fn tempoch_mjd_to_jd(mjd: f64) -> f64 {
-    scale_value_to_jd(mjd, TempochScaleId::MJD)
+    scale_value_to_jd(mjd, TempochScaleId::MJD).unwrap_or(f64::NAN)
 }
 
 /// Create a Modified Julian Date from a UTC date-time.
@@ -305,97 +305,97 @@ pub extern "C" fn tempoch_jd_julian_centuries_qty(jd: f64) -> QttyQuantity {
 /// Convert a Julian Date (TT) to TDB.
 #[no_mangle]
 pub extern "C" fn tempoch_jd_to_tdb(jd: f64) -> f64 {
-    jd_to_scale_value(jd, TempochScaleId::TDB)
+    jd_to_scale_value(jd, TempochScaleId::TDB).unwrap_or(f64::NAN)
 }
 
 /// Convert TDB back to Julian Date (TT).
 #[no_mangle]
 pub extern "C" fn tempoch_tdb_to_jd(tdb: f64) -> f64 {
-    scale_value_to_jd(tdb, TempochScaleId::TDB)
+    scale_value_to_jd(tdb, TempochScaleId::TDB).unwrap_or(f64::NAN)
 }
 
 /// Convert a Julian Date (TT) to TT (identity).
 #[no_mangle]
 pub extern "C" fn tempoch_jd_to_tt(jd: f64) -> f64 {
-    jd_to_scale_value(jd, TempochScaleId::TT)
+    jd_to_scale_value(jd, TempochScaleId::TT).unwrap_or(f64::NAN)
 }
 
 /// Convert TT back to Julian Date (TT).
 #[no_mangle]
 pub extern "C" fn tempoch_tt_to_jd(tt: f64) -> f64 {
-    scale_value_to_jd(tt, TempochScaleId::TT)
+    scale_value_to_jd(tt, TempochScaleId::TT).unwrap_or(f64::NAN)
 }
 
 /// Convert a Julian Date (TT) to TAI.
 #[no_mangle]
 pub extern "C" fn tempoch_jd_to_tai(jd: f64) -> f64 {
-    jd_to_scale_value(jd, TempochScaleId::TAI)
+    jd_to_scale_value(jd, TempochScaleId::TAI).unwrap_or(f64::NAN)
 }
 
 /// Convert TAI back to Julian Date (TT).
 #[no_mangle]
 pub extern "C" fn tempoch_tai_to_jd(tai: f64) -> f64 {
-    scale_value_to_jd(tai, TempochScaleId::TAI)
+    scale_value_to_jd(tai, TempochScaleId::TAI).unwrap_or(f64::NAN)
 }
 
 /// Convert a Julian Date (TT) to TCG.
 #[no_mangle]
 pub extern "C" fn tempoch_jd_to_tcg(jd: f64) -> f64 {
-    jd_to_scale_value(jd, TempochScaleId::TCG)
+    jd_to_scale_value(jd, TempochScaleId::TCG).unwrap_or(f64::NAN)
 }
 
 /// Convert TCG back to Julian Date (TT).
 #[no_mangle]
 pub extern "C" fn tempoch_tcg_to_jd(tcg: f64) -> f64 {
-    scale_value_to_jd(tcg, TempochScaleId::TCG)
+    scale_value_to_jd(tcg, TempochScaleId::TCG).unwrap_or(f64::NAN)
 }
 
 /// Convert a Julian Date (TT) to TCB.
 #[no_mangle]
 pub extern "C" fn tempoch_jd_to_tcb(jd: f64) -> f64 {
-    jd_to_scale_value(jd, TempochScaleId::TCB)
+    jd_to_scale_value(jd, TempochScaleId::TCB).unwrap_or(f64::NAN)
 }
 
 /// Convert TCB back to Julian Date (TT).
 #[no_mangle]
 pub extern "C" fn tempoch_tcb_to_jd(tcb: f64) -> f64 {
-    scale_value_to_jd(tcb, TempochScaleId::TCB)
+    scale_value_to_jd(tcb, TempochScaleId::TCB).unwrap_or(f64::NAN)
 }
 
 /// Convert a Julian Date (TT) to GPS Time.
 #[no_mangle]
 pub extern "C" fn tempoch_jd_to_gps(jd: f64) -> f64 {
-    jd_to_scale_value(jd, TempochScaleId::GPS)
+    jd_to_scale_value(jd, TempochScaleId::GPS).unwrap_or(f64::NAN)
 }
 
 /// Convert GPS Time back to Julian Date (TT).
 #[no_mangle]
 pub extern "C" fn tempoch_gps_to_jd(gps: f64) -> f64 {
-    scale_value_to_jd(gps, TempochScaleId::GPS)
+    scale_value_to_jd(gps, TempochScaleId::GPS).unwrap_or(f64::NAN)
 }
 
 /// Convert a Julian Date (TT) to Universal Time UT1.
 #[no_mangle]
 pub extern "C" fn tempoch_jd_to_ut(jd: f64) -> f64 {
-    jd_to_scale_value(jd, TempochScaleId::UT)
+    jd_to_scale_value(jd, TempochScaleId::UT).unwrap_or(f64::NAN)
 }
 
 /// Convert Universal Time UT1 back to Julian Date (TT).
 #[no_mangle]
 pub extern "C" fn tempoch_ut_to_jd(ut: f64) -> f64 {
-    scale_value_to_jd(ut, TempochScaleId::UT)
+    scale_value_to_jd(ut, TempochScaleId::UT).unwrap_or(f64::NAN)
 }
 
 /// Convert a Julian Date (TT) to Julian Ephemeris Date.
 #[no_mangle]
 pub extern "C" fn tempoch_jd_to_jde(jd: f64) -> f64 {
-    jd_to_scale_value(jd, TempochScaleId::JDE)
+    jd_to_scale_value(jd, TempochScaleId::JDE).unwrap_or(f64::NAN)
 }
 
 /// Convert Julian Ephemeris Date back to Julian Date (TT).
 #[no_mangle]
 pub extern "C" fn tempoch_jde_to_jd(jde: f64) -> f64 {
-    scale_value_to_jd(jde, TempochScaleId::JDE)
+    scale_value_to_jd(jde, TempochScaleId::JDE).unwrap_or(f64::NAN)
 }
 
 /// Convert a Julian Date (TT) to Unix time in **seconds** since 1970-01-01T00:00:00 UTC.
@@ -403,18 +403,22 @@ pub extern "C" fn tempoch_jde_to_jd(jde: f64) -> f64 {
 /// The result is a standard Unix timestamp suitable for passing to C `gmtime()`,
 /// Python `datetime.fromtimestamp()`, etc. Internally the conversion routes
 /// through the compiled UTC-TAI history.
+///
+/// Returns `NaN` if `jd` is out of the compiled UTC-TAI history range (before 1961).
 #[no_mangle]
 pub extern "C" fn tempoch_jd_to_unix(jd: f64) -> f64 {
-    jd_to_scale_value(jd, TempochScaleId::UnixTime)
+    jd_to_scale_value(jd, TempochScaleId::UnixTime).unwrap_or(f64::NAN)
 }
 
 /// Convert Unix time in **seconds** since 1970-01-01T00:00:00 UTC back to Julian Date (TT).
 ///
 /// Accepts a standard Unix timestamp (seconds, not days). The conversion
 /// uses the compiled UTC-TAI history for leap-second handling.
+///
+/// Returns `NaN` if `unix` is out of the compiled UTC-TAI history range.
 #[no_mangle]
 pub extern "C" fn tempoch_unix_to_jd(unix: f64) -> f64 {
-    scale_value_to_jd(unix, TempochScaleId::UnixTime)
+    scale_value_to_jd(unix, TempochScaleId::UnixTime).unwrap_or(f64::NAN)
 }
 
 /// Create a Unix timestamp from seconds since 1970-01-01T00:00:00 UTC.
@@ -436,17 +440,23 @@ pub extern "C" fn tempoch_unix_to_seconds(unix: f64) -> f64 {
     unix
 }
 
-/// Return ΔT = TT − UT1 in seconds for a given Julian Date.
+/// Return ΔT = TT − UT1 in seconds for a Julian Date.
+///
+/// For dates within the compiled data range this is the observed/predicted
+/// value from USNO data. For dates beyond [`tempoch::DELTA_T_PREDICTION_HORIZON_MJD`]
+/// the result is a quadratic tail-fit extrapolation; accuracy degrades
+/// rapidly past the horizon. The value is never `NaN`.
 #[no_mangle]
 pub extern "C" fn tempoch_delta_t_seconds(jd: f64) -> f64 {
-    let ctx = TimeContext::new();
-    let tt: Time<TT, J2000s> = match Time::<TT, Jd>::from_julian_days(Day::new(jd)) {
-        Ok(t) => t.reformat(),
-        Err(_) => return f64::NAN,
-    };
-    match tt.to_scale_with::<UT1>(&ctx) {
-        Ok(ut1) => (tt.si_seconds() - ut1.si_seconds()) / qtty::Second::new(1.0),
-        Err(_) => f64::NAN,
+    delta_t_seconds(Day::new(jd)) / qtty::Second::new(1.0)
+}
+
+/// Map a `ConversionError` to the appropriate `TempochStatus` code.
+#[inline]
+fn conversion_error_to_status(e: ConversionError) -> TempochStatus {
+    match e {
+        ConversionError::Ut1HorizonExceeded => TempochStatus::Ut1HorizonExceeded,
+        _ => TempochStatus::UtcConversionFailed,
     }
 }
 
@@ -473,8 +483,15 @@ pub unsafe extern "C" fn tempoch_time_convert(
             Ok(scale) => scale,
             Err(status) => return status,
         };
-        let jd = scale_value_to_jd(value, from);
-        unsafe { *out = jd_to_scale_value(jd, to) };
+        let jd = match scale_value_to_jd(value, from) {
+            Ok(v) => v,
+            Err(e) => return conversion_error_to_status(e),
+        };
+        let result = match jd_to_scale_value(jd, to) {
+            Ok(v) => v,
+            Err(e) => return conversion_error_to_status(e),
+        };
+        unsafe { *out = result };
         TempochStatus::Ok
     })
 }
@@ -1132,5 +1149,37 @@ mod tests {
             tempoch_time_difference_days(1.0, 0.0, TempochScaleId::JD as i32, ptr::null_mut())
         };
         assert_eq!(status, TempochStatus::NullPointer);
+    }
+
+    /// `tempoch_time_convert` must NOT return `Ok` when the UT1 horizon is
+    /// exceeded; it must return `Ut1HorizonExceeded` and leave `out` unwritten.
+    #[test]
+    fn time_convert_ut1_beyond_horizon_returns_error_not_ok() {
+        let mut out = -999.0_f64;
+        let status = unsafe {
+            tempoch_time_convert(
+                2_465_000.0,
+                TempochScaleId::JD as i32,
+                TempochScaleId::UT as i32,
+                &mut out,
+            )
+        };
+        assert_eq!(
+            status,
+            TempochStatus::Ut1HorizonExceeded,
+            "expected Ut1HorizonExceeded, got {status:?}"
+        );
+        assert_eq!(out, -999.0, "out should not have been written on error");
+    }
+
+    /// `tempoch_delta_t_seconds` must return a finite value for all dates,
+    /// including those past the compiled data horizon (quadratic extrapolation).
+    #[test]
+    fn delta_t_seconds_past_horizon_is_finite() {
+        let dt = tempoch_delta_t_seconds(2_465_000.0);
+        assert!(
+            dt.is_finite(),
+            "expected finite ΔT past horizon, got {dt}"
+        );
     }
 }

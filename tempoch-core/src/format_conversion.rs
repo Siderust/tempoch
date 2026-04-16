@@ -20,7 +20,7 @@
 //! | `Jd`        | ✓                    | lossless f64 roundtrip |
 //! | `Mjd`       | ✓                    | lossless f64 roundtrip |
 //! | `GpsSecs`   | ✗                    | GPS epoch is TAI-axis-specific; `.reformat::<J2000s>()` first |
-//! | `UnixSecs`  | ✗                    | i64 precision loss; `.reformat::<J2000s>()` first |
+//! | `UnixSecs`  | ✗                    | No cross-format conversions; use civil API only |
 //! | `DayCount`  | ✗                    | i32 precision loss; `.reformat::<Mjd>()` or `J2000s` first |
 //!
 //! `GpsSecs` intentionally does **not** implement `CanonicalRoundtrip`, for
@@ -32,15 +32,15 @@
 //!
 //! [`Time::<TAI>::from_gps_seconds`]: crate::Time::from_gps_seconds
 
-use super::constats::{GPS_EPOCH_TAI, J2000_JD_TT, JD_MINUS_MJD};
+use super::constats::{GPS_EPOCH_TAI, JD_MINUS_MJD};
 use super::encoding::{
     j2000_seconds_to_jd, j2000_seconds_to_mjd, jd_to_j2000_seconds, mjd_to_j2000_seconds,
 };
-use super::format::{DayCount, GpsSecs, J2000s, Jd, Mjd, UnixSecs};
+use super::format::{DayCount, GpsSecs, J2000s, Jd, Mjd};
 use super::sealed::Sealed;
 use qtty::time::{Days, Seconds};
-use qtty::unit::{Day, Second};
-use qtty::{QuantityI32, QuantityI64};
+use qtty::unit::Day;
+use qtty::QuantityI32;
 
 // ── CanonicalRoundtrip ───────────────────────────────────────────────────
 
@@ -115,7 +115,7 @@ macro_rules! identity_format {
         )+
     };
 }
-identity_format!(J2000s, Jd, Mjd, UnixSecs, GpsSecs, DayCount);
+identity_format!(J2000s, Jd, Mjd, GpsSecs, DayCount);
 
 // -- J2000s ↔ Jd ----------------------------------------------------------
 
@@ -181,31 +181,7 @@ impl FormatConvertible<J2000s> for GpsSecs {
     }
 }
 
-// -- J2000s ↔ UnixSecs (lossy: f64 → i64) --------------------------------
-
-impl FormatConvertible<UnixSecs> for J2000s {
-    #[inline]
-    fn convert(src: Seconds) -> QuantityI64<Second> {
-        // J2000 TT is 2000-01-01T12:00:00 TT.
-        // Unix epoch is 1970-01-01T00:00:00 UTC.
-        // Offset: J2000_JD_TT - UNIX_EPOCH_JD in seconds.
-        let unix_offset_secs: Seconds =
-            (J2000_JD_TT - crate::constats::UNIX_EPOCH_JD).to::<Second>();
-        let unix_secs = src + unix_offset_secs;
-        QuantityI64::<Second>::new(unix_secs.value() as i64)
-    }
-}
-
-impl FormatConvertible<J2000s> for UnixSecs {
-    #[inline]
-    fn convert(src: QuantityI64<Second>) -> Seconds {
-        let unix_offset_secs: Seconds =
-            (J2000_JD_TT - crate::constats::UNIX_EPOCH_JD).to::<Second>();
-        Seconds::new(src.value() as f64) - unix_offset_secs
-    }
-}
-
-// -- Mjd ↔ DayCount (lossy: f64 → i32) -----------------------------------
+// -- Jd ↔ DayCount (through Mjd) -------------------------------------------
 
 impl FormatConvertible<DayCount> for Mjd {
     #[inline]
@@ -253,39 +229,7 @@ impl FormatConvertible<Mjd> for GpsSecs {
     }
 }
 
-// -- Jd ↔ UnixSecs (through J2000s) ----------------------------------------
-
-impl FormatConvertible<UnixSecs> for Jd {
-    #[inline]
-    fn convert(src: Days) -> QuantityI64<Second> {
-        <J2000s as FormatConvertible<UnixSecs>>::convert(jd_to_j2000_seconds(src))
-    }
-}
-
-impl FormatConvertible<Jd> for UnixSecs {
-    #[inline]
-    fn convert(src: QuantityI64<Second>) -> Days {
-        j2000_seconds_to_jd(<UnixSecs as FormatConvertible<J2000s>>::convert(src))
-    }
-}
-
-// -- Mjd ↔ UnixSecs (through J2000s) ----------------------------------------
-
-impl FormatConvertible<UnixSecs> for Mjd {
-    #[inline]
-    fn convert(src: Days) -> QuantityI64<Second> {
-        <J2000s as FormatConvertible<UnixSecs>>::convert(mjd_to_j2000_seconds(src))
-    }
-}
-
-impl FormatConvertible<Mjd> for UnixSecs {
-    #[inline]
-    fn convert(src: QuantityI64<Second>) -> Days {
-        j2000_seconds_to_mjd(<UnixSecs as FormatConvertible<J2000s>>::convert(src))
-    }
-}
-
-// -- Jd ↔ DayCount (through Mjd) -------------------------------------------
+// -- GpsSecs ↔ DayCount (through J2000s → Mjd → DayCount) -----------------
 
 impl FormatConvertible<DayCount> for Jd {
     #[inline]
@@ -317,26 +261,6 @@ impl FormatConvertible<J2000s> for DayCount {
     }
 }
 
-// -- GpsSecs ↔ UnixSecs (through J2000s) -----------------------------------
-
-impl FormatConvertible<UnixSecs> for GpsSecs {
-    #[inline]
-    fn convert(src: Seconds) -> QuantityI64<Second> {
-        <J2000s as FormatConvertible<UnixSecs>>::convert(
-            <GpsSecs as FormatConvertible<J2000s>>::convert(src),
-        )
-    }
-}
-
-impl FormatConvertible<GpsSecs> for UnixSecs {
-    #[inline]
-    fn convert(src: QuantityI64<Second>) -> Seconds {
-        <J2000s as FormatConvertible<GpsSecs>>::convert(
-            <UnixSecs as FormatConvertible<J2000s>>::convert(src),
-        )
-    }
-}
-
 // -- GpsSecs ↔ DayCount (through J2000s → Mjd → DayCount) -----------------
 
 impl FormatConvertible<DayCount> for GpsSecs {
@@ -357,25 +281,6 @@ impl FormatConvertible<GpsSecs> for DayCount {
     }
 }
 
-// -- UnixSecs ↔ DayCount (through J2000s → Mjd) ----------------------------
-
-impl FormatConvertible<DayCount> for UnixSecs {
-    #[inline]
-    fn convert(src: QuantityI64<Second>) -> QuantityI32<Day> {
-        <J2000s as FormatConvertible<DayCount>>::convert(
-            <UnixSecs as FormatConvertible<J2000s>>::convert(src),
-        )
-    }
-}
-
-impl FormatConvertible<UnixSecs> for DayCount {
-    #[inline]
-    fn convert(src: QuantityI32<Day>) -> QuantityI64<Second> {
-        <J2000s as FormatConvertible<UnixSecs>>::convert(
-            <DayCount as FormatConvertible<J2000s>>::convert(src),
-        )
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -415,15 +320,6 @@ mod tests {
         let gps = <J2000s as FormatConvertible<GpsSecs>>::convert(secs);
         let back = <GpsSecs as FormatConvertible<J2000s>>::convert(gps);
         assert!((back - secs).abs() < EPS_S);
-    }
-
-    #[test]
-    fn j2000s_unix_round_trip_approximate() {
-        // i64 truncation loses sub-second precision
-        let secs = Seconds::new(1_000_000.0);
-        let unix = <J2000s as FormatConvertible<UnixSecs>>::convert(secs);
-        let back = <UnixSecs as FormatConvertible<J2000s>>::convert(unix);
-        assert!((back - secs).abs() < Seconds::new(1.0));
     }
 
     #[test]

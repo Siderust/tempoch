@@ -11,8 +11,8 @@
 //! - [`constats`] for typed epoch and offset constants
 
 pub use tempoch_core::{
-    complement_within, constats, intersect_periods, normalize_periods, validate_period_list,
-    ContinuousScale, ConversionError, DayCount, Format, GpsSecs, Interval, InvalidIntervalError,
-    InvalidPeriodError, J2000s, Jd, Mjd, Period, PeriodListError, Scale, Time, TimeContext,
-    UnixSecs, DELTA_T_PREDICTION_HORIZON_MJD, TAI, TCB, TCG, TDB, TT, UT1, UTC,
+    complement_within, constats, delta_t_seconds, intersect_periods, normalize_periods,
+    validate_period_list, ContinuousScale, ConversionError, DayCount, Format, GpsSecs, Interval,
+    InvalidIntervalError, InvalidPeriodError, J2000s, Jd, Mjd, Period, PeriodListError, Scale,
+    Time, TimeContext, UnixSecs, DELTA_T_PREDICTION_HORIZON_MJD, TAI, TCB, TCG, TDB, TT, UT1, UTC,
 };

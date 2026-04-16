@@ -230,9 +230,10 @@ fn delta_t_extrapolated(jd_ut: Day) -> Second {
 ///   terminating at 1461, since the biennial table begins at 1620.
 /// * **1620 – modern table end** — biennial interpolation (Meeus ch. 9) then
 ///   USNO monthly data.
-/// * **Beyond table** — quadratic tail-fit extrapolation.
+/// * **Beyond table** — quadratic tail-fit extrapolation (unconstrained;
+///   accuracy degrades rapidly past the compiled horizon).
 #[inline]
-pub(crate) fn delta_t_seconds(jd_ut: Day) -> Second {
+pub fn delta_t_seconds(jd_ut: Day) -> Second {
     let mjd = jd_to_mjd(jd_ut);
     if jd_ut < JD_EPOCH_948_UT {
         delta_t_ancient(jd_ut)

@@ -37,7 +37,7 @@ mod sealed;
 mod time;
 
 pub use context::TimeContext;
-pub use delta_t::DELTA_T_PREDICTION_HORIZON_MJD;
+pub use delta_t::{delta_t_seconds, DELTA_T_PREDICTION_HORIZON_MJD};
 pub use error::ConversionError;
 pub use format::{DayCount, Format, GpsSecs, J2000s, Jd, Mjd, UnixSecs};
 pub use interval::{

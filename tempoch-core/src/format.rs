@@ -86,24 +86,16 @@ define_format!(
     ///
     /// Storage: `Quantity<Second, i64>` — natural integer representation.
     ///
-    /// # Scale semantics warning
+    /// # Civil API — no generic `reformat()` path
     ///
-    /// The `UnixSecs` format applies a **constant epoch offset** (J2000 TT →
-    /// Unix epoch) with no leap-second correction. This offset is only
-    /// physically correct on the **UTC scale** and only for dates within the
-    /// compiled UTC-TAI history.
-    ///
-    /// Using `UnixSecs` on any other scale (TAI, TT, …) or calling
-    /// `.reformat::<UnixSecs>()` on such a `Time<S>` will produce a value
-    /// that is *not* a valid POSIX timestamp — it differs from true POSIX by
-    /// the accumulated TAI-UTC offset (up to 37 s as of 2017).
+    /// `UnixSecs` deliberately has **no** `FormatConvertible` implementations
+    /// to other formats.  A naïve epoch-offset conversion would produce wrong
+    /// POSIX timestamps for all dates: the correct mapping requires subtracting
+    /// the history-dependent `TAI−UTC` offset, which is not available in the
+    /// format layer.
     ///
     /// **Authoritative POSIX mapping:** use the civil API:
     /// [`Time::<UTC>::from_unix_seconds`] / [`.unix_seconds()`].
-    ///
-    /// Scale conversions are not directly available on this format;
-    /// use `.reformat::<J2000s>()` first to make the precision trade-off
-    /// explicit.
     ///
     /// [`Time::<UTC>::from_unix_seconds`]: crate::Time::from_unix_seconds
     /// [`.unix_seconds()`]: crate::Time::unix_seconds

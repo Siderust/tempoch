@@ -44,6 +44,9 @@ enum tempoch_status_t
   // discarded.  Domain errors (`UtcConversionFailed`, `InvalidPeriod`, etc.)
   // are never reported via this variant.
   TEMPOCH_STATUS_T_INTERNAL_PANIC = 7,
+  // A UT1 / ΔT conversion was requested for a date outside the compiled
+  // ΔT data horizon.  The output value has not been written.
+  TEMPOCH_STATUS_T_UT1_HORIZON_EXCEEDED = 8,
 };
 #ifndef __cplusplus
 typedef int32_t tempoch_status_t;
@@ -253,12 +256,16 @@ tempoch_status_t tempoch_period_mjd_intersection(struct tempoch_period_mjd_t a,
 // The result is a standard Unix timestamp suitable for passing to C `gmtime()`,
 // Python `datetime.fromtimestamp()`, etc. Internally the conversion routes
 // through the compiled UTC-TAI history.
+//
+// Returns `NaN` if `jd` is out of the compiled UTC-TAI history range (before 1961).
  double tempoch_jd_to_unix(double jd);
 
 // Convert Unix time in **seconds** since 1970-01-01T00:00:00 UTC back to Julian Date (TT).
 //
 // Accepts a standard Unix timestamp (seconds, not days). The conversion
 // uses the compiled UTC-TAI history for leap-second handling.
+//
+// Returns `NaN` if `unix` is out of the compiled UTC-TAI history range.
  double tempoch_unix_to_jd(double unix);
 
 // Create a Unix timestamp from seconds since 1970-01-01T00:00:00 UTC.
@@ -274,7 +281,12 @@ tempoch_status_t tempoch_period_mjd_intersection(struct tempoch_period_mjd_t a,
 // This is also a convenience identity confirming the seconds convention.
  double tempoch_unix_to_seconds(double unix);
 
-// Return ΔT = TT − UT1 in seconds for a given Julian Date.
+// Return ΔT = TT − UT1 in seconds for a Julian Date.
+//
+// For dates within the compiled data range this is the observed/predicted
+// value from USNO data. For dates beyond [`tempoch::DELTA_T_PREDICTION_HORIZON_MJD`]
+// the result is a quadratic tail-fit extrapolation; accuracy degrades
+// rapidly past the horizon. The value is never `NaN`.
  double tempoch_delta_t_seconds(double jd);
 
 // Convert a `double` time value from one scale to another.
