@@ -315,4 +315,45 @@ mod tests {
         assert_eq!(p.start.modified_julian_days(), Day::new(51_544.5));
         assert_eq!(p.end.modified_julian_days(), Day::new(51_545.25));
     }
+
+    #[test]
+    fn display_invalid_interval_error() {
+        let e = InvalidIntervalError::StartAfterEnd;
+        assert!(e.to_string().contains("start"));
+    }
+
+    #[test]
+    fn display_period_list_errors() {
+        assert!(PeriodListError::InvalidInterval { index: 2 }.to_string().contains("2"));
+        assert!(PeriodListError::Unsorted { index: 3 }.to_string().contains("3"));
+        assert!(PeriodListError::Overlapping { index: 4 }.to_string().contains("4"));
+    }
+
+    #[test]
+    fn normalize_empty_returns_empty() {
+        let result = normalize_periods::<f64>(&[]);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn validate_detects_invalid_interval() {
+        // Interval::new does not validate; create one with start > end directly
+        let periods = vec![Interval::<f64> { start: 5.0, end: 1.0 }];
+        assert_eq!(
+            validate_period_list(&periods),
+            Err(PeriodListError::InvalidInterval { index: 0 })
+        );
+    }
+
+    #[test]
+    fn validate_detects_unsorted() {
+        let periods = vec![
+            Interval::<f64>::new(5.0_f64, 8.0),
+            Interval::<f64>::new(1.0_f64, 4.0),
+        ];
+        assert_eq!(
+            validate_period_list(&periods),
+            Err(PeriodListError::Unsorted { index: 1 })
+        );
+    }
 }

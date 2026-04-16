@@ -41,3 +41,23 @@ impl core::fmt::Display for ConversionError {
 }
 
 impl std::error::Error for ConversionError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_all_variants() {
+        let cases: &[(ConversionError, &str)] = &[
+            (ConversionError::UtcHistoryUnsupported, "1961"),
+            (ConversionError::InvalidLeapSecond, "leap-second"),
+            (ConversionError::OutOfRange, "range"),
+            (ConversionError::Ut1HorizonExceeded, "horizon"),
+            (ConversionError::NonFinite, "finite"),
+        ];
+        for (variant, fragment) in cases {
+            let s = variant.to_string();
+            assert!(s.contains(fragment), "{variant:?}: got {s:?}");
+        }
+    }
+}

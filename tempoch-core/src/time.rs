@@ -360,10 +360,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::super::format::{J2000s, Jd, Mjd};
+    use super::super::format::{DayCount, GpsSecs, J2000s, Jd, Mjd, UnixSecs};
     use super::super::scale::{TAI, TCB, TCG, TDB, TT};
     use super::*;
-    use qtty::{Day, Second};
+    use qtty::{Day, QuantityI32, QuantityI64, Second};
 
     const SECONDS_PER_DAY: Second = Second::new(86_400.0);
 
@@ -473,5 +473,60 @@ mod tests {
             "diff = {:?}",
             diff_secs
         );
+    }
+
+    #[test]
+    fn clone_partial_eq_debug_work() {
+        let t = Time::<TT>::from_si_seconds(Second::new(42.0)).unwrap();
+        let t2 = t.clone();
+        assert_eq!(t, t2);
+        let dbg = format!("{t:?}");
+        assert!(dbg.contains("Time<"));
+    }
+
+    #[test]
+    fn from_impls_for_all_formats() {
+        let _: Time<TT, J2000s> = Second::new(0.0).into();
+        let _: Time<TT, J2000s> = (0.0_f64).into();
+        let _: Time<TT, Jd> = Day::new(2_451_545.0).into();
+        let _: Time<TT, Jd> = (2_451_545.0_f64).into();
+        let _: Time<TT, Mjd> = Day::new(51_544.0).into();
+        let _: Time<TT, Mjd> = (51_544.0_f64).into();
+        let _: Time<TT, GpsSecs> = Second::new(0.0).into();
+        let _: Time<TT, GpsSecs> = (0.0_f64).into();
+        let _: Time<TT, UnixSecs> = QuantityI64::<qtty::unit::Second>::new(0).into();
+        let _: Time<TT, UnixSecs> = (0_i64).into();
+        let _: Time<TT, DayCount> = QuantityI32::<qtty::unit::Day>::new(0).into();
+        let _: Time<TT, DayCount> = (0_i32).into();
+    }
+
+    #[test]
+    fn from_modified_julian_days_nonfinite_rejected() {
+        assert_eq!(
+            Time::<TT, Mjd>::from_modified_julian_days(Day::new(f64::NAN)).unwrap_err(),
+            ConversionError::NonFinite,
+        );
+    }
+
+    #[test]
+    fn convert_changes_scale_and_format() {
+        let tt = Time::<TT>::from_si_seconds(Second::new(0.0)).unwrap();
+        let tai_jd: Time<TAI, Jd> = tt.convert();
+        let tt_jd: Time<TT, Jd> = tt.reformat();
+        let diff = tt_jd.julian_days() - tai_jd.julian_days();
+        // TT = TAI + 32.184 s → difference in JD is 32.184 / 86400
+        assert!(
+            (diff - Day::new(32.184 / 86_400.0)).abs() < Day::new(1e-9),
+            "diff = {diff:?}",
+        );
+    }
+
+    #[test]
+    fn add_assign_and_sub_assign() {
+        let mut t = Time::<TT>::from_si_seconds(Second::new(0.0)).unwrap();
+        t += Second::new(5.0);
+        assert_eq!(t.si_seconds(), Second::new(5.0));
+        t -= Second::new(2.0);
+        assert_eq!(t.si_seconds(), Second::new(3.0));
     }
 }

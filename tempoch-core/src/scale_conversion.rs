@@ -353,6 +353,7 @@ ut1_through_tt!(UTC);
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{ConversionError, TimeContext, UT1, TAI, TDB, TCG, TCB, UTC};
     use qtty::time::Days;
 
     /// TDB-TT at J2000.0: reference value from USNO Circular 179 §2.6 seven-term
@@ -381,5 +382,62 @@ mod tests {
             (result - expected).abs() < 2e-6,
             "TDB-TT at J2100.0: got {result:.9} s, expected {expected:.9} s ± 2 µs"
         );
+    }
+
+    #[test]
+    fn unix_epoch_tai_secs_is_reasonable() {
+        let secs = unix_epoch_tai_secs();
+        // Unix epoch (1970-01-01) is ~30 years before J2000 → negative J2000 offset
+        assert!(secs.value() < 0.0, "expected negative offset, got {secs:?}");
+    }
+
+    #[test]
+    fn ut1_to_tt_nonfinite_rejected() {
+        let ctx = TimeContext::new();
+        let result = <UT1 as ContextScaleConvert<TT>>::convert_with(
+            Seconds::new(f64::NAN),
+            &ctx,
+        );
+        assert_eq!(result.unwrap_err(), ConversionError::NonFinite);
+    }
+
+    #[test]
+    fn tt_to_ut1_nonfinite_rejected() {
+        let ctx = TimeContext::new();
+        let result = <TT as ContextScaleConvert<UT1>>::convert_with(
+            Seconds::new(f64::INFINITY),
+            &ctx,
+        );
+        assert_eq!(result.unwrap_err(), ConversionError::NonFinite);
+    }
+
+    #[test]
+    fn ut1_transitive_conversions() {
+        let ctx = TimeContext::new();
+        let ut1 = Seconds::new(0.0);
+        // UT1 → TAI
+        let tai = <UT1 as ContextScaleConvert<TAI>>::convert_with(ut1, &ctx).unwrap();
+        let back = <TAI as ContextScaleConvert<UT1>>::convert_with(tai, &ctx).unwrap();
+        assert!((back - ut1).abs() < Seconds::new(1e-9));
+
+        // UT1 → TDB
+        let tdb = <UT1 as ContextScaleConvert<TDB>>::convert_with(ut1, &ctx).unwrap();
+        let back = <TDB as ContextScaleConvert<UT1>>::convert_with(tdb, &ctx).unwrap();
+        assert!((back - ut1).abs() < Seconds::new(1e-6));
+
+        // UT1 → TCG
+        let tcg = <UT1 as ContextScaleConvert<TCG>>::convert_with(ut1, &ctx).unwrap();
+        let back = <TCG as ContextScaleConvert<UT1>>::convert_with(tcg, &ctx).unwrap();
+        assert!((back - ut1).abs() < Seconds::new(1e-9));
+
+        // UT1 → TCB
+        let tcb = <UT1 as ContextScaleConvert<TCB>>::convert_with(ut1, &ctx).unwrap();
+        let back = <TCB as ContextScaleConvert<UT1>>::convert_with(tcb, &ctx).unwrap();
+        assert!((back - ut1).abs() < Seconds::new(1e-6));
+
+        // UT1 → UTC
+        let utc = <UT1 as ContextScaleConvert<UTC>>::convert_with(ut1, &ctx).unwrap();
+        let back = <UTC as ContextScaleConvert<UT1>>::convert_with(utc, &ctx).unwrap();
+        assert!((back - ut1).abs() < Seconds::new(1e-9));
     }
 }

@@ -334,4 +334,72 @@ mod tests {
         let back = <DayCount as FormatConvertible<Mjd>>::convert(dc);
         assert_eq!(back, Days::new(51_544.0));
     }
+
+    #[test]
+    fn mjd_canonical_roundtrip() {
+        let mjd = Days::new(51_544.5);
+        let secs = <Mjd as CanonicalRoundtrip>::to_j2000s(mjd);
+        let back = <Mjd as CanonicalRoundtrip>::from_j2000s(secs);
+        assert!((back - mjd).abs() < EPS_D);
+    }
+
+    #[test]
+    fn identity_format_conversions() {
+        let secs = Seconds::new(1_000_000.0);
+        assert_eq!(<J2000s as FormatConvertible<J2000s>>::convert(secs), secs);
+        let days = Days::new(2_451_545.0);
+        assert_eq!(<Jd as FormatConvertible<Jd>>::convert(days), days);
+        assert_eq!(<Mjd as FormatConvertible<Mjd>>::convert(days), days);
+    }
+
+    #[test]
+    fn mjd_jd_round_trip() {
+        let mjd = Days::new(51_544.5);
+        let jd = <Mjd as FormatConvertible<Jd>>::convert(mjd);
+        let back = <Jd as FormatConvertible<Mjd>>::convert(jd);
+        assert!((back - mjd).abs() < EPS_D);
+    }
+
+    #[test]
+    fn gps_jd_round_trip() {
+        // JD values are ~2.4M days; f64 precision at that scale is ~50 µs
+        let gps = Seconds::new(1_000_000.0);
+        let jd = <GpsSecs as FormatConvertible<Jd>>::convert(gps);
+        let back = <Jd as FormatConvertible<GpsSecs>>::convert(jd);
+        assert!((back - gps).abs() < Seconds::new(1e-3));
+    }
+
+    #[test]
+    fn gps_mjd_round_trip() {
+        // MJD values are ~44k days; f64 precision at that scale is ~1e-4 s
+        let gps = Seconds::new(1_000_000.0);
+        let mjd = <GpsSecs as FormatConvertible<Mjd>>::convert(gps);
+        let back = <Mjd as FormatConvertible<GpsSecs>>::convert(mjd);
+        assert!((back - gps).abs() < Seconds::new(1e-3));
+    }
+
+    #[test]
+    fn jd_daycount_and_back() {
+        let jd = Days::new(2_451_545.0);
+        let dc = <Jd as FormatConvertible<DayCount>>::convert(jd);
+        let back = <DayCount as FormatConvertible<Jd>>::convert(dc);
+        // DayCount truncates to whole days; back should be within 1 day of original
+        assert!((back - jd).abs() < Days::new(1.0));
+    }
+
+    #[test]
+    fn j2000s_daycount_and_back() {
+        let secs = Seconds::new(86_400.0);
+        let dc = <J2000s as FormatConvertible<DayCount>>::convert(secs);
+        let back = <DayCount as FormatConvertible<J2000s>>::convert(dc);
+        assert!((back - secs).abs() < Seconds::new(86_400.0));
+    }
+
+    #[test]
+    fn gps_daycount_and_back() {
+        let gps = Seconds::new(1_000_000.0);
+        let dc = <GpsSecs as FormatConvertible<DayCount>>::convert(gps);
+        let back = <DayCount as FormatConvertible<GpsSecs>>::convert(dc);
+        assert!((back - gps).abs() < Seconds::new(86_400.0));
+    }
 }
