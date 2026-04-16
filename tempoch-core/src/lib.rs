@@ -42,7 +42,7 @@ pub use error::ConversionError;
 pub use format::{DayCount, Format, GpsSecs, J2000s, Jd, Mjd, UnixSecs};
 pub use interval::{
     complement_within, intersect_periods, normalize_periods, validate_period_list, Interval,
-    InvalidIntervalError, PeriodListError,
+    InvalidIntervalError, InvalidPeriodError, Period, PeriodListError,
 };
 pub use scale::{ContinuousScale, Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
 pub use time::Time;

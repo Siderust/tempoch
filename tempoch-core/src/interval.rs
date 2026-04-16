@@ -10,6 +10,8 @@
 
 use core::fmt;
 
+use crate::{J2000s, Time};
+
 #[inline]
 fn partial_max<T: PartialOrd + Copy>(a: T, b: T) -> T {
     if a >= b {
@@ -79,17 +81,34 @@ pub struct Interval<T: Copy + PartialOrd> {
     pub end: T,
 }
 
+/// Typed time period on a given scale and format.
+///
+/// This is an alias of [`Interval<Time<S, F>>`](Interval), so all interval
+/// operations are available directly on `Period`.
+pub type Period<S, F = J2000s> = Interval<Time<S, F>>;
+
+/// Backward-compatible alias for period construction validation errors.
+pub type InvalidPeriodError = InvalidIntervalError;
+
 impl<T: Copy + PartialOrd> Interval<T> {
     /// Construct without validation. Prefer [`try_new`](Self::try_new) for
     /// computed inputs.
     #[inline]
-    pub const fn new(start: T, end: T) -> Self {
-        Self { start, end }
+    pub fn new<S: Into<T>, E: Into<T>>(start: S, end: E) -> Self {
+        Self {
+            start: start.into(),
+            end: end.into(),
+        }
     }
 
     /// Validating constructor: rejects `start > end` and NaN endpoints.
     #[inline]
-    pub fn try_new(start: T, end: T) -> Result<Self, InvalidIntervalError> {
+    pub fn try_new<S: Into<T>, E: Into<T>>(
+        start: S,
+        end: E,
+    ) -> Result<Self, InvalidIntervalError> {
+        let start = start.into();
+        let end = end.into();
         if start <= end {
             Ok(Self { start, end })
         } else {
@@ -209,26 +228,28 @@ pub fn normalize_periods<T: Copy + PartialOrd>(periods: &[Interval<T>]) -> Vec<I
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{Mjd, TT};
+    use qtty::Day;
 
     #[test]
     fn try_new_rejects_reversed() {
         assert_eq!(
-            Interval::try_new(2.0_f64, 1.0).unwrap_err(),
+            Interval::<f64>::try_new(2.0_f64, 1.0).unwrap_err(),
             InvalidIntervalError::StartAfterEnd
         );
     }
 
     #[test]
     fn try_new_rejects_nan() {
-        assert!(Interval::try_new(f64::NAN, 0.0).is_err());
+        assert!(Interval::<f64>::try_new(f64::NAN, 0.0).is_err());
     }
 
     #[test]
     fn intersection_half_open() {
-        let a = Interval::new(0.0_f64, 10.0);
-        let b = Interval::new(10.0, 20.0);
+        let a = Interval::<f64>::new(0.0_f64, 10.0);
+        let b = Interval::<f64>::new(10.0, 20.0);
         assert!(a.intersection(&b).is_none());
-        let c = Interval::new(5.0_f64, 15.0);
+        let c = Interval::<f64>::new(5.0_f64, 15.0);
         let x = a.intersection(&c).unwrap();
         assert_eq!(x.start, 5.0);
         assert_eq!(x.end, 10.0);
@@ -236,43 +257,59 @@ mod tests {
 
     #[test]
     fn complement_covers_gaps() {
-        let outer = Interval::new(0.0_f64, 10.0);
-        let inside = vec![Interval::new(1.0_f64, 2.0), Interval::new(4.0, 6.0)];
+        let outer = Interval::<f64>::new(0.0_f64, 10.0);
+        let inside = vec![
+            Interval::<f64>::new(1.0_f64, 2.0),
+            Interval::<f64>::new(4.0, 6.0),
+        ];
         let gaps = complement_within(outer, &inside);
         assert_eq!(gaps.len(), 3);
-        assert_eq!(gaps[0], Interval::new(0.0, 1.0));
-        assert_eq!(gaps[1], Interval::new(2.0, 4.0));
-        assert_eq!(gaps[2], Interval::new(6.0, 10.0));
+        assert_eq!(gaps[0], Interval::<f64>::new(0.0, 1.0));
+        assert_eq!(gaps[1], Interval::<f64>::new(2.0, 4.0));
+        assert_eq!(gaps[2], Interval::<f64>::new(6.0, 10.0));
     }
 
     #[test]
     fn intersect_merge() {
-        let a = vec![Interval::new(0.0_f64, 5.0), Interval::new(10.0, 15.0)];
-        let b = vec![Interval::new(3.0_f64, 12.0)];
+        let a = vec![
+            Interval::<f64>::new(0.0_f64, 5.0),
+            Interval::<f64>::new(10.0, 15.0),
+        ];
+        let b = vec![Interval::<f64>::new(3.0_f64, 12.0)];
         let ix = intersect_periods(&a, &b);
         assert_eq!(ix.len(), 2);
-        assert_eq!(ix[0], Interval::new(3.0, 5.0));
-        assert_eq!(ix[1], Interval::new(10.0, 12.0));
+        assert_eq!(ix[0], Interval::<f64>::new(3.0, 5.0));
+        assert_eq!(ix[1], Interval::<f64>::new(10.0, 12.0));
     }
 
     #[test]
     fn normalize_merges_overlap() {
         let input = vec![
-            Interval::new(5.0_f64, 8.0),
-            Interval::new(0.0, 3.0),
-            Interval::new(2.0, 6.0),
+            Interval::<f64>::new(5.0_f64, 8.0),
+            Interval::<f64>::new(0.0, 3.0),
+            Interval::<f64>::new(2.0, 6.0),
         ];
         let merged = normalize_periods(&input);
         assert_eq!(merged.len(), 1);
-        assert_eq!(merged[0], Interval::new(0.0, 8.0));
+        assert_eq!(merged[0], Interval::<f64>::new(0.0, 8.0));
     }
 
     #[test]
     fn validate_detects_overlap() {
-        let periods = vec![Interval::new(0.0_f64, 5.0), Interval::new(3.0, 8.0)];
+        let periods = vec![
+            Interval::<f64>::new(0.0_f64, 5.0),
+            Interval::<f64>::new(3.0, 8.0),
+        ];
         assert_eq!(
             validate_period_list(&periods),
             Err(PeriodListError::Overlapping { index: 1 })
         );
+    }
+
+    #[test]
+    fn period_accepts_raw_mjd_values() {
+        let p = Period::<TT, Mjd>::new(51_544.5, 51_545.25);
+        assert_eq!(p.start.modified_julian_days(), Day::new(51_544.5));
+        assert_eq!(p.end.modified_julian_days(), Day::new(51_545.25));
     }
 }

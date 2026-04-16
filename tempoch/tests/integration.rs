@@ -3,12 +3,8 @@ use qtty::{Day, Second};
 use tempoch::{
     complement_within,
     constats::{J2000_JD_TT, TT_MINUS_TAI},
-    intersect_periods, Interval, Jd, Mjd, Time, TimeContext, TAI, TT, UT1, UTC,
+    intersect_periods, Jd, Mjd, Period, Time, TimeContext, TAI, TT, UT1, UTC,
 };
-
-fn mjd(value: f64) -> Time<TT, Mjd> {
-    Time::<TT, Mjd>::from_modified_julian_days(Day::new(value)).unwrap()
-}
 
 #[test]
 fn utc_roundtrip_j2000_is_stable() {
@@ -64,14 +60,14 @@ fn utc_leap_second_roundtrip_is_preserved() {
 
 #[test]
 fn interval_set_ops_match_expected_intervals() {
-    let outer = Interval::new(mjd(0.0), mjd(10.0));
+    let outer = Period::<TT, Mjd>::new(0.0, 10.0);
     let a = vec![
-        Interval::new(mjd(1.0), mjd(3.0)),
-        Interval::new(mjd(5.0), mjd(9.0)),
+        Period::<TT, Mjd>::new(1.0, 3.0),
+        Period::<TT, Mjd>::new(5.0, 9.0),
     ];
     let b = vec![
-        Interval::new(mjd(2.0), mjd(4.0)),
-        Interval::new(mjd(7.0), mjd(8.0)),
+        Period::<TT, Mjd>::new(2.0, 4.0),
+        Period::<TT, Mjd>::new(7.0, 8.0),
     ];
 
     let below_b = complement_within(outer, &b);

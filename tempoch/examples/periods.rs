@@ -1,20 +1,12 @@
-use qtty::Day;
 use tempoch::{
-    complement_within, intersect_periods, normalize_periods, validate_period_list, Interval, Mjd,
-    Time, TT,
+    complement_within, intersect_periods, normalize_periods, validate_period_list, Mjd, Period, TT,
 };
 
-type MjdTt = Time<TT, Mjd>;
-
-fn mjd(value: f64) -> MjdTt {
-    Time::<TT, Mjd>::from_modified_julian_days(Day::new(value)).unwrap()
-}
-
 fn main() {
-    let day = Interval::new(mjd(61_000.0), mjd(61_001.0));
+    let day = Period::<TT, Mjd>::new(61_000.0, 61_001.0);
     let windows = normalize_periods(&[
-        Interval::new(mjd(61_000.10), mjd(61_000.30)),
-        Interval::new(mjd(61_000.60), mjd(61_000.85)),
+        Period::<TT, Mjd>::new(61_000.10, 61_000.30),
+        Period::<TT, Mjd>::new(61_000.60, 61_000.85),
     ]);
     validate_period_list(&windows).unwrap();
 
@@ -23,8 +15,8 @@ fn main() {
     println!("Gaps: {}", gaps.len());
 
     let constraints = vec![
-        Interval::new(mjd(61_000.00), mjd(61_000.20)),
-        Interval::new(mjd(61_000.70), mjd(61_001.00)),
+        Period::<TT, Mjd>::new(61_000.00, 61_000.20),
+        Period::<TT, Mjd>::new(61_000.70, 61_001.00),
     ];
     let intersection = intersect_periods(&windows, &constraints);
     println!("Intersection windows: {}", intersection.len());

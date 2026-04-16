@@ -7,10 +7,11 @@ use core::marker::PhantomData;
 
 use super::context::TimeContext;
 use super::error::ConversionError;
-use super::format::Format;
+use super::format::{DayCount, Format, GpsSecs, J2000s, Jd, Mjd, UnixSecs};
 use super::format_conversion::{CanonicalRoundtrip, FormatConvertible};
 use super::scale::{ContinuousScale, Scale};
 use super::scale_conversion::{ContextScaleConvert, InfallibleScaleConvert};
+use qtty::{Day, QuantityI32, QuantityI64, Second};
 use qtty::time::Seconds;
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -105,6 +106,92 @@ impl<S: Scale, F: Format> Time<S, F> {
         F: FormatConvertible<F2>,
     {
         Time::new(F::convert(self.value))
+    }
+}
+
+// ── Raw value conversions for ergonomic construction ─────────────────────
+
+impl<S: Scale> From<Second> for Time<S, J2000s> {
+    #[inline]
+    fn from(value: Second) -> Self {
+        Self::new(value)
+    }
+}
+
+impl<S: Scale> From<f64> for Time<S, J2000s> {
+    #[inline]
+    fn from(value: f64) -> Self {
+        Self::new(Second::new(value))
+    }
+}
+
+impl<S: Scale> From<Day> for Time<S, Jd> {
+    #[inline]
+    fn from(value: Day) -> Self {
+        Self::new(value)
+    }
+}
+
+impl<S: Scale> From<f64> for Time<S, Jd> {
+    #[inline]
+    fn from(value: f64) -> Self {
+        Self::new(Day::new(value))
+    }
+}
+
+impl<S: Scale> From<Day> for Time<S, Mjd> {
+    #[inline]
+    fn from(value: Day) -> Self {
+        Self::new(value)
+    }
+}
+
+impl<S: Scale> From<f64> for Time<S, Mjd> {
+    #[inline]
+    fn from(value: f64) -> Self {
+        Self::new(Day::new(value))
+    }
+}
+
+impl<S: Scale> From<Second> for Time<S, GpsSecs> {
+    #[inline]
+    fn from(value: Second) -> Self {
+        Self::new(value)
+    }
+}
+
+impl<S: Scale> From<f64> for Time<S, GpsSecs> {
+    #[inline]
+    fn from(value: f64) -> Self {
+        Self::new(Second::new(value))
+    }
+}
+
+impl<S: Scale> From<QuantityI64<qtty::unit::Second>> for Time<S, UnixSecs> {
+    #[inline]
+    fn from(value: QuantityI64<qtty::unit::Second>) -> Self {
+        Self::new(value)
+    }
+}
+
+impl<S: Scale> From<i64> for Time<S, UnixSecs> {
+    #[inline]
+    fn from(value: i64) -> Self {
+        Self::new(QuantityI64::new(value))
+    }
+}
+
+impl<S: Scale> From<QuantityI32<qtty::unit::Day>> for Time<S, DayCount> {
+    #[inline]
+    fn from(value: QuantityI32<qtty::unit::Day>) -> Self {
+        Self::new(value)
+    }
+}
+
+impl<S: Scale> From<i32> for Time<S, DayCount> {
+    #[inline]
+    fn from(value: i32) -> Self {
+        Self::new(QuantityI32::new(value))
     }
 }
 
