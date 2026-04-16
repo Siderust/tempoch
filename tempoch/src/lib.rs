@@ -3,14 +3,16 @@
 
 //! Public façade over `tempoch-core`.
 //!
-//! The crate root exposes the axis time model:
+//! The crate root exposes the scale×format time model:
 //!
-//! - [`Time<A>`] for typed instants on a given axis
-//! - [`Axis`] markers such as [`TT`], [`TAI`], [`UTC`], and [`UT1`]
+//! - [`Time<S, F>`] for typed instants on a given scale in a given format
+//! - [`Scale`] markers such as [`TT`], [`TAI`], [`UTC`], and [`UT1`]
+//! - [`Format`] markers such as [`J2000s`], [`Jd`], [`Mjd`]
 //! - [`constats`] for typed epoch and offset constants
 
 pub use tempoch_core::{
-    complement_within, constats, intersect_periods, normalize_periods, validate_period_list, Axis,
-    ConversionError, Interval, InvalidIntervalError, PeriodListError, Time, TimeContext,
+    complement_within, constats, intersect_periods, normalize_periods, validate_period_list,
+    ConversionError, ContinuousScale, DayCount, Format, GpsSecs, Interval, InvalidIntervalError,
+    J2000s, Jd, Mjd, PeriodListError, Scale, Time, TimeContext, UnixSecs,
     DELTA_T_PREDICTION_HORIZON_MJD, TAI, TCB, TCG, TDB, TT, UT1, UTC,
 };

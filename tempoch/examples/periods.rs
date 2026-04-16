@@ -1,13 +1,13 @@
 use qtty::Day;
 use tempoch::{
-    complement_within, intersect_periods, normalize_periods, validate_period_list, Interval,
+    complement_within, intersect_periods, normalize_periods, validate_period_list, Interval, Mjd,
     Time, TT,
 };
 
-type MjdTt = Time<TT>;
+type MjdTt = Time<TT, Mjd>;
 
 fn mjd(value: f64) -> MjdTt {
-    Time::<TT>::from_modified_julian_days(Day::new(value)).unwrap()
+    Time::<TT, Mjd>::from_modified_julian_days(Day::new(value)).unwrap()
 }
 
 fn main() {

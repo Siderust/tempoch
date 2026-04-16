@@ -3,47 +3,55 @@
 
 //! Typed astronomical time primitives.
 //!
-//! The central type is [`Time<A>`], where `A` is an [`Axis`] marker
-//! (`TT`, `TAI`, `UTC`, `UT1`, `TDB`, `TCG`, `TCB`).
+//! The central type is [`Time<S, F>`], where `S` is a [`Scale`] marker
+//! (`TT`, `TAI`, `UTC`, `UT1`, `TDB`, `TCG`, `TCB`) and `F` is a
+//! [`Format`] marker (`J2000s`, `Jd`, `Mjd`, `UnixSecs`, `GpsSecs`,
+//! `DayCount`).
 //!
-//! Axis conversions:
+//! Scale conversions:
 //!
-//! - `.to::<A2>()` — infallible closed-form routes (TT↔TAI, TT↔TDB, UTC↔any,
-//!   etc.). Returns `Time<A2>` directly.
-//! - `.to_with::<A2>(&ctx)` — context-required routes (UT1, via ΔT).
-//!   Returns `Result<Time<A2>, ConversionError>`.
+//! - `.to_scale::<S2>()` — infallible closed-form routes (TT↔TAI, TT↔TDB,
+//!   UTC↔any, etc.). Returns `Time<S2, F>` directly.
+//! - `.to_scale_with::<S2>(&ctx)` — context-required routes (UT1, via ΔT).
+//!   Returns `Result<Time<S2, F>, ConversionError>`.
+//!
+//! Format conversions:
+//!
+//! - `.reformat::<F2>()` — convert to a different format on the same scale.
 //!
 //! See [`constats`] for typed epoch and offset constants.
 
-mod axis;
 mod civil;
 pub mod constats;
 mod context;
-mod conversion;
 mod delta_t;
 pub(crate) mod encoding;
 pub mod error;
+mod format;
+mod format_conversion;
 pub(crate) mod generated;
 mod interval;
+mod scale;
+mod scale_conversion;
 mod sealed;
-mod storage;
 mod time;
 
-pub use axis::{Axis, TAI, TCB, TCG, TDB, TT, UT1, UTC};
 pub use context::TimeContext;
 pub use delta_t::DELTA_T_PREDICTION_HORIZON_MJD;
 pub use error::ConversionError;
+pub use format::{DayCount, Format, GpsSecs, J2000s, Jd, Mjd, UnixSecs};
 pub use interval::{
     complement_within, intersect_periods, normalize_periods, validate_period_list, Interval,
     InvalidIntervalError, PeriodListError,
 };
+pub use scale::{ContinuousScale, Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
 pub use time::Time;
 
 #[cfg(test)]
 mod size_tests {
     use super::*;
     #[test]
-    fn continuous_time_is_eight_bytes() {
+    fn continuous_j2000s_is_eight_bytes() {
         assert_eq!(core::mem::size_of::<Time<TT>>(), 8);
         assert_eq!(core::mem::size_of::<Time<TAI>>(), 8);
         assert_eq!(core::mem::size_of::<Time<TDB>>(), 8);
@@ -52,7 +60,16 @@ mod size_tests {
         assert_eq!(core::mem::size_of::<Time<UT1>>(), 8);
     }
     #[test]
-    fn utc_time_has_leap_label() {
-        assert_eq!(core::mem::size_of::<Time<UTC>>(), 16);
+    fn utc_j2000s_is_eight_bytes() {
+        // No longer 16 — leap flag is computed on demand.
+        assert_eq!(core::mem::size_of::<Time<UTC>>(), 8);
+    }
+    #[test]
+    fn daycount_is_four_bytes() {
+        assert_eq!(core::mem::size_of::<Time<TT, DayCount>>(), 4);
+    }
+    #[test]
+    fn jd_is_eight_bytes() {
+        assert_eq!(core::mem::size_of::<Time<TT, Jd>>(), 8);
     }
 }
