@@ -427,7 +427,10 @@ mod tests {
         );
         // J2000 (2000-01-01) must be well within the supported range.
         let present = delta_t_seconds(Day::new(2_451_545.0));
-        assert!(present.is_ok(), "expected Ok within horizon, got {present:?}");
+        assert!(
+            present.is_ok(),
+            "expected Ok within horizon, got {present:?}"
+        );
     }
 
     /// C0 continuity at the 1973 biennial→modern stitch.

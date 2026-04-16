@@ -16,9 +16,7 @@
 use super::constats::{IAU_TIME_EPOCH_T0_JD, L_B, L_G, TDB0, TT_MINUS_TAI};
 use super::context::TimeContext;
 use super::delta_t::delta_t_seconds;
-use super::encoding::{
-    j2000_seconds_to_jd, jd_to_j2000_seconds, jd_to_julian_centuries,
-};
+use super::encoding::{j2000_seconds_to_jd, jd_to_j2000_seconds, jd_to_julian_centuries};
 use super::error::ConversionError;
 use super::scale::{Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
 use super::sealed::Sealed;
