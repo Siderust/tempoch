@@ -78,28 +78,6 @@ fn default_context() -> TimeContext {
 }
 
 #[inline]
-fn utc_to_unix_seconds(datetime: DateTime<Utc>) -> Seconds {
-    Seconds::new(datetime.timestamp() as f64)
-        + Seconds::new(datetime.timestamp_subsec_nanos() as f64 / 1e9)
-}
-
-#[inline]
-fn unix_seconds_to_utc(seconds: Seconds) -> Option<DateTime<Utc>> {
-    if !seconds.is_finite() {
-        return None;
-    }
-
-    let mut whole = seconds.floor();
-    let mut nanos = (((seconds - whole) / Seconds::new(1.0)) * 1e9).round();
-    if nanos >= 1e9 {
-        whole += Seconds::new(1.0);
-        nanos = 0.0;
-    }
-
-    DateTime::<Utc>::from_timestamp((whole / Seconds::new(1.0)) as i64, nanos as u32)
-}
-
-#[inline]
 fn tt_from_jd(jd: f64) -> Result<Time<TT>, ConversionError> {
     Time::<TT, Jd>::from_julian_days(Day::new(jd)).map(|t| t.reformat())
 }
@@ -168,9 +146,10 @@ fn tt_to_scale_value(
         TempochScaleId::UT => {
             Ok(tt.to_scale_with::<UT1>(ctx)?.reformat::<Jd>().julian_days() / Day::new(1.0))
         }
-        TempochScaleId::UnixTime => {
-            Ok(utc_to_unix_seconds(tt.to_scale::<UTC>().try_to_chrono()?) / Seconds::new(1.0))
-        }
+        TempochScaleId::UnixTime => tt
+            .to_scale::<UTC>()
+            .unix_seconds()
+            .map(|s| s / Seconds::new(1.0)),
     }
 }
 
@@ -189,7 +168,13 @@ pub(crate) fn scale_value_to_jd(value: f64, scale: TempochScaleId) -> Result<f64
 /// Convert a UTC instant to a native scalar in the requested scale.
 pub(crate) fn time_from_utc_value(datetime: DateTime<Utc>, scale: TempochScaleId) -> Option<f64> {
     if matches!(scale, TempochScaleId::UnixTime) {
-        return Some(utc_to_unix_seconds(datetime) / Seconds::new(1.0));
+        // Validate against UTC-history bounds via the civil API (rejects pre-1961
+        // dates), then return the POSIX timestamp directly.  A UTC→TT→UTC
+        // round-trip would silently accumulate ~10 µs of error because
+        // TT_MINUS_TAI (32.184 s) is not exactly representable in f64.
+        Time::<UTC>::try_from_chrono(datetime).ok()?;
+        let nanos = datetime.timestamp_subsec_nanos().min(999_999_999);
+        return Some(datetime.timestamp() as f64 + nanos as f64 / 1e9);
     }
 
     let ctx = default_context();
@@ -202,7 +187,13 @@ pub(crate) fn time_from_utc_value(datetime: DateTime<Utc>, scale: TempochScaleId
 /// Convert a native scalar in the requested scale to UTC.
 pub(crate) fn time_to_utc_value(value: f64, scale: TempochScaleId) -> Option<DateTime<Utc>> {
     if matches!(scale, TempochScaleId::UnixTime) {
-        return unix_seconds_to_utc(Seconds::new(value));
+        // Route through the civil API so that out-of-history-range Unix
+        // timestamps and non-finite values are rejected consistently with
+        // all other scales.
+        return Time::<UTC>::from_unix_seconds(Seconds::new(value))
+            .ok()?
+            .try_to_chrono()
+            .ok();
     }
 
     let ctx = default_context();

@@ -445,9 +445,13 @@ pub extern "C" fn tempoch_unix_to_seconds(unix: f64) -> f64 {
 /// For dates within the compiled data range this is the observed/predicted
 /// value from USNO data. For dates beyond [`tempoch::DELTA_T_PREDICTION_HORIZON_MJD`]
 /// the result is a quadratic tail-fit extrapolation; accuracy degrades
-/// rapidly past the horizon. The value is never `NaN`.
+/// rapidly past the horizon. The value is never `NaN`; non-finite `jd`
+/// (infinity or NaN) returns `0.0`.
 #[no_mangle]
 pub extern "C" fn tempoch_delta_t_seconds(jd: f64) -> f64 {
+    if !jd.is_finite() {
+        return 0.0;
+    }
     delta_t_seconds(Day::new(jd)) / qtty::Second::new(1.0)
 }
 

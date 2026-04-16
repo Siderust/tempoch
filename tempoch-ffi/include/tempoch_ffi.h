@@ -286,7 +286,8 @@ tempoch_status_t tempoch_period_mjd_intersection(struct tempoch_period_mjd_t a,
 // For dates within the compiled data range this is the observed/predicted
 // value from USNO data. For dates beyond [`tempoch::DELTA_T_PREDICTION_HORIZON_MJD`]
 // the result is a quadratic tail-fit extrapolation; accuracy degrades
-// rapidly past the horizon. The value is never `NaN`.
+// rapidly past the horizon. The value is never `NaN`; non-finite `jd`
+// (infinity or NaN) returns `0.0`.
  double tempoch_delta_t_seconds(double jd);
 
 // Convert a `double` time value from one scale to another.

@@ -186,7 +186,12 @@ impl FormatConvertible<J2000s> for GpsSecs {
 impl FormatConvertible<DayCount> for Mjd {
     #[inline]
     fn convert(src: Days) -> QuantityI32<Day> {
-        QuantityI32::<Day>::new(src.value() as i32)
+        let floored = src.value().floor();
+        debug_assert!(
+            floored >= i32::MIN as f64 && floored <= i32::MAX as f64,
+            "MJD {floored} out of DayCount (i32) range",
+        );
+        QuantityI32::<Day>::new(floored as i32)
     }
 }
 

@@ -115,6 +115,7 @@ impl<T: Copy + PartialOrd> Interval<T> {
 
     /// Overlap as a half-open range. Returns `None` if the intervals touch
     /// only at a point or do not overlap.
+    #[inline]
     pub fn intersection(&self, other: &Self) -> Option<Self> {
         let start = partial_max(self.start, other.start);
         let end = partial_min(self.end, other.end);
@@ -132,7 +133,7 @@ pub fn complement_within<T: Copy + PartialOrd>(
     outer: Interval<T>,
     periods: &[Interval<T>],
 ) -> Vec<Interval<T>> {
-    let mut gaps = Vec::new();
+    let mut gaps = Vec::with_capacity(periods.len().saturating_add(1));
     let mut cursor = outer.start;
     for p in periods {
         if p.start > cursor {
@@ -153,7 +154,7 @@ pub fn intersect_periods<T: Copy + PartialOrd>(
     a: &[Interval<T>],
     b: &[Interval<T>],
 ) -> Vec<Interval<T>> {
-    let mut result = Vec::new();
+    let mut result = Vec::with_capacity(a.len().min(b.len()));
     let (mut i, mut j) = (0, 0);
     while i < a.len() && j < b.len() {
         let start = partial_max(a[i].start, b[j].start);
@@ -174,25 +175,28 @@ pub fn intersect_periods<T: Copy + PartialOrd>(
 pub fn validate_period_list<T: Copy + PartialOrd>(
     periods: &[Interval<T>],
 ) -> Result<(), PeriodListError> {
-    for (i, p) in periods.iter().enumerate() {
-        if p.start
-            .partial_cmp(&p.end)
-            .is_none_or(|o| o == core::cmp::Ordering::Greater)
+    let mut prev: Option<Interval<T>> = None;
+    for (i, period) in periods.iter().copied().enumerate() {
+        if period
+            .start
+            .partial_cmp(&period.end)
+            .is_none_or(|ordering| ordering == core::cmp::Ordering::Greater)
         {
             return Err(PeriodListError::InvalidInterval { index: i });
         }
-    }
-    for i in 1..periods.len() {
-        if periods[i - 1]
-            .start
-            .partial_cmp(&periods[i].start)
-            .is_none_or(|o| o == core::cmp::Ordering::Greater)
-        {
-            return Err(PeriodListError::Unsorted { index: i });
+        if let Some(previous) = prev {
+            if previous
+                .start
+                .partial_cmp(&period.start)
+                .is_none_or(|ordering| ordering == core::cmp::Ordering::Greater)
+            {
+                return Err(PeriodListError::Unsorted { index: i });
+            }
+            if previous.end > period.start {
+                return Err(PeriodListError::Overlapping { index: i });
+            }
         }
-        if periods[i - 1].end > periods[i].start {
-            return Err(PeriodListError::Overlapping { index: i });
-        }
+        prev = Some(period);
     }
     Ok(())
 }
@@ -203,20 +207,22 @@ pub fn normalize_periods<T: Copy + PartialOrd>(periods: &[Interval<T>]) -> Vec<I
         return Vec::new();
     }
     let mut sorted: Vec<_> = periods.to_vec();
-    sorted.sort_by(|a, b| {
+    sorted.sort_unstable_by(|a, b| {
         a.start
             .partial_cmp(&b.start)
             .unwrap_or(core::cmp::Ordering::Equal)
     });
-    let mut merged = vec![sorted[0]];
-    for p in &sorted[1..] {
-        let last = merged.last_mut().unwrap();
-        if p.start <= last.end {
-            if p.end > last.end {
-                last.end = p.end;
+    let mut merged = Vec::with_capacity(sorted.len());
+    merged.push(sorted[0]);
+    for period in sorted.into_iter().skip(1) {
+        if let Some(last) = merged.last_mut() {
+            if period.start <= last.end {
+                if period.end > last.end {
+                    last.end = period.end;
+                }
+            } else {
+                merged.push(period);
             }
-        } else {
-            merged.push(*p);
         }
     }
     merged

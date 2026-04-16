@@ -66,17 +66,8 @@ pub(crate) fn try_tai_minus_utc_mjd(mjd_utc: Days) -> Option<Seconds> {
     if mjd_utc < UTC_TAI_HISTORY_START_MJD {
         return None;
     }
-    let mut lo = 0usize;
-    let mut hi = UTC_TAI_SEGMENTS.len();
-    while lo < hi {
-        let mid = lo + (hi - lo) / 2;
-        if UTC_TAI_SEGMENTS[mid].start_mjd_days() <= mjd_utc {
-            lo = mid + 1;
-        } else {
-            hi = mid;
-        }
-    }
-    let segment = UTC_TAI_SEGMENTS[lo - 1];
+    let idx = UTC_TAI_SEGMENTS.partition_point(|segment| segment.start_mjd_days() <= mjd_utc);
+    let segment = UTC_TAI_SEGMENTS[idx - 1];
     Some(utc_offset_seconds_in_segment(mjd_utc, segment))
 }
 

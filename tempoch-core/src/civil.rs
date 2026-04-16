@@ -38,7 +38,7 @@ use super::scale_conversion::{
     try_tai_minus_utc_mjd, tt_mjd_to_utc_mjd_in_segment, utc_mjd_to_tt_mjd_in_segment,
 };
 use super::time::Time;
-use crate::generated::time_data::UTC_TAI_SEGMENTS;
+use crate::generated::time_data::{UtcTaiSegment, UTC_TAI_SEGMENTS};
 use chrono::{DateTime, Utc};
 use qtty::time::{Days, Nanoseconds, Seconds};
 use qtty::unit::{Day, Nanosecond, Second as SecondUnit};
@@ -46,7 +46,52 @@ use qtty::Second;
 
 const NANOS_PER_SECOND: Nanoseconds = Nanoseconds::new(1_000_000_000.0);
 
+#[derive(Clone, Copy)]
+enum UtcTaiRegion {
+    Segment(UtcTaiSegment),
+    Leap {
+        end_mjd: Days,
+        end_tt: Days,
+        next_start_tt: Days,
+    },
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────
+
+#[inline]
+fn segment_start_tt(segment: UtcTaiSegment) -> Days {
+    utc_mjd_to_tt_mjd_in_segment(segment.start_mjd_days(), segment)
+}
+
+#[inline]
+fn locate_utc_region_from_tt_mjd(mjd_tt: Days) -> Result<UtcTaiRegion, ConversionError> {
+    let first = UTC_TAI_SEGMENTS[0];
+    if mjd_tt < segment_start_tt(first) - UTC_INTERVAL_EPS {
+        return Err(ConversionError::UtcHistoryUnsupported);
+    }
+
+    let idx = UTC_TAI_SEGMENTS
+        .partition_point(|segment| segment_start_tt(*segment) <= mjd_tt + UTC_INTERVAL_EPS);
+    let segment = UTC_TAI_SEGMENTS[idx.saturating_sub(1)];
+
+    if let Some(end_mjd) = segment.end_mjd_days() {
+        let end_tt = utc_mjd_to_tt_mjd_in_segment(end_mjd, segment);
+        if mjd_tt >= end_tt - UTC_INTERVAL_EPS {
+            if let Some(next) = UTC_TAI_SEGMENTS.get(idx).copied() {
+                let next_start_tt = segment_start_tt(next);
+                if mjd_tt < next_start_tt - UTC_INTERVAL_EPS {
+                    return Ok(UtcTaiRegion::Leap {
+                        end_mjd,
+                        end_tt,
+                        next_start_tt,
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(UtcTaiRegion::Segment(segment))
+}
 
 #[inline]
 fn datetime_from_seconds_since_epoch(seconds_since_epoch: Seconds) -> Option<DateTime<Utc>> {
@@ -91,26 +136,16 @@ fn utc_from_tai_seconds(tai_secs: Seconds) -> Result<DateTime<Utc>, ConversionEr
     let jd_tt: Days = j2000_seconds_to_jd(tai_secs + TT_MINUS_TAI);
     let mjd_tt = jd_to_mjd(jd_tt);
 
-    let first_start_tt =
-        utc_mjd_to_tt_mjd_in_segment(UTC_TAI_SEGMENTS[0].start_mjd_days(), UTC_TAI_SEGMENTS[0]);
-    if mjd_tt < first_start_tt - UTC_INTERVAL_EPS {
-        return Err(ConversionError::UtcHistoryUnsupported);
-    }
-
-    for window in UTC_TAI_SEGMENTS.windows(2) {
-        let segment = window[0];
-        let next = window[1];
-        let end_mjd = segment
-            .end_mjd_days()
-            .expect("all non-terminal UTC-TAI segments must have an end");
-        let end_tt = utc_mjd_to_tt_mjd_in_segment(end_mjd, segment);
-        if mjd_tt < end_tt - UTC_INTERVAL_EPS {
+    match locate_utc_region_from_tt_mjd(mjd_tt)? {
+        UtcTaiRegion::Segment(segment) => {
             let mjd_utc = tt_mjd_to_utc_mjd_in_segment(mjd_tt, segment);
-            return datetime_from_utc_mjd(mjd_utc).ok_or(ConversionError::OutOfRange);
+            datetime_from_utc_mjd(mjd_utc).ok_or(ConversionError::OutOfRange)
         }
-
-        let next_start_tt = utc_mjd_to_tt_mjd_in_segment(next.start_mjd_days(), next);
-        if mjd_tt < next_start_tt - UTC_INTERVAL_EPS {
+        UtcTaiRegion::Leap {
+            end_mjd,
+            end_tt,
+            next_start_tt,
+        } => {
             let boundary = datetime_from_utc_mjd(end_mjd).ok_or(ConversionError::OutOfRange)?;
             let base_secs = boundary.timestamp() - 1;
             let leap_nanos: Nanoseconds =
@@ -122,16 +157,10 @@ fn utc_from_tai_seconds(tai_secs: Seconds) -> Result<DateTime<Utc>, ConversionEr
                 .max(Nanoseconds::one());
             let max_nanos: Nanoseconds = NANOS_PER_SECOND + window_nanos - Nanoseconds::one();
             let nanos: Nanoseconds = leap_nanos.round().clamp(NANOS_PER_SECOND, max_nanos);
-            return DateTime::<Utc>::from_timestamp(base_secs, (nanos / Nanoseconds::one()) as u32)
-                .ok_or(ConversionError::OutOfRange);
+            DateTime::<Utc>::from_timestamp(base_secs, (nanos / Nanoseconds::one()) as u32)
+                .ok_or(ConversionError::OutOfRange)
         }
     }
-
-    let last = *UTC_TAI_SEGMENTS
-        .last()
-        .expect("UTC-TAI history must contain at least one segment");
-    let mjd_utc = tt_mjd_to_utc_mjd_in_segment(mjd_tt, last);
-    datetime_from_utc_mjd(mjd_utc).ok_or(ConversionError::OutOfRange)
 }
 
 /// Return `true` when `tai_secs` (TAI-seconds-since-J2000-TT) falls inside a
@@ -142,22 +171,10 @@ fn utc_from_tai_seconds(tai_secs: Seconds) -> Result<DateTime<Utc>, ConversionEr
 fn tai_seconds_is_in_leap_window(tai_secs: Second) -> bool {
     let jd_tt: Days = j2000_seconds_to_jd(tai_secs + TT_MINUS_TAI);
     let mjd_tt = jd_to_mjd(jd_tt);
-    for window in UTC_TAI_SEGMENTS.windows(2) {
-        let segment = window[0];
-        let next = window[1];
-        let end_mjd = match segment.end_mjd_days() {
-            Some(d) => d,
-            None => continue,
-        };
-        let end_tt = utc_mjd_to_tt_mjd_in_segment(end_mjd, segment);
-        let next_start_tt = utc_mjd_to_tt_mjd_in_segment(next.start_mjd_days(), next);
-        // The leap window is [end_tt, next_start_tt); any TT value inside it
-        // maps to 23:59:60.x in UTC.
-        if mjd_tt >= end_tt - UTC_INTERVAL_EPS && mjd_tt < next_start_tt - UTC_INTERVAL_EPS {
-            return true;
-        }
-    }
-    false
+    matches!(
+        locate_utc_region_from_tt_mjd(mjd_tt),
+        Ok(UtcTaiRegion::Leap { .. })
+    )
 }
 
 /// Convert a chrono DateTime<Utc> to TAI-seconds-since-J2000-TT.
