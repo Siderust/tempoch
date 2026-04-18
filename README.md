@@ -147,10 +147,11 @@ assert_eq!(gaps.len(), 3);
 
 ## Examples
 
-- `cargo run --example quickstart`
-- `cargo run --example periods`
-- `cargo run --example serde --features serde`
-- `cargo run --example timescales`
+- `cargo run --example 01_quickstart`
+- `cargo run --example 02_timescales`
+- `cargo run --example 03_formats`
+- `cargo run --example 04_periods`
+- `cargo run --example 05_serde --features serde`
 
 ## Runtime Time Data
 
