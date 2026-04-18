@@ -42,6 +42,7 @@ jobs:
         run: |
           set -euo pipefail
           git add \
+            tempoch-core/src/generated/eop_data.rs \
             tempoch-core/src/generated/time_data.rs \
             tempoch-core/src/generated/time_data.provenance.json
           if git diff --cached --quiet; then

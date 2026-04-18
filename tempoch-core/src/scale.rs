@@ -102,9 +102,20 @@ define_continuous_scale!(
 define_continuous_scale!(
     /// Barycentric Dynamical Time.
     ///
-    /// Differs from TT by a modeled periodic term (Fairhead–Bretagnon, <30 µs).
-    /// The conversion is context-free because the model has no runtime-settable
-    /// parameters.
+    /// Differs from TT by a modeled periodic term using the seven-term
+    /// Fairhead–Bretagnon truncation from USNO Circular 179.
+    ///
+    /// The built-in approximation is context-free because the model has no
+    /// runtime-settable parameters, but its advertised high-accuracy regime is
+    /// finite: the implementation is documented to stay within about 2 µs only
+    /// over the interval bracketed by
+    /// [`TDB_TT_MODEL_HIGH_ACCURACY_START_JD`] and
+    /// [`TDB_TT_MODEL_HIGH_ACCURACY_END_JD`] (roughly 1600-01-01 to
+    /// 2200-01-01 TT). Outside that interval conversions remain available, but
+    /// the crate does not claim microsecond-level scientific accuracy.
+    ///
+    /// [`TDB_TT_MODEL_HIGH_ACCURACY_START_JD`]: crate::constats::TDB_TT_MODEL_HIGH_ACCURACY_START_JD
+    /// [`TDB_TT_MODEL_HIGH_ACCURACY_END_JD`]: crate::constats::TDB_TT_MODEL_HIGH_ACCURACY_END_JD
     TDB = "TDB"
 );
 

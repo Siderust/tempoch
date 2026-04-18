@@ -16,12 +16,16 @@
 use super::constats::{IAU_TIME_EPOCH_T0_JD, L_B, L_G, TDB0, TT_MINUS_TAI};
 use super::context::TimeContext;
 use super::delta_t::delta_t_seconds;
-use super::encoding::{j2000_seconds_to_jd, jd_to_j2000_seconds, jd_to_julian_centuries};
+use super::encoding::{
+    j2000_seconds_to_jd, jd_to_j2000_seconds, jd_to_julian_centuries, jd_to_mjd,
+};
 use super::error::ConversionError;
 use super::scale::{Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
 use super::sealed::Sealed;
 use crate::generated::time_data::{UtcTaiSegment, UTC_TAI_SEGMENTS};
 use crate::generated::{PRE_1961_TAI_MINUS_UTC_APPROX, UTC_TAI_HISTORY_START_MJD};
+#[cfg(feature = "runtime-data")]
+use crate::runtime_data::RuntimeTimeContext;
 use qtty::time::{Days, Seconds};
 use qtty::unit::Day;
 
@@ -110,6 +114,29 @@ pub(crate) trait InfallibleScaleConvert<S2: Scale>: Scale + Sealed {
 /// Witness that converting `Self → S2` requires a `TimeContext` (UT1 routes).
 pub(crate) trait ContextScaleConvert<S2: Scale>: Scale + Sealed {
     fn convert_with(src: Seconds, ctx: &TimeContext) -> Result<Seconds, ConversionError>;
+}
+
+#[cfg(feature = "runtime-data")]
+pub(crate) trait RuntimeContextScaleConvert<S2: Scale>: Scale + Sealed {
+    fn convert_with_runtime(
+        src: Seconds,
+        ctx: &RuntimeTimeContext,
+    ) -> Result<Seconds, ConversionError>;
+}
+
+#[cfg(feature = "runtime-data")]
+impl<S, S2> RuntimeContextScaleConvert<S2> for S
+where
+    S: Scale + Sealed + InfallibleScaleConvert<S2>,
+    S2: Scale,
+{
+    #[inline]
+    fn convert_with_runtime(
+        src: Seconds,
+        _ctx: &RuntimeTimeContext,
+    ) -> Result<Seconds, ConversionError> {
+        Ok(<S as InfallibleScaleConvert<S2>>::convert(src))
+    }
 }
 
 // ── Identity ──────────────────────────────────────────────────────────────
@@ -295,21 +322,73 @@ utc_through_tai!(TCB);
 // ΔT = TT − UT1 is a function of the UT1-axis JD. `delta_t_seconds` returns
 // `Err(Ut1HorizonExceeded)` for dates beyond the compiled prediction horizon.
 
+/// ΔT = TT − UT1 at a UT1-axis JD, consulting the context's EOP source
+/// when available and falling back to the compiled monthly ΔT series
+/// otherwise.
+///
+/// When the context provides an EOP-derived UT1 − UTC *and* the UTC-TAI
+/// history also covers the same MJD, we compose the identity
+/// `ΔT = (TT − TAI) + (TAI − UTC) − (UT1 − UTC)` instead of interpolating
+/// the coarser monthly ΔT table. UTC-TAI lookup uses the UT1-axis MJD
+/// directly; the sub-second axis difference never crosses a leap-second
+/// boundary (which sits at midnight UTC, i.e. integer MJD_UTC).
+#[inline]
+fn context_delta_t(jd_ut1: Days, ctx: &TimeContext) -> Result<Seconds, ConversionError> {
+    let mjd_ut1 = jd_to_mjd(jd_ut1);
+    if let Some(dut1) = ctx.ut1_minus_utc(mjd_ut1) {
+        if let Some(tai_minus_utc) = try_tai_minus_utc_mjd(mjd_ut1) {
+            return Ok(TT_MINUS_TAI + tai_minus_utc - dut1);
+        }
+    }
+    delta_t_seconds(jd_ut1)
+}
+
+#[cfg(feature = "runtime-data")]
+#[inline]
+fn runtime_context_delta_t(
+    jd_ut1: Days,
+    ctx: &RuntimeTimeContext,
+) -> Result<Seconds, ConversionError> {
+    let mjd_ut1 = jd_to_mjd(jd_ut1);
+    if let Some(dut1) = ctx.ut1_minus_utc(mjd_ut1) {
+        if let Some(tai_minus_utc) = ctx.try_tai_minus_utc_mjd(mjd_ut1) {
+            return Ok(TT_MINUS_TAI + tai_minus_utc - dut1);
+        }
+    }
+    ctx.delta_t_seconds(jd_ut1)
+}
+
 impl ContextScaleConvert<TT> for UT1 {
     #[inline]
-    fn convert_with(src: Seconds, _ctx: &TimeContext) -> Result<Seconds, ConversionError> {
+    fn convert_with(src: Seconds, ctx: &TimeContext) -> Result<Seconds, ConversionError> {
         if !src.is_finite() {
             return Err(ConversionError::NonFinite);
         }
         let jd_ut1: Days = j2000_seconds_to_jd(src);
-        let dt = delta_t_seconds(jd_ut1)?;
+        let dt = context_delta_t(jd_ut1, ctx)?;
+        Ok(src + dt)
+    }
+}
+
+#[cfg(feature = "runtime-data")]
+impl RuntimeContextScaleConvert<TT> for UT1 {
+    #[inline]
+    fn convert_with_runtime(
+        src: Seconds,
+        ctx: &RuntimeTimeContext,
+    ) -> Result<Seconds, ConversionError> {
+        if !src.is_finite() {
+            return Err(ConversionError::NonFinite);
+        }
+        let jd_ut1 = j2000_seconds_to_jd(src);
+        let dt = runtime_context_delta_t(jd_ut1, ctx)?;
         Ok(src + dt)
     }
 }
 
 impl ContextScaleConvert<UT1> for TT {
     #[inline]
-    fn convert_with(src: Seconds, _ctx: &TimeContext) -> Result<Seconds, ConversionError> {
+    fn convert_with(src: Seconds, ctx: &TimeContext) -> Result<Seconds, ConversionError> {
         if !src.is_finite() {
             return Err(ConversionError::NonFinite);
         }
@@ -318,7 +397,27 @@ impl ContextScaleConvert<UT1> for TT {
         let mut ut1_secs = src;
         for _ in 0..3 {
             let jd_ut1: Days = j2000_seconds_to_jd(ut1_secs);
-            let dt = delta_t_seconds(jd_ut1)?;
+            let dt = context_delta_t(jd_ut1, ctx)?;
+            ut1_secs = src - dt;
+        }
+        Ok(ut1_secs)
+    }
+}
+
+#[cfg(feature = "runtime-data")]
+impl RuntimeContextScaleConvert<UT1> for TT {
+    #[inline]
+    fn convert_with_runtime(
+        src: Seconds,
+        ctx: &RuntimeTimeContext,
+    ) -> Result<Seconds, ConversionError> {
+        if !src.is_finite() {
+            return Err(ConversionError::NonFinite);
+        }
+        let mut ut1_secs = src;
+        for _ in 0..3 {
+            let jd_ut1 = j2000_seconds_to_jd(ut1_secs);
+            let dt = runtime_context_delta_t(jd_ut1, ctx)?;
             ut1_secs = src - dt;
         }
         Ok(ut1_secs)
@@ -349,6 +448,44 @@ ut1_through_tt!(TDB);
 ut1_through_tt!(TCG);
 ut1_through_tt!(TCB);
 ut1_through_tt!(UTC);
+
+#[cfg(feature = "runtime-data")]
+macro_rules! runtime_ut1_through_tt {
+    ($scale:ty) => {
+        impl RuntimeContextScaleConvert<$scale> for UT1 {
+            #[inline]
+            fn convert_with_runtime(
+                src: Seconds,
+                ctx: &RuntimeTimeContext,
+            ) -> Result<Seconds, ConversionError> {
+                let tt = <UT1 as RuntimeContextScaleConvert<TT>>::convert_with_runtime(src, ctx)?;
+                Ok(<TT as InfallibleScaleConvert<$scale>>::convert(tt))
+            }
+        }
+
+        impl RuntimeContextScaleConvert<UT1> for $scale {
+            #[inline]
+            fn convert_with_runtime(
+                src: Seconds,
+                ctx: &RuntimeTimeContext,
+            ) -> Result<Seconds, ConversionError> {
+                let tt = <$scale as InfallibleScaleConvert<TT>>::convert(src);
+                <TT as RuntimeContextScaleConvert<UT1>>::convert_with_runtime(tt, ctx)
+            }
+        }
+    };
+}
+
+#[cfg(feature = "runtime-data")]
+runtime_ut1_through_tt!(TAI);
+#[cfg(feature = "runtime-data")]
+runtime_ut1_through_tt!(TDB);
+#[cfg(feature = "runtime-data")]
+runtime_ut1_through_tt!(TCG);
+#[cfg(feature = "runtime-data")]
+runtime_ut1_through_tt!(TCB);
+#[cfg(feature = "runtime-data")]
+runtime_ut1_through_tt!(UTC);
 
 #[cfg(test)]
 mod tests {
@@ -434,5 +571,45 @@ mod tests {
         let utc = <UT1 as ContextScaleConvert<UTC>>::convert_with(ut1, &ctx).unwrap();
         let back = <UTC as ContextScaleConvert<UT1>>::convert_with(utc, &ctx).unwrap();
         assert!((back - ut1).abs() < Seconds::new(1e-9));
+    }
+
+    /// Within EOP coverage, `with_builtin_eop()` takes the daily ΔT path.
+    /// Sanity checks: ΔT is finite, stays within ~1 s of the monthly-table
+    /// path (the two disagree only at the DUT1 sub-second level), and a
+    /// TT→UT1 round-trip is stable.
+    #[test]
+    fn tt_to_ut1_uses_builtin_eop_within_coverage() {
+        // MJD 57000 ≈ 2014-12-09; well inside the EOP observed range.
+        let jd_ut1 = Days::new(2_400_000.5 + 57_000.0);
+        let ctx_default = TimeContext::new();
+        let ctx_eop = TimeContext::with_builtin_eop();
+
+        let dt_default = context_delta_t(jd_ut1, &ctx_default).unwrap();
+        let dt_eop = context_delta_t(jd_ut1, &ctx_eop).unwrap();
+
+        assert!(dt_default.is_finite() && dt_eop.is_finite());
+        assert!(
+            (dt_eop - dt_default).abs() < Seconds::new(1.0),
+            "EOP ΔT {dt_eop:?} should agree with default ΔT {dt_default:?} within ~1 s"
+        );
+        // The two paths are not bit-identical: EOP consumes daily DUT1
+        // while default consumes monthly ΔT.
+        assert_ne!(dt_eop, dt_default);
+
+        let src_tt = jd_to_j2000_seconds(jd_ut1);
+        let ut1 = <TT as ContextScaleConvert<UT1>>::convert_with(src_tt, &ctx_eop).unwrap();
+        let tt_back = <UT1 as ContextScaleConvert<TT>>::convert_with(ut1, &ctx_eop).unwrap();
+        assert!((tt_back - src_tt).abs() < Seconds::new(1e-9));
+    }
+
+    /// Outside EOP coverage, `with_builtin_eop()` falls back to the monthly
+    /// ΔT path and matches the default context bit-for-bit.
+    #[test]
+    fn builtin_eop_falls_back_outside_coverage() {
+        // JD 2_000_000.5 ≈ 1858-11-16 (MJD 0), far before any EOP data.
+        let jd_ut1 = Days::new(2_000_000.5);
+        let dt_default = context_delta_t(jd_ut1, &TimeContext::new()).unwrap();
+        let dt_eop = context_delta_t(jd_ut1, &TimeContext::with_builtin_eop()).unwrap();
+        assert_eq!(dt_default, dt_eop);
     }
 }

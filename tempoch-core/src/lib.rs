@@ -26,11 +26,14 @@ pub mod constats;
 mod context;
 mod delta_t;
 pub(crate) mod encoding;
+pub mod eop;
 pub mod error;
 mod format;
 mod format_conversion;
 pub(crate) mod generated;
 mod interval;
+#[cfg(feature = "runtime-data")]
+pub mod runtime_data;
 mod scale;
 mod scale_conversion;
 mod sealed;
@@ -40,7 +43,9 @@ pub use context::TimeContext;
 pub use delta_t::{delta_t_seconds, delta_t_seconds_extrapolated, DELTA_T_PREDICTION_HORIZON_MJD};
 pub use error::ConversionError;
 pub use format::{DayCount, Format, GpsSecs, J2000s, Jd, Mjd, UnixSecs};
-pub use generated::MODERN_DELTA_T_OBSERVED_END_MJD;
+pub use generated::{
+    EOP_END_MJD, EOP_OBSERVED_END_MJD, EOP_START_MJD, MODERN_DELTA_T_OBSERVED_END_MJD,
+};
 pub use interval::{
     complement_within, intersect_periods, normalize_periods, validate_period_list, Interval,
     InvalidIntervalError, InvalidPeriodError, Period, PeriodListError,

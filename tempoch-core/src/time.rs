@@ -478,6 +478,7 @@ mod tests {
     #[test]
     fn clone_partial_eq_debug_work() {
         let t = Time::<TT>::from_si_seconds(Second::new(42.0)).unwrap();
+        #[allow(clippy::clone_on_copy)]
         let t2 = t.clone();
         assert_eq!(t, t2);
         let dbg = format!("{t:?}");

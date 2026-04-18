@@ -5,13 +5,13 @@
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use sha2::{Digest, Sha256};
-use tempoch_time_data_updater::{
-    build_modern_delta_t_points, parse_delta_t_observed, parse_delta_t_predictions,
-    parse_utc_tai_segments, render_generated_module, Provenance, Sources, DELTA_T_OBSERVED_URL,
-    DELTA_T_PREDICTIONS_URL, PRE_1961_TAI_MINUS_UTC_APPROX, UTC_TAI_HISTORY_URL,
+use tempoch_core::runtime_data::{
+    TimeDataManager, DELTA_T_OBSERVED_URL, DELTA_T_PREDICTIONS_URL, EOP_FINALS_URL,
+    PRE_1961_TAI_MINUS_UTC_APPROX, UTC_TAI_HISTORY_URL,
 };
+use tempoch_time_data_updater::{render_eop_module, render_generated_module, Provenance, Sources};
 
 fn workspace_root() -> PathBuf {
     // CARGO_MANIFEST_DIR is .../tempoch-time-data-updater; root is its parent.
@@ -22,49 +22,23 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
-fn output_path() -> PathBuf {
+fn generated_dir() -> PathBuf {
     workspace_root()
         .join("tempoch-core")
         .join("src")
         .join("generated")
-        .join("time_data.rs")
+}
+
+fn time_data_path() -> PathBuf {
+    generated_dir().join("time_data.rs")
+}
+
+fn eop_data_path() -> PathBuf {
+    generated_dir().join("eop_data.rs")
 }
 
 fn provenance_sidecar_path() -> PathBuf {
-    workspace_root()
-        .join("tempoch-core")
-        .join("src")
-        .join("generated")
-        .join("time_data.provenance.json")
-}
-
-fn fetch_text(url: &str) -> Result<(String, String), String> {
-    let response = ureq::get(url)
-        .set("User-Agent", "tempoch-time-data-updater/1.0")
-        .timeout(std::time::Duration::from_secs(60))
-        .call()
-        .map_err(|e| format!("fetch {url} failed: {e}"))?;
-    let bytes = {
-        let mut buf = Vec::new();
-        std::io::Read::read_to_end(&mut response.into_reader(), &mut buf)
-            .map_err(|e| format!("read {url} body failed: {e}"))?;
-        buf
-    };
-    let sha = {
-        let mut hasher = Sha256::new();
-        hasher.update(&bytes);
-        hex(&hasher.finalize())
-    };
-    let text = String::from_utf8(bytes).map_err(|e| format!("{url} is not UTF-8: {e}"))?;
-    Ok((text, sha))
-}
-
-fn hex(bytes: &[u8]) -> String {
-    let mut s = String::with_capacity(bytes.len() * 2);
-    for b in bytes {
-        s.push_str(&format!("{b:02x}"));
-    }
-    s
+    generated_dir().join("time_data.provenance.json")
 }
 
 fn write_if_changed(path: &Path, contents: &str) -> std::io::Result<bool> {
@@ -78,82 +52,168 @@ fn write_if_changed(path: &Path, contents: &str) -> std::io::Result<bool> {
     Ok(true)
 }
 
-fn write_provenance(
-    path: &Path,
-    fetched_utc: &str,
-    provenance: &Provenance<'_>,
-) -> std::io::Result<()> {
+fn provenance_json(fetched_utc: &str, provenance: &Provenance<'_>) -> String {
     let data = serde_json::json!({
         "fetched_utc": fetched_utc,
         "utc_tai_sha256": provenance.utc_tai_sha,
         "delta_t_observed_sha256": provenance.delta_t_observed_sha,
         "delta_t_predictions_sha256": provenance.delta_t_predictions_sha,
+        "eop_finals_sha256": provenance.eop_finals_sha,
     });
     let mut s = serde_json::to_string_pretty(&data).expect("serde_json::to_string_pretty");
     s.push('\n');
-    std::fs::write(path, s)
+    s
+}
+
+fn provenance_hashes_match(data: &serde_json::Value, provenance: &Provenance<'_>) -> bool {
+    data.get("utc_tai_sha256")
+        .and_then(serde_json::Value::as_str)
+        == Some(provenance.utc_tai_sha)
+        && data
+            .get("delta_t_observed_sha256")
+            .and_then(serde_json::Value::as_str)
+            == Some(provenance.delta_t_observed_sha)
+        && data
+            .get("delta_t_predictions_sha256")
+            .and_then(serde_json::Value::as_str)
+            == Some(provenance.delta_t_predictions_sha)
+        && data
+            .get("eop_finals_sha256")
+            .and_then(serde_json::Value::as_str)
+            == Some(provenance.eop_finals_sha)
+}
+
+fn write_provenance(
+    path: &Path,
+    fetched_utc: &str,
+    provenance: &Provenance<'_>,
+) -> std::io::Result<bool> {
+    let preserved_timestamp = std::fs::read_to_string(path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .filter(|json| provenance_hashes_match(json, provenance))
+        .and_then(|json| {
+            json.get("fetched_utc")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+        });
+    let rendered = provenance_json(
+        preserved_timestamp.as_deref().unwrap_or(fetched_utc),
+        provenance,
+    );
+    write_if_changed(path, &rendered)
+}
+
+fn provenance_is_current(path: &Path, provenance: &Provenance<'_>) -> bool {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return false;
+    };
+    provenance_hashes_match(&json, provenance)
+        && json
+            .get("fetched_utc")
+            .and_then(serde_json::Value::as_str)
+            .is_some()
 }
 
 fn run(check_only: bool) -> Result<i32, String> {
-    let fetch_ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
-    let (utc_tai_history, utc_tai_sha) = fetch_text(UTC_TAI_HISTORY_URL)?;
-    let (delta_t_observed, delta_t_obs_sha) = fetch_text(DELTA_T_OBSERVED_URL)?;
-    let (delta_t_predictions, delta_t_pred_sha) = fetch_text(DELTA_T_PREDICTIONS_URL)?;
-
-    let utc_tai_segments = parse_utc_tai_segments(&utc_tai_history)?;
-    let observed = parse_delta_t_observed(&delta_t_observed)?;
-    let predicted = parse_delta_t_predictions(&delta_t_predictions)?;
-    let (modern_delta_t_points, observed_end_mjd) =
-        build_modern_delta_t_points(&observed, &predicted)?;
+    let temp_dir = std::env::temp_dir().join(format!(
+        "tempoch_time_data_updater_{}_{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let manager = TimeDataManager::with_dir(&temp_dir).map_err(|e| e.to_string())?;
+    let data = manager.refresh_and_load().map_err(|e| e.to_string())?;
 
     let sources = Sources {
         utc_tai_history_url: UTC_TAI_HISTORY_URL,
         delta_t_observed_url: DELTA_T_OBSERVED_URL,
         delta_t_predictions_url: DELTA_T_PREDICTIONS_URL,
+        eop_finals_url: EOP_FINALS_URL,
         pre_1961_tai_minus_utc_approx: PRE_1961_TAI_MINUS_UTC_APPROX,
     };
     let provenance = Provenance {
-        utc_tai_sha: &utc_tai_sha,
-        delta_t_observed_sha: &delta_t_obs_sha,
-        delta_t_predictions_sha: &delta_t_pred_sha,
+        utc_tai_sha: data.provenance().utc_tai_sha256(),
+        delta_t_observed_sha: data.provenance().delta_t_observed_sha256(),
+        delta_t_predictions_sha: data.provenance().delta_t_predictions_sha256(),
+        eop_finals_sha: data.provenance().eop_finals_sha256(),
     };
 
-    let rendered = render_generated_module(
-        &utc_tai_segments,
-        &modern_delta_t_points,
-        observed_end_mjd,
+    let rendered_time = render_generated_module(
+        data.utc_tai_segments(),
+        data.modern_delta_t_points(),
+        data.modern_delta_t_observed_end_mjd().value(),
         &sources,
         &provenance,
     );
+    let rendered_eop = render_eop_module(data.eop_points(), &sources, &provenance);
 
-    let out = output_path();
+    let time_out = time_data_path();
+    let eop_out = eop_data_path();
 
     if check_only {
-        let current = std::fs::read_to_string(&out).unwrap_or_default();
-        if current != rendered {
-            eprintln!("{} is out of date", out.display());
-            return Ok(1);
+        let mut stale = false;
+        for (path, rendered) in [(&time_out, &rendered_time), (&eop_out, &rendered_eop)] {
+            let current = std::fs::read_to_string(path).unwrap_or_default();
+            if &current != rendered {
+                eprintln!("{} is out of date", path.display());
+                stale = true;
+            } else {
+                println!("{} is up to date", path.display());
+            }
         }
-        println!("{} is up to date", out.display());
-        return Ok(0);
+        let provenance_path = provenance_sidecar_path();
+        if provenance_is_current(&provenance_path, &provenance) {
+            println!("{} is up to date", provenance_path.display());
+        } else {
+            eprintln!("{} is out of date", provenance_path.display());
+            stale = true;
+        }
+        return Ok(if stale { 1 } else { 0 });
     }
 
-    let changed = write_if_changed(&out, &rendered).map_err(|e| e.to_string())?;
-    write_provenance(&provenance_sidecar_path(), &fetch_ts, &provenance)
-        .map_err(|e| e.to_string())?;
-    let status = if changed {
-        "updated"
-    } else {
-        "already current"
+    let time_changed = write_if_changed(&time_out, &rendered_time).map_err(|e| e.to_string())?;
+    let eop_changed = write_if_changed(&eop_out, &rendered_eop).map_err(|e| e.to_string())?;
+    let provenance_changed = write_provenance(
+        &provenance_sidecar_path(),
+        data.provenance().fetched_utc(),
+        &provenance,
+    )
+    .map_err(|e| e.to_string())?;
+    let tag = |changed: bool| {
+        if changed {
+            "updated"
+        } else {
+            "already current"
+        }
     };
     println!(
         "{} {} (UTC-TAI segments={}, modern Delta T points={}, observed through MJD {:.0})",
-        out.display(),
-        status,
-        utc_tai_segments.len(),
-        modern_delta_t_points.len(),
-        observed_end_mjd
+        time_out.display(),
+        tag(time_changed),
+        data.utc_tai_segments().len(),
+        data.modern_delta_t_points().len(),
+        data.modern_delta_t_observed_end_mjd().value()
     );
+    println!(
+        "{} {} (EOP points={}, observed through MJD {}, last MJD {})",
+        eop_out.display(),
+        tag(eop_changed),
+        data.eop_points().len(),
+        data.eop_observed_end_mjd().value() as i32,
+        data.eop_end_mjd().value() as i32,
+    );
+    println!(
+        "{} {}",
+        provenance_sidecar_path().display(),
+        tag(provenance_changed),
+    );
+    let _ = std::fs::remove_dir_all(&temp_dir);
     Ok(0)
 }
 
@@ -161,8 +221,9 @@ fn print_usage() {
     eprintln!(
         "Usage: tempoch-time-data-updater [--check]\n\
          \n\
-         Regenerate tempoch-core/src/generated/time_data.rs from upstream sources.\n\
-         With --check, exit non-zero if the committed file is out of date."
+         Regenerate tempoch-core/src/generated/{{time_data,eop_data}}.rs and the\n\
+         provenance sidecar from upstream sources.\n\
+         With --check, exit non-zero if any committed generated file is out of date."
     );
 }
 

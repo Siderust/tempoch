@@ -11,7 +11,5 @@ name = "tempoch-time-data-updater"
 path = "src/main.rs"
 
 [dependencies]
-ureq = "2.10"
-sha2 = "0.10"
-chrono = { version = "0.4", default-features = false, features = ["clock"] }
 serde_json = "1"
+tempoch-core = { path = "../tempoch-core", version = "0.4.1", features = ["runtime-data"] }

@@ -903,6 +903,9 @@ version = "0.4.1"
 dependencies = [
  "chrono",
  "qtty",
+ "serde_json",
+ "sha2",
+ "ureq",
 ]
 
 [[package]]
@@ -920,10 +923,8 @@ dependencies = [
 name = "tempoch-time-data-updater"
 version = "0.1.0"
 dependencies = [
- "chrono",
  "serde_json",
- "sha2",
- "ureq",
+ "tempoch-core",
 ]
 
 [[package]]

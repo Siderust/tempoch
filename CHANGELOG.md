@@ -9,6 +9,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Feature-gated runtime time-data refresh under `tempoch::runtime_data` /
+  `tempoch_core::runtime_data`, including:
+  - `TimeDataManager` for explicit fetch/cache/load workflows
+  - `RuntimeTimeData` for immutable runtime UTC-TAI, modern Delta T, and EOP bundles
+  - `RuntimeTimeContext` for runtime-backed UT1 conversions and UTC civil helpers
+  - `Time::to_scale_with_runtime`, plus runtime-aware chrono/Unix UTC helpers
+- `runtime-data` Cargo features on `tempoch-core` and `tempoch`.
+
 - The axis / representation time model is now the primary public API at the
   crate root (`tempoch::*` / `tempoch_core::*`):
   - `Time<A, R = Native>` with sealed `Axis` (`TAI`, `TT`, `TDB`, `TCG`,
@@ -40,6 +48,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- `tempoch-time-data-updater` is now a thin wrapper over the same shared
+  fetch/parse/build logic used by the runtime-data feature, so compile-time
+  regeneration and runtime refresh stay semantically aligned.
+
 - Replaced the remaining raw time-quantity public APIs in `tempoch` with
   `qtty` types:
   - `Time::<UTC, UnixSeconds<POSIX>>::from_unix_seconds` and
@@ -59,6 +71,16 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Added
 
 - Automated time-data refresh tooling via the `tempoch-time-data-updater` Rust CLI and a scheduled GitHub Actions workflow that pushes refreshed generated tables directly to `main`. CI also runs the updater in `--check` mode to catch drift on every PR/push.
+- Compiled daily IERS Earth Orientation Parameters from `finals2000A.all`
+  (polar motion, UT1−UTC, LOD, celestial pole offsets) in
+  `tempoch_core::eop` and public `EOP_START_MJD` / `EOP_OBSERVED_END_MJD` /
+  `EOP_END_MJD` coverage constants. Opt-in via
+  `TimeContext::with_builtin_eop()`: UT1↔TT conversions then consume the
+  daily DUT1 series inside the coverage window (≲ 10 ms accuracy against
+  Bulletin C04) and fall back to the monthly ΔT path outside it. The
+  default `TimeContext::new()` remains bit-compatible with the monthly ΔT
+  path. The updater now fetches and emits `generated/eop_data.rs` alongside
+  `time_data.rs`.
 
 ### Changed
 

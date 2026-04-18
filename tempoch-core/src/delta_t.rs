@@ -144,6 +144,34 @@ fn interpolate_modern_delta_t(mjd: Day) -> Option<Second> {
 }
 
 #[inline]
+pub(crate) fn interpolate_modern_delta_t_points(points: &[(f64, f64)], mjd: Day) -> Option<Second> {
+    if points.is_empty() {
+        return None;
+    }
+    let start = Day::new(points[0].0);
+    let end = Day::new(points[points.len() - 1].0);
+    if !(start..=end).contains(&mjd) {
+        return None;
+    }
+    let mut lo = 0usize;
+    let mut hi = points.len() - 1;
+    while lo + 1 < hi {
+        let mid = lo + (hi - lo) / 2;
+        if Day::new(points[mid].0) <= mjd {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    let (mjd0, dt0) = points[lo];
+    let (mjd1, dt1) = points[hi];
+    let mjd0 = Day::new(mjd0);
+    let mjd1 = Day::new(mjd1);
+    let frac = (mjd - mjd0) / (mjd1 - mjd0);
+    Some(Second::new(dt0) + (Second::new(dt1) - Second::new(dt0)) * frac)
+}
+
+#[inline]
 fn delta_t_modern_series(jd_ut: Day) -> Second {
     // Source: USNO monthly determinations (MODERN_DELTA_T_POINTS).
     // Points up to MODERN_DELTA_T_OBSERVED_END_MJD are confirmed observations;
@@ -266,6 +294,32 @@ pub fn delta_t_seconds(jd_ut: Day) -> Result<Second, ConversionError> {
 #[inline]
 pub fn delta_t_seconds_extrapolated(jd_ut: Day) -> Second {
     delta_t_seconds_unconstrained(jd_ut)
+}
+
+#[inline]
+pub(crate) fn delta_t_seconds_from_modern_points(
+    jd_ut: Day,
+    modern_points: &[(f64, f64)],
+) -> Result<Second, ConversionError> {
+    if modern_points.is_empty() {
+        return Err(ConversionError::Ut1HorizonExceeded);
+    }
+    let mjd = jd_to_mjd(jd_ut);
+    let modern_start = Day::new(modern_points[0].0);
+    let modern_end = Day::new(modern_points[modern_points.len() - 1].0);
+    if mjd > modern_end {
+        return Err(ConversionError::Ut1HorizonExceeded);
+    }
+    Ok(if jd_ut < JD_EPOCH_948_UT {
+        delta_t_ancient(jd_ut)
+    } else if jd_ut < JD_TABLE_START_1620 {
+        delta_t_medieval(jd_ut)
+    } else if mjd < modern_start {
+        delta_t_table(jd_ut)
+    } else {
+        interpolate_modern_delta_t_points(modern_points, mjd)
+            .expect("runtime modern Delta T interpolation requires in-range MJD")
+    })
 }
 
 /// Unconstrained dispatch — shared by the fallible and extrapolated APIs.

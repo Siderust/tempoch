@@ -30,6 +30,18 @@ pub const UNIX_EPOCH_MJD: Day = Day::new(40_587.0);
 /// IAU 2000 B1.9 reference epoch `T0` as JD(TT).
 pub const IAU_TIME_EPOCH_T0_JD: Day = Day::new(2_443_144.500_372_5);
 
+/// Start of the interval where the built-in TT↔TDB truncated series is
+/// documented to stay below about 2 microseconds.
+///
+/// This corresponds approximately to 1600-01-01 TT.
+pub const TDB_TT_MODEL_HIGH_ACCURACY_START_JD: Day = Day::new(2_305_447.5);
+
+/// End of the interval where the built-in TT↔TDB truncated series is
+/// documented to stay below about 2 microseconds.
+///
+/// This corresponds approximately to 2200-01-01 TT.
+pub const TDB_TT_MODEL_HIGH_ACCURACY_END_JD: Day = Day::new(2_524_598.5);
+
 /// GPS epoch expressed as TAI seconds since J2000 TT on the TAI axis.
 ///
 /// The storage convention is `(JD_TAI(P) − J2000_JD_TT) × 86400`. For the GPS
