@@ -5,7 +5,7 @@
 //!
 //! The central type is [`Time<S, F>`], where `S` is a [`Scale`] marker
 //! (`TT`, `TAI`, `UTC`, `UT1`, `TDB`, `TCG`, `TCB`) and `F` is a
-//! [`Format`] marker (`J2000s`, `Jd`, `Mjd`, `UnixSecs`, `GpsSecs`,
+//! [`Format`] marker (`J2000s`, `JD`, `MJD`, `UnixSecs`, `GpsSecs`,
 //! `DayCount`).
 //!
 //! Scale conversions:
@@ -42,7 +42,7 @@ mod time;
 pub use context::TimeContext;
 pub use delta_t::{delta_t_seconds, delta_t_seconds_extrapolated, DELTA_T_PREDICTION_HORIZON_MJD};
 pub use error::ConversionError;
-pub use format::{DayCount, Format, GpsSecs, J2000s, Jd, Mjd, UnixSecs};
+pub use format::{DayCount, Format, GpsSecs, J2000s, JD, MJD, UnixSecs};
 pub use generated::{
     EOP_END_MJD, EOP_OBSERVED_END_MJD, EOP_START_MJD, MODERN_DELTA_T_OBSERVED_END_MJD,
 };
@@ -76,6 +76,6 @@ mod size_tests {
     }
     #[test]
     fn jd_is_eight_bytes() {
-        assert_eq!(core::mem::size_of::<Time<TT, Jd>>(), 8);
+        assert_eq!(core::mem::size_of::<Time<TT, JD>>(), 8);
     }
 }

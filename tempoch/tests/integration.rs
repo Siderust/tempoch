@@ -5,9 +5,10 @@ use serde_json::json;
 use tempoch::{
     complement_within,
     constats::{J2000_JD_TT, TT_MINUS_TAI},
-    intersect_periods, DayCount, GpsSecs, Jd, Mjd, Period, Time, TimeContext, UnixSecs, TAI, TT,
-    UT1, UTC,
+    intersect_periods, JD, MJD, Period, Time, TimeContext, TAI, TT, UT1, UTC,
 };
+#[cfg(feature = "serde")]
+use tempoch::{DayCount, GpsSecs, UnixSecs};
 
 #[test]
 fn utc_roundtrip_j2000_is_stable() {
@@ -33,7 +34,7 @@ fn ut1_context_roundtrip_near_j2000() {
 
 #[test]
 fn public_constats_epochs_are_usable() {
-    let j2000 = Time::<TT, Jd>::from_julian_days(J2000_JD_TT).unwrap();
+    let j2000 = Time::<TT, JD>::from_julian_days(J2000_JD_TT).unwrap();
     let j2000_s: Time<TT> = j2000.reformat();
     let tai_s: Time<TAI> = j2000_s.to_scale();
 
@@ -65,14 +66,14 @@ fn utc_leap_second_roundtrip_is_preserved() {
 
 #[test]
 fn interval_set_ops_match_expected_intervals() {
-    let outer = Period::<TT, Mjd>::new(0.0, 10.0);
+    let outer = Period::<TT, MJD>::new(0.0, 10.0);
     let a = vec![
-        Period::<TT, Mjd>::new(1.0, 3.0),
-        Period::<TT, Mjd>::new(5.0, 9.0),
+        Period::<TT, MJD>::new(1.0, 3.0),
+        Period::<TT, MJD>::new(5.0, 9.0),
     ];
     let b = vec![
-        Period::<TT, Mjd>::new(2.0, 4.0),
-        Period::<TT, Mjd>::new(7.0, 8.0),
+        Period::<TT, MJD>::new(2.0, 4.0),
+        Period::<TT, MJD>::new(7.0, 8.0),
     ];
 
     let below_b = complement_within(outer, &b);
@@ -91,8 +92,8 @@ fn interval_set_ops_match_expected_intervals() {
 #[test]
 fn public_serde_roundtrips_time_and_periods() {
     let tt = Time::<TT>::from_si_seconds(Second::new(12.5)).unwrap();
-    let jd = Time::<TT, Jd>::from_julian_days(Day::new(2_451_545.25)).unwrap();
-    let mjd_period = Period::<TT, Mjd>::new(61_000.0, 61_001.0);
+    let jd = Time::<TT, JD>::from_julian_days(Day::new(2_451_545.25)).unwrap();
+    let mjd_period = Period::<TT, MJD>::new(61_000.0, 61_001.0);
     let unix = Time::<UTC, UnixSecs>::from(1_700_000_000_i64);
     let gps = Time::<TAI, GpsSecs>::from(345.25_f64);
     let daycount = Time::<TT, DayCount>::from(42_i32);
@@ -112,11 +113,11 @@ fn public_serde_roundtrips_time_and_periods() {
 
     assert_eq!(serde_json::from_value::<Time<TT>>(json!(12.5)).unwrap(), tt);
     assert_eq!(
-        serde_json::from_value::<Time<TT, Jd>>(json!(2_451_545.25)).unwrap(),
+        serde_json::from_value::<Time<TT, JD>>(json!(2_451_545.25)).unwrap(),
         jd
     );
     assert_eq!(
-        serde_json::from_value::<Period<TT, Mjd>>(json!({"start": 61_000.0, "end": 61_001.0}))
+        serde_json::from_value::<Period<TT, MJD>>(json!({"start": 61_000.0, "end": 61_001.0}))
             .unwrap(),
         mjd_period
     );

@@ -1263,7 +1263,7 @@ mod tests {
     use super::*;
     use crate::generated::eop_data::EOP_POINTS;
     use crate::generated::time_data::{MODERN_DELTA_T_POINTS, UTC_TAI_SEGMENTS};
-    use crate::{Jd, Time, TT, UT1};
+    use crate::{JD, Time, TT, UT1};
     use std::sync::Mutex;
 
     fn compiled_runtime_data() -> RuntimeTimeData {
@@ -1349,9 +1349,9 @@ mod tests {
     fn runtime_context_matches_builtin_ut1_conversion() {
         let data = compiled_runtime_data();
         let ctx = RuntimeTimeContext::new(data);
-        let tt = Time::<TT, Jd>::from_julian_days(DayQuantity::new(2_460_000.25)).unwrap();
-        let ut1_runtime: Time<UT1, Jd> = tt.to_scale_with_runtime(&ctx).unwrap();
-        let ut1_builtin: Time<UT1, Jd> = tt
+        let tt = Time::<TT, JD>::from_julian_days(DayQuantity::new(2_460_000.25)).unwrap();
+        let ut1_runtime: Time<UT1, JD> = tt.to_scale_with_runtime(&ctx).unwrap();
+        let ut1_builtin: Time<UT1, JD> = tt
             .to_scale_with(&crate::TimeContext::with_builtin_eop())
             .unwrap();
         assert!(

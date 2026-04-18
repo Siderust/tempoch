@@ -15,14 +15,14 @@
 use chrono::Utc;
 use qtty::Second;
 use tempoch::{
-    constats::J2000_JD_TT, Jd, Mjd, Time, TimeContext, TAI, TCB, TCG, TDB, TT, UT1, UTC,
+    constats::J2000_JD_TT, JD, MJD, Time, TimeContext, TAI, TCB, TCG, TDB, TT, UT1, UTC,
 };
 
 fn main() {
     // Common reference: J2000.0 epoch expressed on TT in J2000s format.
-    let j2000_tt = Time::<TT, Jd>::from_julian_days(J2000_JD_TT).unwrap();
+    let j2000_tt = Time::<TT, JD>::from_julian_days(J2000_JD_TT).unwrap();
     let j2000_tt_s: Time<TT> = j2000_tt.reformat();
-    let j2000_tt_mjd: Time<TT, Mjd> = j2000_tt.reformat();
+    let j2000_tt_mjd: Time<TT, MJD> = j2000_tt.reformat();
     let ctx = TimeContext::new();
 
     // ─────────────────────────────────────────────────────────────────────────

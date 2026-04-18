@@ -7,7 +7,7 @@ use core::marker::PhantomData;
 
 use super::context::TimeContext;
 use super::error::ConversionError;
-use super::format::{DayCount, Format, GpsSecs, J2000s, Jd, Mjd, UnixSecs};
+use super::format::{DayCount, Format, GpsSecs, J2000s, JD, MJD, UnixSecs};
 use super::format_conversion::{CanonicalRoundtrip, FormatConvertible};
 use super::scale::{ContinuousScale, Scale};
 use super::scale_conversion::{ContextScaleConvert, InfallibleScaleConvert};
@@ -173,28 +173,28 @@ impl<S: Scale> From<f64> for Time<S, J2000s> {
     }
 }
 
-impl<S: Scale> From<Day> for Time<S, Jd> {
+impl<S: Scale> From<Day> for Time<S, JD> {
     #[inline]
     fn from(value: Day) -> Self {
         Self::new(value)
     }
 }
 
-impl<S: Scale> From<f64> for Time<S, Jd> {
+impl<S: Scale> From<f64> for Time<S, JD> {
     #[inline]
     fn from(value: f64) -> Self {
         Self::new(Day::new(value))
     }
 }
 
-impl<S: Scale> From<Day> for Time<S, Mjd> {
+impl<S: Scale> From<Day> for Time<S, MJD> {
     #[inline]
     fn from(value: Day) -> Self {
         Self::new(value)
     }
 }
 
-impl<S: Scale> From<f64> for Time<S, Mjd> {
+impl<S: Scale> From<f64> for Time<S, MJD> {
     #[inline]
     fn from(value: f64) -> Self {
         Self::new(Day::new(value))
@@ -272,7 +272,7 @@ impl<S: Scale> Time<S, super::format::J2000s> {
     }
 }
 
-impl<S: Scale> Time<S, super::format::Jd> {
+impl<S: Scale> Time<S, super::format::JD> {
     /// Build from a Julian Day number. Fails on non-finite input.
     #[inline]
     pub fn from_julian_days(jd: qtty::Day) -> Result<Self, ConversionError> {
@@ -290,7 +290,7 @@ impl<S: Scale> Time<S, super::format::Jd> {
     }
 }
 
-impl<S: Scale> Time<S, super::format::Mjd> {
+impl<S: Scale> Time<S, super::format::MJD> {
     /// Build from a Modified Julian Day value. Fails on non-finite input.
     #[inline]
     pub fn from_modified_julian_days(mjd: qtty::Day) -> Result<Self, ConversionError> {
@@ -405,7 +405,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::super::format::{DayCount, GpsSecs, J2000s, Jd, Mjd, UnixSecs};
+    use super::super::format::{DayCount, GpsSecs, J2000s, JD, MJD, UnixSecs};
     use super::super::scale::{TAI, TCB, TCG, TDB, TT};
     use super::*;
     use qtty::{Day, QuantityI32, QuantityI64, Second};
@@ -467,22 +467,22 @@ mod tests {
     #[test]
     fn julian_days_round_trip() {
         let jd = Day::new(2_451_545.0);
-        let t = Time::<TT, Jd>::from_julian_days(jd).unwrap();
+        let t = Time::<TT, JD>::from_julian_days(jd).unwrap();
         assert_eq!(t.julian_days(), jd);
     }
 
     #[test]
     fn reformat_jd_to_mjd() {
         let jd = Day::new(2_451_545.0);
-        let t_jd = Time::<TT, Jd>::from_julian_days(jd).unwrap();
-        let t_mjd: Time<TT, Mjd> = t_jd.reformat();
+        let t_jd = Time::<TT, JD>::from_julian_days(jd).unwrap();
+        let t_mjd: Time<TT, MJD> = t_jd.reformat();
         let expected_mjd = Day::new(2_451_545.0 - 2_400_000.5);
         assert!((t_mjd.modified_julian_days() - expected_mjd).abs() < Day::new(1e-9));
     }
 
     #[test]
     fn si_seconds_and_julian_days_consistent() {
-        let t_jd = Time::<TT, Jd>::from_julian_days(Day::new(2_451_545.5)).unwrap();
+        let t_jd = Time::<TT, JD>::from_julian_days(Day::new(2_451_545.5)).unwrap();
         let t_s: Time<TT, J2000s> = t_jd.reformat();
         assert!((t_s.si_seconds() - SECONDS_PER_DAY / 2.0).abs() < Second::new(1e-10));
     }
@@ -509,8 +509,8 @@ mod tests {
 
     #[test]
     fn scale_conversion_in_jd_format() {
-        let tt_jd = Time::<TT, Jd>::from_julian_days(Day::new(2_451_545.0)).unwrap();
-        let tai_jd: Time<TAI, Jd> = tt_jd.to_scale();
+        let tt_jd = Time::<TT, JD>::from_julian_days(Day::new(2_451_545.0)).unwrap();
+        let tai_jd: Time<TAI, JD> = tt_jd.to_scale();
         // TT = TAI + 32.184 s, so TAI JD should be slightly less
         let diff_days = tt_jd.julian_days() - tai_jd.julian_days();
         let diff_secs = diff_days.to::<qtty::unit::Second>();
@@ -535,7 +535,7 @@ mod tests {
     #[test]
     fn display_includes_scale_format_and_qtty_units() {
         let tt = Time::<TT>::from_si_seconds(Second::new(42.5)).unwrap();
-        let mjd = Time::<TT, Mjd>::from_modified_julian_days(Day::new(51_544.5)).unwrap();
+        let mjd = Time::<TT, MJD>::from_modified_julian_days(Day::new(51_544.5)).unwrap();
 
         assert_eq!(tt.to_string(), "TT/J2000s 42.5 s");
         assert_eq!(mjd.to_string(), "TT/MJD 51544.5 d");
@@ -544,7 +544,7 @@ mod tests {
     #[test]
     fn display_forwards_precision_to_underlying_quantity() {
         let tt = Time::<TT>::from_si_seconds(Second::new(42.5)).unwrap();
-        let jd = Time::<TT, Jd>::from_julian_days(Day::new(2_451_545.0)).unwrap();
+        let jd = Time::<TT, JD>::from_julian_days(Day::new(2_451_545.0)).unwrap();
 
         assert_eq!(format!("{tt:.3}"), "TT/J2000s 42.500 s");
         assert_eq!(format!("{jd:.2}"), "TT/JD 2451545.00 d");
@@ -554,10 +554,10 @@ mod tests {
     fn from_impls_for_all_formats() {
         let _: Time<TT, J2000s> = Second::new(0.0).into();
         let _: Time<TT, J2000s> = (0.0_f64).into();
-        let _: Time<TT, Jd> = Day::new(2_451_545.0).into();
-        let _: Time<TT, Jd> = (2_451_545.0_f64).into();
-        let _: Time<TT, Mjd> = Day::new(51_544.0).into();
-        let _: Time<TT, Mjd> = (51_544.0_f64).into();
+        let _: Time<TT, JD> = Day::new(2_451_545.0).into();
+        let _: Time<TT, JD> = (2_451_545.0_f64).into();
+        let _: Time<TT, MJD> = Day::new(51_544.0).into();
+        let _: Time<TT, MJD> = (51_544.0_f64).into();
         let _: Time<TT, GpsSecs> = Second::new(0.0).into();
         let _: Time<TT, GpsSecs> = (0.0_f64).into();
         let _: Time<TT, UnixSecs> = QuantityI64::<qtty::unit::Second>::new(0).into();
@@ -569,7 +569,7 @@ mod tests {
     #[test]
     fn from_modified_julian_days_nonfinite_rejected() {
         assert_eq!(
-            Time::<TT, Mjd>::from_modified_julian_days(Day::new(f64::NAN)).unwrap_err(),
+            Time::<TT, MJD>::from_modified_julian_days(Day::new(f64::NAN)).unwrap_err(),
             ConversionError::NonFinite,
         );
     }
@@ -577,8 +577,8 @@ mod tests {
     #[test]
     fn convert_changes_scale_and_format() {
         let tt = Time::<TT>::from_si_seconds(Second::new(0.0)).unwrap();
-        let tai_jd: Time<TAI, Jd> = tt.convert();
-        let tt_jd: Time<TT, Jd> = tt.reformat();
+        let tai_jd: Time<TAI, JD> = tt.convert();
+        let tt_jd: Time<TT, JD> = tt.reformat();
         let diff = tt_jd.julian_days() - tai_jd.julian_days();
         // TT = TAI + 32.184 s → difference in JD is 32.184 / 86400
         assert!(
@@ -600,8 +600,8 @@ mod tests {
     #[test]
     fn serde_roundtrips_all_public_time_storage_shapes() {
         let tt = Time::<TT>::from_si_seconds(Second::new(42.5)).unwrap();
-        let jd = Time::<TT, Jd>::from_julian_days(Day::new(2_451_545.25)).unwrap();
-        let mjd = Time::<TT, Mjd>::from_modified_julian_days(Day::new(51_544.75)).unwrap();
+        let jd = Time::<TT, JD>::from_julian_days(Day::new(2_451_545.25)).unwrap();
+        let mjd = Time::<TT, MJD>::from_modified_julian_days(Day::new(51_544.75)).unwrap();
         let unix = Time::<UTC, UnixSecs>::from(1_700_000_000_i64);
         let gps = Time::<TAI, GpsSecs>::from(123.5_f64);
         let daycount = Time::<TT, DayCount>::from(12_i32);
@@ -618,11 +618,11 @@ mod tests {
 
         assert_eq!(serde_json::from_value::<Time<TT>>(json!(42.5)).unwrap(), tt);
         assert_eq!(
-            serde_json::from_value::<Time<TT, Jd>>(json!(2_451_545.25)).unwrap(),
+            serde_json::from_value::<Time<TT, JD>>(json!(2_451_545.25)).unwrap(),
             jd
         );
         assert_eq!(
-            serde_json::from_value::<Time<TT, Mjd>>(json!(51_544.75)).unwrap(),
+            serde_json::from_value::<Time<TT, MJD>>(json!(51_544.75)).unwrap(),
             mjd
         );
         assert_eq!(
@@ -649,7 +649,7 @@ mod tests {
         .to_string()
         .contains("finite"));
         assert!(
-            Time::<TT, Jd>::deserialize(
+            Time::<TT, JD>::deserialize(
                 serde::de::value::F64Deserializer::<serde::de::value::Error>::new(f64::INFINITY),
             )
             .unwrap_err()

@@ -17,11 +17,11 @@
 //! | Format      | `CanonicalRoundtrip` | Note |
 //! |-------------|----------------------|------|
 //! | `J2000s`    | ✓                    | canonical |
-//! | `Jd`        | ✓                    | lossless f64 roundtrip |
-//! | `Mjd`       | ✓                    | lossless f64 roundtrip |
+//! | `JD`        | ✓                    | lossless f64 roundtrip |
+//! | `MJD`       | ✓                    | lossless f64 roundtrip |
 //! | `GpsSecs`   | ✗                    | GPS epoch is TAI-axis-specific; `.reformat::<J2000s>()` first |
 //! | `UnixSecs`  | ✗                    | No cross-format conversions; use civil API only |
-//! | `DayCount`  | ✗                    | i32 precision loss; `.reformat::<Mjd>()` or `J2000s` first |
+//! | `DayCount`  | ✗                    | i32 precision loss; `.reformat::<MJD>()` or `J2000s` first |
 //!
 //! `GpsSecs` intentionally does **not** implement `CanonicalRoundtrip`, for
 //! the same reason as `UnixSecs`: its epoch offset (`GPS_EPOCH_TAI`) is only
@@ -36,7 +36,7 @@ use super::constats::{GPS_EPOCH_TAI, JD_MINUS_MJD};
 use super::encoding::{
     j2000_seconds_to_jd, j2000_seconds_to_mjd, jd_to_j2000_seconds, mjd_to_j2000_seconds,
 };
-use super::format::{DayCount, GpsSecs, J2000s, Jd, Mjd};
+use super::format::{DayCount, GpsSecs, J2000s, JD, MJD};
 use super::sealed::Sealed;
 use qtty::time::{Days, Seconds};
 use qtty::unit::Day;
@@ -69,7 +69,7 @@ impl CanonicalRoundtrip for J2000s {
     }
 }
 
-impl CanonicalRoundtrip for Jd {
+impl CanonicalRoundtrip for JD {
     #[inline]
     fn to_j2000s(src: Days) -> Seconds {
         jd_to_j2000_seconds(src)
@@ -80,7 +80,7 @@ impl CanonicalRoundtrip for Jd {
     }
 }
 
-impl CanonicalRoundtrip for Mjd {
+impl CanonicalRoundtrip for MJD {
     #[inline]
     fn to_j2000s(src: Days) -> Seconds {
         mjd_to_j2000_seconds(src)
@@ -115,50 +115,50 @@ macro_rules! identity_format {
         )+
     };
 }
-identity_format!(J2000s, Jd, Mjd, GpsSecs, DayCount);
+identity_format!(J2000s, JD, MJD, GpsSecs, DayCount);
 
-// -- J2000s ↔ Jd ----------------------------------------------------------
+// -- J2000s ↔ JD ----------------------------------------------------------
 
-impl FormatConvertible<Jd> for J2000s {
+impl FormatConvertible<JD> for J2000s {
     #[inline]
     fn convert(src: Seconds) -> Days {
         j2000_seconds_to_jd(src)
     }
 }
 
-impl FormatConvertible<J2000s> for Jd {
+impl FormatConvertible<J2000s> for JD {
     #[inline]
     fn convert(src: Days) -> Seconds {
         jd_to_j2000_seconds(src)
     }
 }
 
-// -- J2000s ↔ Mjd ---------------------------------------------------------
+// -- J2000s ↔ MJD ---------------------------------------------------------
 
-impl FormatConvertible<Mjd> for J2000s {
+impl FormatConvertible<MJD> for J2000s {
     #[inline]
     fn convert(src: Seconds) -> Days {
         j2000_seconds_to_mjd(src)
     }
 }
 
-impl FormatConvertible<J2000s> for Mjd {
+impl FormatConvertible<J2000s> for MJD {
     #[inline]
     fn convert(src: Days) -> Seconds {
         mjd_to_j2000_seconds(src)
     }
 }
 
-// -- Jd ↔ Mjd -------------------------------------------------------------
+// -- JD ↔ MJD -------------------------------------------------------------
 
-impl FormatConvertible<Mjd> for Jd {
+impl FormatConvertible<MJD> for JD {
     #[inline]
     fn convert(src: Days) -> Days {
         src - JD_MINUS_MJD
     }
 }
 
-impl FormatConvertible<Jd> for Mjd {
+impl FormatConvertible<JD> for MJD {
     #[inline]
     fn convert(src: Days) -> Days {
         src + JD_MINUS_MJD
@@ -181,9 +181,9 @@ impl FormatConvertible<J2000s> for GpsSecs {
     }
 }
 
-// -- Jd ↔ DayCount (through Mjd) -------------------------------------------
+// -- JD ↔ DayCount (through MJD) -------------------------------------------
 
-impl FormatConvertible<DayCount> for Mjd {
+impl FormatConvertible<DayCount> for MJD {
     #[inline]
     fn convert(src: Days) -> QuantityI32<Day> {
         let floored = src.value().floor();
@@ -195,78 +195,78 @@ impl FormatConvertible<DayCount> for Mjd {
     }
 }
 
-impl FormatConvertible<Mjd> for DayCount {
+impl FormatConvertible<MJD> for DayCount {
     #[inline]
     fn convert(src: QuantityI32<Day>) -> Days {
         Days::new(src.value() as f64)
     }
 }
 
-// -- Jd ↔ GpsSecs (through J2000s) ----------------------------------------
+// -- JD ↔ GpsSecs (through J2000s) ----------------------------------------
 
-impl FormatConvertible<GpsSecs> for Jd {
+impl FormatConvertible<GpsSecs> for JD {
     #[inline]
     fn convert(src: Days) -> Seconds {
         <J2000s as FormatConvertible<GpsSecs>>::convert(jd_to_j2000_seconds(src))
     }
 }
 
-impl FormatConvertible<Jd> for GpsSecs {
+impl FormatConvertible<JD> for GpsSecs {
     #[inline]
     fn convert(src: Seconds) -> Days {
         j2000_seconds_to_jd(<GpsSecs as FormatConvertible<J2000s>>::convert(src))
     }
 }
 
-// -- Mjd ↔ GpsSecs (through J2000s) ----------------------------------------
+// -- MJD ↔ GpsSecs (through J2000s) ----------------------------------------
 
-impl FormatConvertible<GpsSecs> for Mjd {
+impl FormatConvertible<GpsSecs> for MJD {
     #[inline]
     fn convert(src: Days) -> Seconds {
         <J2000s as FormatConvertible<GpsSecs>>::convert(mjd_to_j2000_seconds(src))
     }
 }
 
-impl FormatConvertible<Mjd> for GpsSecs {
+impl FormatConvertible<MJD> for GpsSecs {
     #[inline]
     fn convert(src: Seconds) -> Days {
         j2000_seconds_to_mjd(<GpsSecs as FormatConvertible<J2000s>>::convert(src))
     }
 }
 
-// -- GpsSecs ↔ DayCount (through J2000s → Mjd → DayCount) -----------------
+// -- GpsSecs ↔ DayCount (through J2000s → MJD → DayCount) -----------------
 
-impl FormatConvertible<DayCount> for Jd {
+impl FormatConvertible<DayCount> for JD {
     #[inline]
     fn convert(src: Days) -> QuantityI32<Day> {
-        <Mjd as FormatConvertible<DayCount>>::convert(src - JD_MINUS_MJD)
+        <MJD as FormatConvertible<DayCount>>::convert(src - JD_MINUS_MJD)
     }
 }
 
-impl FormatConvertible<Jd> for DayCount {
+impl FormatConvertible<JD> for DayCount {
     #[inline]
     fn convert(src: QuantityI32<Day>) -> Days {
-        <DayCount as FormatConvertible<Mjd>>::convert(src) + JD_MINUS_MJD
+        <DayCount as FormatConvertible<MJD>>::convert(src) + JD_MINUS_MJD
     }
 }
 
-// -- J2000s ↔ DayCount (through Mjd) ----------------------------------------
+// -- J2000s ↔ DayCount (through MJD) ----------------------------------------
 
 impl FormatConvertible<DayCount> for J2000s {
     #[inline]
     fn convert(src: Seconds) -> QuantityI32<Day> {
-        <Mjd as FormatConvertible<DayCount>>::convert(j2000_seconds_to_mjd(src))
+        <MJD as FormatConvertible<DayCount>>::convert(j2000_seconds_to_mjd(src))
     }
 }
 
 impl FormatConvertible<J2000s> for DayCount {
     #[inline]
     fn convert(src: QuantityI32<Day>) -> Seconds {
-        mjd_to_j2000_seconds(<DayCount as FormatConvertible<Mjd>>::convert(src))
+        mjd_to_j2000_seconds(<DayCount as FormatConvertible<MJD>>::convert(src))
     }
 }
 
-// -- GpsSecs ↔ DayCount (through J2000s → Mjd → DayCount) -----------------
+// -- GpsSecs ↔ DayCount (through J2000s → MJD → DayCount) -----------------
 
 impl FormatConvertible<DayCount> for GpsSecs {
     #[inline]
@@ -297,15 +297,15 @@ mod tests {
     #[test]
     fn j2000s_jd_round_trip() {
         let secs = Seconds::new(86_400.0); // 1 day after J2000
-        let jd = <J2000s as FormatConvertible<Jd>>::convert(secs);
-        let back = <Jd as FormatConvertible<J2000s>>::convert(jd);
+        let jd = <J2000s as FormatConvertible<JD>>::convert(secs);
+        let back = <JD as FormatConvertible<J2000s>>::convert(jd);
         assert!((back - secs).abs() < EPS_S);
     }
 
     #[test]
     fn jd_mjd_offset() {
         let jd = J2000_JD_TT;
-        let mjd = <Jd as FormatConvertible<Mjd>>::convert(jd);
+        let mjd = <JD as FormatConvertible<MJD>>::convert(jd);
         let expected = jd - JD_MINUS_MJD;
         assert!((mjd - expected).abs() < EPS_D);
     }
@@ -313,8 +313,8 @@ mod tests {
     #[test]
     fn j2000s_mjd_round_trip() {
         let secs = Seconds::new(0.0);
-        let mjd = <J2000s as FormatConvertible<Mjd>>::convert(secs);
-        let back = <Mjd as FormatConvertible<J2000s>>::convert(mjd);
+        let mjd = <J2000s as FormatConvertible<MJD>>::convert(secs);
+        let back = <MJD as FormatConvertible<J2000s>>::convert(mjd);
         assert!((back - secs).abs() < EPS_S);
     }
 
@@ -329,17 +329,17 @@ mod tests {
     #[test]
     fn mjd_daycount_round_trip_truncation() {
         let mjd = Days::new(51_544.7);
-        let dc = <Mjd as FormatConvertible<DayCount>>::convert(mjd);
+        let dc = <MJD as FormatConvertible<DayCount>>::convert(mjd);
         assert_eq!(dc.value(), 51_544);
-        let back = <DayCount as FormatConvertible<Mjd>>::convert(dc);
+        let back = <DayCount as FormatConvertible<MJD>>::convert(dc);
         assert_eq!(back, Days::new(51_544.0));
     }
 
     #[test]
     fn mjd_canonical_roundtrip() {
         let mjd = Days::new(51_544.5);
-        let secs = <Mjd as CanonicalRoundtrip>::to_j2000s(mjd);
-        let back = <Mjd as CanonicalRoundtrip>::from_j2000s(secs);
+        let secs = <MJD as CanonicalRoundtrip>::to_j2000s(mjd);
+        let back = <MJD as CanonicalRoundtrip>::from_j2000s(secs);
         assert!((back - mjd).abs() < EPS_D);
     }
 
@@ -348,15 +348,15 @@ mod tests {
         let secs = Seconds::new(1_000_000.0);
         assert_eq!(<J2000s as FormatConvertible<J2000s>>::convert(secs), secs);
         let days = Days::new(2_451_545.0);
-        assert_eq!(<Jd as FormatConvertible<Jd>>::convert(days), days);
-        assert_eq!(<Mjd as FormatConvertible<Mjd>>::convert(days), days);
+        assert_eq!(<JD as FormatConvertible<JD>>::convert(days), days);
+        assert_eq!(<MJD as FormatConvertible<MJD>>::convert(days), days);
     }
 
     #[test]
     fn mjd_jd_round_trip() {
         let mjd = Days::new(51_544.5);
-        let jd = <Mjd as FormatConvertible<Jd>>::convert(mjd);
-        let back = <Jd as FormatConvertible<Mjd>>::convert(jd);
+        let jd = <MJD as FormatConvertible<JD>>::convert(mjd);
+        let back = <JD as FormatConvertible<MJD>>::convert(jd);
         assert!((back - mjd).abs() < EPS_D);
     }
 
@@ -364,8 +364,8 @@ mod tests {
     fn gps_jd_round_trip() {
         // JD values are ~2.4M days; f64 precision at that scale is ~50 µs
         let gps = Seconds::new(1_000_000.0);
-        let jd = <GpsSecs as FormatConvertible<Jd>>::convert(gps);
-        let back = <Jd as FormatConvertible<GpsSecs>>::convert(jd);
+        let jd = <GpsSecs as FormatConvertible<JD>>::convert(gps);
+        let back = <JD as FormatConvertible<GpsSecs>>::convert(jd);
         assert!((back - gps).abs() < Seconds::new(1e-3));
     }
 
@@ -373,16 +373,16 @@ mod tests {
     fn gps_mjd_round_trip() {
         // MJD values are ~44k days; f64 precision at that scale is ~1e-4 s
         let gps = Seconds::new(1_000_000.0);
-        let mjd = <GpsSecs as FormatConvertible<Mjd>>::convert(gps);
-        let back = <Mjd as FormatConvertible<GpsSecs>>::convert(mjd);
+        let mjd = <GpsSecs as FormatConvertible<MJD>>::convert(gps);
+        let back = <MJD as FormatConvertible<GpsSecs>>::convert(mjd);
         assert!((back - gps).abs() < Seconds::new(1e-3));
     }
 
     #[test]
     fn jd_daycount_and_back() {
         let jd = Days::new(2_451_545.0);
-        let dc = <Jd as FormatConvertible<DayCount>>::convert(jd);
-        let back = <DayCount as FormatConvertible<Jd>>::convert(dc);
+        let dc = <JD as FormatConvertible<DayCount>>::convert(jd);
+        let back = <DayCount as FormatConvertible<JD>>::convert(dc);
         // DayCount truncates to whole days; back should be within 1 day of original
         assert!((back - jd).abs() < Days::new(1.0));
     }

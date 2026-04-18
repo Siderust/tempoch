@@ -28,6 +28,11 @@ qtty = "0.5.0"
 serde_json = "1"
 
 [[example]]
-name = "serde"
-path = "examples/serde.rs"
+name = "05_serde"
+path = "examples/05_serde.rs"
 required-features = ["serde"]
+
+[[example]]
+name = "06_runtime_tables"
+path = "examples/06_runtime_tables.rs"
+required-features = ["runtime-data"]

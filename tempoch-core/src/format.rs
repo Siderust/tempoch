@@ -11,8 +11,8 @@
 //! | Format       | Storage                    | Description                      |
 //! |--------------|----------------------------|----------------------------------|
 //! | [`J2000s`]   | `Quantity<Second, f64>`    | SI seconds since J2000 TT        |
-//! | [`Jd`]       | `Quantity<Day, f64>`       | Julian Day number                 |
-//! | [`Mjd`]      | `Quantity<Day, f64>`       | Modified Julian Day               |
+//! | [`JD`]       | `Quantity<Day, f64>`       | Julian Day number                 |
+//! | [`MJD`]      | `Quantity<Day, f64>`       | Modified Julian Day               |
 //! | [`UnixSecs`] | `Quantity<Second, i64>`    | Seconds since 1970-01-01 UTC      |
 //! | [`GpsSecs`]  | `Quantity<Second, f64>`    | Seconds since GPS epoch           |
 //! | [`DayCount`] | `Quantity<Day, i32>`       | Integer day count (e.g. MJD int)  |
@@ -76,7 +76,7 @@ define_format!(
     /// Julian Day number (absolute day count from the Julian epoch).
     ///
     /// Storage: `Quantity<Day, f64>`.
-    Jd,
+    JD,
     Quantity<Day, f64>,
     "JD"
 );
@@ -85,7 +85,7 @@ define_format!(
     /// Modified Julian Day (JD − 2 400 000.5).
     ///
     /// Storage: `Quantity<Day, f64>`.
-    Mjd,
+    MJD,
     Quantity<Day, f64>,
     "MJD"
 );
@@ -147,7 +147,7 @@ define_format!(
     ///
     /// Storage: `Quantity<Day, i32>` — useful for coarse day-level indexing.
     /// Scale conversions are not directly available on this format;
-    /// use `.reformat::<Mjd>()` or `.reformat::<J2000s>()` first.
+    /// use `.reformat::<MJD>()` or `.reformat::<J2000s>()` first.
     DayCount,
     QuantityI32<Day>,
     "DayCount"
@@ -186,7 +186,7 @@ macro_rules! impl_serde_format_passthrough {
 }
 
 #[cfg(feature = "serde")]
-impl_serde_format_finite!(J2000s, Jd, Mjd, GpsSecs);
+impl_serde_format_finite!(J2000s, JD, MJD, GpsSecs);
 
 #[cfg(feature = "serde")]
 impl_serde_format_passthrough!(UnixSecs, DayCount);

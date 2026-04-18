@@ -10,11 +10,11 @@ Typed astronomical time primitives for Rust.
 
 - `Time<S, F>` instants parameterized by a physical or civil scale (`TT`,
   `TAI`, `UTC`, `UT1`, `TDB`, `TCG`, `TCB`) and a numeric format (`J2000s`,
-  `Jd`, `Mjd`).
+  `JD`, `MJD`).
 - Compile-time conversion witnesses for infallible (`.to_scale::<S>()`) and
   context-required (`.to_scale_with::<S>(ctx)`) routes.
-- Format re-encoding (`.reformat::<F>()`) to switch between `J2000s`, `Jd`,
-  and `Mjd` representations without changing the physical scale.
+- Format re-encoding (`.reformat::<F>()`) to switch between `J2000s`, `JD`,
+  and `MJD` representations without changing the physical scale.
 - UTC conversion through `chrono`, covering 1961 onward and leap-second
   aware; round-trip precision is limited by `f64` storage (~100 µs near J2000).
 - Automatic `ΔT = TT - UT1` handling for `UT1` conversions via an explicit
@@ -29,7 +29,7 @@ Typed astronomical time primitives for Rust.
   `constats::TDB_TT_MODEL_HIGH_ACCURACY_END_JD` interval (about
   1600-01-01 to 2200-01-01 TT).
 - Julian Day, Modified Julian Day, and SI-second accessors on their
-  respective format types (`Time<S, Jd>`, `Time<S, Mjd>`, `Time<S, J2000s>`).
+  respective format types (`Time<S, JD>`, `Time<S, MJD>`, `Time<S, J2000s>`).
 - Unix/POSIX timestamps via `Time::<UTC>::from_unix_seconds` / `unix_seconds`.
 - GPS transport values via `Time::<TAI>::from_gps_seconds` / `gps_seconds`.
 - Compiled time-data tables generated from official UTC-TAI and Delta T
@@ -91,10 +91,10 @@ With the `serde` feature enabled:
 - Scale and format remain type-level and are not embedded in the payload.
 
 ```rust
-use tempoch::{Mjd, Period, Time, TT};
+use tempoch::{MJD, Period, Time, TT};
 
 let tt = Time::<TT>::from(42.5);
-let period = Period::<TT, Mjd>::new(61_000.0, 61_001.0);
+let period = Period::<TT, MJD>::new(61_000.0, 61_001.0);
 
 assert_eq!(serde_json::to_string(&tt).unwrap(), "42.5");
 assert_eq!(
@@ -107,14 +107,14 @@ assert_eq!(
 
 ```rust
 use chrono::Utc;
-use tempoch::{Jd, Mjd, Time, TT, UTC};
+use tempoch::{JD, MJD, Time, TT, UTC};
 
 let utc_now = Time::<UTC>::from_chrono(Utc::now());
 let tt_now: Time<TT> = utc_now.to_scale();
 
 // Reformat to JD / MJD for display (scale unchanged)
-let tt_jd: Time<TT, Jd> = tt_now.reformat();
-let tt_mjd: Time<TT, Mjd> = tt_now.reformat();
+let tt_jd: Time<TT, JD> = tt_now.reformat();
+let tt_mjd: Time<TT, MJD> = tt_now.reformat();
 
 println!("UTC       : {}", utc_now.to_chrono().unwrap());
 println!("TT in JD  : {tt_jd:.9}");
@@ -125,17 +125,17 @@ println!("TT in MJD : {tt_mjd:.9}");
 
 ```rust
 use tempoch::{
-    complement_within, intersect_periods, Period, Mjd, TT,
+  complement_within, intersect_periods, Period, MJD, TT,
 };
 
-let day = Period::<TT, Mjd>::new(61_000.0, 61_001.0);
+let day = Period::<TT, MJD>::new(61_000.0, 61_001.0);
 let a = vec![
-    Period::<TT, Mjd>::new(61_000.1, 61_000.4),
-    Period::<TT, Mjd>::new(61_000.6, 61_000.9),
+  Period::<TT, MJD>::new(61_000.1, 61_000.4),
+  Period::<TT, MJD>::new(61_000.6, 61_000.9),
 ];
 let b = vec![
-    Period::<TT, Mjd>::new(61_000.2, 61_000.3),
-    Period::<TT, Mjd>::new(61_000.7, 61_000.8),
+  Period::<TT, MJD>::new(61_000.2, 61_000.3),
+  Period::<TT, MJD>::new(61_000.7, 61_000.8),
 ];
 
 let overlap = intersect_periods(&a, &b);
@@ -152,6 +152,7 @@ assert_eq!(gaps.len(), 3);
 - `cargo run --example 03_formats`
 - `cargo run --example 04_periods`
 - `cargo run --example 05_serde --features serde`
+- `cargo run -p tempoch --example 06_runtime_tables --features runtime-data`
 
 ## Runtime Time Data
 
@@ -162,17 +163,24 @@ the `runtime-data` feature and use `tempoch::runtime_data` explicitly.
 Downloaded raw upstream files are cached under `~/.tempoch/data` by default.
 Set `TEMPOCH_DATA_DIR` to override that location.
 
+For a runnable end-to-end refresh example that replaces the active runtime
+context after downloading a new bundle, run:
+
+```bash
+cargo run -p tempoch --example 06_runtime_tables --features runtime-data
+```
+
 ```rust,no_run
 use tempoch::runtime_data::{RuntimeTimeContext, TimeDataManager};
-use tempoch::{Jd, Time, TT, UT1, UTC};
+use tempoch::{JD, Time, TT, UT1, UTC};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let manager = TimeDataManager::new()?;
     let data = manager.refresh_and_load()?;
     let ctx = RuntimeTimeContext::new(data);
 
-    let tt = Time::<TT, Jd>::from_julian_days(2_460_000.25.into())?;
-    let ut1: Time<UT1, Jd> = tt.to_scale_with_runtime(&ctx)?;
+    let tt = Time::<TT, JD>::from_julian_days(2_460_000.25.into())?;
+    let ut1: Time<UT1, JD> = tt.to_scale_with_runtime(&ctx)?;
 
     let unix = Time::<UTC>::from_unix_seconds_with_runtime(1_700_000_000.0.into(), &ctx)?;
     let back = unix.unix_seconds_with_runtime(&ctx)?;

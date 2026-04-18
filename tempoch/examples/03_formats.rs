@@ -19,7 +19,7 @@ use chrono::Utc;
 use qtty::{Day, Second};
 use tempoch::{
     constats::{J2000_JD_TT, UNIX_EPOCH_JD, UNIX_EPOCH_MJD},
-    Jd, Mjd, Time, TAI, TT, UTC,
+    JD, MJD, Time, TAI, TT, UTC,
 };
 
 fn main() {
@@ -42,13 +42,13 @@ fn main() {
     //
     // Reformat preserves the physical instant and only changes representation.
     // ─────────────────────────────────────────────────────────────────────────
-    let j2000_from_jd = Time::<TT, Jd>::from_julian_days(J2000_JD_TT).unwrap();
-    let unix_epoch_jd = Time::<TT, Jd>::from_julian_days(UNIX_EPOCH_JD).unwrap();
-    let half_day_jd = Time::<TT, Jd>::from_julian_days(Day::new(2_451_545.5)).unwrap();
-    let unix_epoch_mjd = Time::<TT, Mjd>::from_modified_julian_days(UNIX_EPOCH_MJD).unwrap();
+    let j2000_from_jd = Time::<TT, JD>::from_julian_days(J2000_JD_TT).unwrap();
+    let unix_epoch_jd = Time::<TT, JD>::from_julian_days(UNIX_EPOCH_JD).unwrap();
+    let half_day_jd = Time::<TT, JD>::from_julian_days(Day::new(2_451_545.5)).unwrap();
+    let unix_epoch_mjd = Time::<TT, MJD>::from_modified_julian_days(UNIX_EPOCH_MJD).unwrap();
 
-    let sample_as_jd: Time<TT, Jd> = sample_tt.reformat();
-    let sample_as_mjd: Time<TT, Mjd> = sample_tt.reformat();
+    let sample_as_jd: Time<TT, JD> = sample_tt.reformat();
+    let sample_as_mjd: Time<TT, MJD> = sample_tt.reformat();
     let sample_roundtrip: Time<TT> = sample_as_mjd.reformat();
 
     println!();
