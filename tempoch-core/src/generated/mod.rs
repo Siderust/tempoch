@@ -28,11 +28,6 @@ impl time_data::UtcTaiSegment {
     }
 
     #[inline]
-    pub(crate) fn end_mjd_days(self) -> Option<Day> {
-        self.end_mjd.map(|mjd| Day::new(mjd as f64))
-    }
-
-    #[inline]
     pub(crate) fn reference_mjd_days(self) -> Day {
         Day::new(self.reference_mjd)
     }

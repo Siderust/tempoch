@@ -8,11 +8,16 @@
 //! upstream file) with short-range Bulletin A predictions (flag `P`). The
 //! boundary between the two sub-ranges is [`EOP_OBSERVED_END_MJD`].
 //!
-//! The compiled series is loaded at compile time from
-//! [`crate::generated::eop_data`]; no runtime fetching occurs.
+//! The baseline series is loaded at compile time from
+//! [`crate::generated::eop_data`]. With the optional `runtime-data` feature,
+//! these helpers transparently use a fresher cached/refreshed bundle when one
+//! is available.
 
-use crate::generated::eop_data::{EopPoint as RawEopPoint, EOP_END_MJD, EOP_POINTS, EOP_START_MJD};
+use crate::active_data::{active_time_data, time_data_eop_at};
 use qtty::{Day, Second};
+
+#[cfg(test)]
+use crate::generated::eop_data::{EOP_END_MJD, EOP_POINTS, EOP_START_MJD};
 
 /// Interpolated IERS Earth Orientation Parameters at a UTC MJD.
 ///
@@ -41,7 +46,11 @@ pub struct EopValues {
 }
 
 fn covered_range() -> (Day, Day) {
-    (Day::new(EOP_START_MJD as f64), Day::new(EOP_END_MJD as f64))
+    let data = active_time_data();
+    (
+        Day::new(data.eop_points()[0].mjd as f64),
+        Day::new(data.eop_points()[data.eop_points().len() - 1].mjd as f64),
+    )
 }
 
 /// Returns `true` when [`builtin_eop_at`] would return `Some` for `mjd_utc`.
@@ -51,35 +60,6 @@ pub fn builtin_eop_covers(mjd_utc: Day) -> bool {
     (lo..=hi).contains(&mjd_utc)
 }
 
-#[inline]
-fn lookup_index(mjd_i32: i32) -> Option<usize> {
-    // EOP_POINTS is strictly monotone in MJD with step = 1, so we can index
-    // directly once we know the series is non-empty.
-    let first = EOP_POINTS[0].mjd;
-    let last = EOP_POINTS[EOP_POINTS.len() - 1].mjd;
-    if mjd_i32 < first || mjd_i32 > last {
-        return None;
-    }
-    Some((mjd_i32 - first) as usize)
-}
-
-#[inline]
-fn bracket(mjd_utc: Day) -> Option<(RawEopPoint, RawEopPoint, f64)> {
-    let mjd_f = mjd_utc.value();
-    let lo_i = mjd_f.floor() as i32;
-    let hi_i = lo_i + 1;
-    let lo_idx = lookup_index(lo_i)?;
-    // If mjd lands exactly on the last point, clamp hi to the same row so
-    // interpolation yields the point itself with zero slope contribution.
-    let hi_idx = lookup_index(hi_i).unwrap_or(lo_idx);
-    let frac = if hi_idx == lo_idx {
-        0.0
-    } else {
-        mjd_f - lo_i as f64
-    };
-    Some((EOP_POINTS[lo_idx], EOP_POINTS[hi_idx], frac))
-}
-
 /// Linearly interpolate compiled EOP at a UTC MJD.
 ///
 /// Returns `None` when `mjd_utc` is outside the compiled `[EOP_START_MJD,
@@ -87,28 +67,8 @@ fn bracket(mjd_utc: Day) -> Option<(RawEopPoint, RawEopPoint, f64)> {
 /// back to the nearest-bracketing row's value for LOD when either
 /// neighbour is missing.
 pub fn builtin_eop_at(mjd_utc: Day) -> Option<EopValues> {
-    let (lo, hi, frac) = bracket(mjd_utc)?;
-
-    let lerp = |a: f64, b: f64| a + frac * (b - a);
-    let lerp_opt = |a: Option<f64>, b: Option<f64>| match (a, b) {
-        (Some(a), Some(b)) => Some(lerp(a, b)),
-        _ => None,
-    };
-    let lod_milliseconds = match (lo.lod_milliseconds, hi.lod_milliseconds) {
-        (Some(a), Some(b)) => Some(lerp(a, b)),
-        _ => None,
-    };
-
-    Some(EopValues {
-        mjd_utc,
-        pm_xp_arcsec: lerp_opt(lo.pm_xp_arcsec, hi.pm_xp_arcsec),
-        pm_yp_arcsec: lerp_opt(lo.pm_yp_arcsec, hi.pm_yp_arcsec),
-        ut1_minus_utc: Second::new(lerp(lo.ut1_minus_utc_seconds, hi.ut1_minus_utc_seconds)),
-        lod_milliseconds,
-        dx_milliarcsec: lerp_opt(lo.dx_milliarcsec, hi.dx_milliarcsec),
-        dy_milliarcsec: lerp_opt(lo.dy_milliarcsec, hi.dy_milliarcsec),
-        ut1_observed: lo.ut1_observed && hi.ut1_observed,
-    })
+    let data = active_time_data();
+    time_data_eop_at(data.as_ref(), mjd_utc)
 }
 
 #[cfg(test)]

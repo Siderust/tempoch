@@ -7,7 +7,7 @@ use crate::catch_panic;
 use crate::error::TempochStatus;
 use qtty::Day;
 use qtty_ffi::{QttyQuantity, UnitId};
-use tempoch::{Interval, MJD, Time, TT};
+use tempoch::{Interval, Time, MJD, TT};
 
 type MjdPeriod = Interval<Time<TT>>;
 

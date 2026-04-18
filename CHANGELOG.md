@@ -13,13 +13,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   `Time<S, F>` now serializes as the underlying format scalar, while
   `Interval<T>` / `Period<S, F>` serialize as `{start, end}` and preserve
   existing validation on deserialize.
-- Feature-gated runtime time-data refresh under `tempoch::runtime_data` /
-  `tempoch_core::runtime_data`, including:
-  - `TimeDataManager` for explicit fetch/cache/load workflows
-  - `RuntimeTimeData` for immutable runtime UTC-TAI, modern Delta T, and EOP bundles
-  - `RuntimeTimeContext` for runtime-backed UT1 conversions and UTC civil helpers
-  - `Time::to_scale_with_runtime`, plus runtime-aware chrono/Unix UTC helpers
-- `runtime-data` Cargo features on `tempoch-core` and `tempoch`.
+- `runtime-data` Cargo features on `tempoch-core` and `tempoch`. When enabled,
+  the existing UT1 and UTC civil APIs automatically prefer a cached or
+  refreshed runtime bundle without adding feature-specific public methods or
+  context types.
 
 - The axis / representation time model is now the primary public API at the
   crate root (`tempoch::*` / `tempoch_core::*`):
@@ -52,9 +49,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- `runtime-data` no longer exposes a parallel public API. `TimeContext`,
+  `Time::to_scale_with`, and the normal UTC chrono/Unix helpers now use a
+  lazily selected active bundle, while refresh/cache management stays internal.
 - `tempoch-time-data-updater` is now a thin wrapper over the same shared
-  fetch/parse/build logic used by the runtime-data feature, so compile-time
-  regeneration and runtime refresh stay semantically aligned.
+  fetch/parse/build support crate used by the runtime-data feature, so
+  compile-time regeneration and runtime refresh stay semantically aligned.
 
 - Replaced the remaining raw time-quantity public APIs in `tempoch` with
   `qtty` types:

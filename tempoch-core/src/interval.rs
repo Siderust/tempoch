@@ -280,9 +280,9 @@ pub fn normalize_periods<T: Copy + PartialOrd>(periods: &[Interval<T>]) -> Vec<I
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MJD, TT};
     #[cfg(feature = "serde")]
     use crate::JD;
+    use crate::{MJD, TT};
     use qtty::Day;
     #[cfg(feature = "serde")]
     use serde::de::{value, IntoDeserializer};

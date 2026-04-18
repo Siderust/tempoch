@@ -22,12 +22,10 @@ use super::encoding::{
 use super::error::ConversionError;
 use super::scale::{Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
 use super::sealed::Sealed;
+use crate::active_data::{active_time_data, time_data_delta_t, time_data_try_tai_minus_utc_mjd};
 use crate::generated::time_data::{UtcTaiSegment, UTC_TAI_SEGMENTS};
 use crate::generated::{PRE_1961_TAI_MINUS_UTC_APPROX, UTC_TAI_HISTORY_START_MJD};
-#[cfg(feature = "runtime-data")]
-use crate::runtime_data::RuntimeTimeContext;
 use qtty::time::{Days, Seconds};
-use qtty::unit::Day;
 
 /// Unix epoch (1970-01-01T00:00:00 UTC) expressed as seconds since J2000 TT
 /// on the TAI axis. Relies on the compiled UTC-TAI history.
@@ -44,22 +42,6 @@ pub(crate) fn unix_epoch_tai_secs() -> Seconds {
 #[inline]
 pub(crate) fn utc_offset_seconds_in_segment(mjd_utc: Days, segment: UtcTaiSegment) -> Seconds {
     segment.offset_at(mjd_utc)
-}
-
-#[inline]
-pub(crate) fn utc_mjd_to_tt_mjd_in_segment(mjd_utc: Days, segment: UtcTaiSegment) -> Days {
-    mjd_utc + (utc_offset_seconds_in_segment(mjd_utc, segment) + TT_MINUS_TAI).to::<Day>()
-}
-
-#[inline]
-pub(crate) fn tt_mjd_to_utc_mjd_in_segment(mjd_tt: Days, segment: UtcTaiSegment) -> Days {
-    let scale = Days::new(1.0) + Seconds::new(segment.slope_seconds_per_day).to::<Day>();
-    let ref_days = segment.reference_mjd_days() / Days::new(1.0);
-    let offset_days = (Seconds::new(segment.base_seconds)
-        - Seconds::new(segment.slope_seconds_per_day) * ref_days
-        + TT_MINUS_TAI)
-        .to::<Day>();
-    Days::new((mjd_tt - offset_days) / scale)
 }
 
 /// Binary search: TAI − UTC at a UTC-axis MJD. Returns `None` pre-1961.
@@ -114,29 +96,6 @@ pub(crate) trait InfallibleScaleConvert<S2: Scale>: Scale + Sealed {
 /// Witness that converting `Self → S2` requires a `TimeContext` (UT1 routes).
 pub(crate) trait ContextScaleConvert<S2: Scale>: Scale + Sealed {
     fn convert_with(src: Seconds, ctx: &TimeContext) -> Result<Seconds, ConversionError>;
-}
-
-#[cfg(feature = "runtime-data")]
-pub(crate) trait RuntimeContextScaleConvert<S2: Scale>: Scale + Sealed {
-    fn convert_with_runtime(
-        src: Seconds,
-        ctx: &RuntimeTimeContext,
-    ) -> Result<Seconds, ConversionError>;
-}
-
-#[cfg(feature = "runtime-data")]
-impl<S, S2> RuntimeContextScaleConvert<S2> for S
-where
-    S: Scale + Sealed + InfallibleScaleConvert<S2>,
-    S2: Scale,
-{
-    #[inline]
-    fn convert_with_runtime(
-        src: Seconds,
-        _ctx: &RuntimeTimeContext,
-    ) -> Result<Seconds, ConversionError> {
-        Ok(<S as InfallibleScaleConvert<S2>>::convert(src))
-    }
 }
 
 // ── Identity ──────────────────────────────────────────────────────────────
@@ -334,28 +293,14 @@ utc_through_tai!(TCB);
 /// boundary (which sits at midnight UTC, i.e. integer MJD_UTC).
 #[inline]
 fn context_delta_t(jd_ut1: Days, ctx: &TimeContext) -> Result<Seconds, ConversionError> {
+    let data = active_time_data();
     let mjd_ut1 = jd_to_mjd(jd_ut1);
     if let Some(dut1) = ctx.ut1_minus_utc(mjd_ut1) {
-        if let Some(tai_minus_utc) = try_tai_minus_utc_mjd(mjd_ut1) {
+        if let Some(tai_minus_utc) = time_data_try_tai_minus_utc_mjd(data.as_ref(), mjd_ut1) {
             return Ok(TT_MINUS_TAI + tai_minus_utc - dut1);
         }
     }
-    delta_t_seconds(jd_ut1)
-}
-
-#[cfg(feature = "runtime-data")]
-#[inline]
-fn runtime_context_delta_t(
-    jd_ut1: Days,
-    ctx: &RuntimeTimeContext,
-) -> Result<Seconds, ConversionError> {
-    let mjd_ut1 = jd_to_mjd(jd_ut1);
-    if let Some(dut1) = ctx.ut1_minus_utc(mjd_ut1) {
-        if let Some(tai_minus_utc) = ctx.try_tai_minus_utc_mjd(mjd_ut1) {
-            return Ok(TT_MINUS_TAI + tai_minus_utc - dut1);
-        }
-    }
-    ctx.delta_t_seconds(jd_ut1)
+    time_data_delta_t(data.as_ref(), jd_ut1).or_else(|_| delta_t_seconds(jd_ut1))
 }
 
 impl ContextScaleConvert<TT> for UT1 {
@@ -366,22 +311,6 @@ impl ContextScaleConvert<TT> for UT1 {
         }
         let jd_ut1: Days = j2000_seconds_to_jd(src);
         let dt = context_delta_t(jd_ut1, ctx)?;
-        Ok(src + dt)
-    }
-}
-
-#[cfg(feature = "runtime-data")]
-impl RuntimeContextScaleConvert<TT> for UT1 {
-    #[inline]
-    fn convert_with_runtime(
-        src: Seconds,
-        ctx: &RuntimeTimeContext,
-    ) -> Result<Seconds, ConversionError> {
-        if !src.is_finite() {
-            return Err(ConversionError::NonFinite);
-        }
-        let jd_ut1 = j2000_seconds_to_jd(src);
-        let dt = runtime_context_delta_t(jd_ut1, ctx)?;
         Ok(src + dt)
     }
 }
@@ -398,26 +327,6 @@ impl ContextScaleConvert<UT1> for TT {
         for _ in 0..3 {
             let jd_ut1: Days = j2000_seconds_to_jd(ut1_secs);
             let dt = context_delta_t(jd_ut1, ctx)?;
-            ut1_secs = src - dt;
-        }
-        Ok(ut1_secs)
-    }
-}
-
-#[cfg(feature = "runtime-data")]
-impl RuntimeContextScaleConvert<UT1> for TT {
-    #[inline]
-    fn convert_with_runtime(
-        src: Seconds,
-        ctx: &RuntimeTimeContext,
-    ) -> Result<Seconds, ConversionError> {
-        if !src.is_finite() {
-            return Err(ConversionError::NonFinite);
-        }
-        let mut ut1_secs = src;
-        for _ in 0..3 {
-            let jd_ut1 = j2000_seconds_to_jd(ut1_secs);
-            let dt = runtime_context_delta_t(jd_ut1, ctx)?;
             ut1_secs = src - dt;
         }
         Ok(ut1_secs)
@@ -448,44 +357,6 @@ ut1_through_tt!(TDB);
 ut1_through_tt!(TCG);
 ut1_through_tt!(TCB);
 ut1_through_tt!(UTC);
-
-#[cfg(feature = "runtime-data")]
-macro_rules! runtime_ut1_through_tt {
-    ($scale:ty) => {
-        impl RuntimeContextScaleConvert<$scale> for UT1 {
-            #[inline]
-            fn convert_with_runtime(
-                src: Seconds,
-                ctx: &RuntimeTimeContext,
-            ) -> Result<Seconds, ConversionError> {
-                let tt = <UT1 as RuntimeContextScaleConvert<TT>>::convert_with_runtime(src, ctx)?;
-                Ok(<TT as InfallibleScaleConvert<$scale>>::convert(tt))
-            }
-        }
-
-        impl RuntimeContextScaleConvert<UT1> for $scale {
-            #[inline]
-            fn convert_with_runtime(
-                src: Seconds,
-                ctx: &RuntimeTimeContext,
-            ) -> Result<Seconds, ConversionError> {
-                let tt = <$scale as InfallibleScaleConvert<TT>>::convert(src);
-                <TT as RuntimeContextScaleConvert<UT1>>::convert_with_runtime(tt, ctx)
-            }
-        }
-    };
-}
-
-#[cfg(feature = "runtime-data")]
-runtime_ut1_through_tt!(TAI);
-#[cfg(feature = "runtime-data")]
-runtime_ut1_through_tt!(TDB);
-#[cfg(feature = "runtime-data")]
-runtime_ut1_through_tt!(TCG);
-#[cfg(feature = "runtime-data")]
-runtime_ut1_through_tt!(TCB);
-#[cfg(feature = "runtime-data")]
-runtime_ut1_through_tt!(UTC);
 
 #[cfg(test)]
 mod tests {

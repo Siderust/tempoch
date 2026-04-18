@@ -1,5 +1,5 @@
 use tempoch::{
-    complement_within, intersect_periods, normalize_periods, validate_period_list, MJD, Period, TT,
+    complement_within, intersect_periods, normalize_periods, validate_period_list, Period, MJD, TT,
 };
 
 fn main() {

@@ -3,12 +3,13 @@
 
 //! Conversion context.
 
-use crate::eop::{builtin_eop_at, EopValues};
+use crate::active_data::{active_time_data, time_data_eop_at};
+use crate::eop::EopValues;
 use qtty::{Day, Second};
 
 /// Explicit, immutable context for conversions that need one.
 ///
-/// A `TimeContext` selects which compiled data tables back UT1 conversions.
+/// A `TimeContext` selects which active data tables back UT1 conversions.
 /// The default constructor [`TimeContext::new`] uses the monthly ΔT series,
 /// matching the behaviour of previous versions; [`TimeContext::with_builtin_eop`]
 /// selects the daily IERS `finals2000A.all` series for sub-ΔT-quantum UT1
@@ -26,8 +27,10 @@ use qtty::{Day, Second};
 /// | EOP prediction range | ~0.01 s | short-range Bulletin A prediction |
 /// | Beyond EOP | ~0.01–growing | falls back to monthly ΔT |
 ///
-/// The builtin EOP is only consulted inside its compiled coverage; outside of
-/// that range the monthly ΔT path applies unchanged.
+/// The builtin EOP is only consulted inside the active bundle's coverage;
+/// outside of that range the monthly ΔT path applies unchanged. With the
+/// `runtime-data` feature enabled, the active bundle may be fresher than the
+/// compiled baseline.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct TimeContext {
     eop: EopSource,
@@ -71,7 +74,10 @@ impl TimeContext {
     pub fn eop_at(&self, mjd_utc: Day) -> Option<EopValues> {
         match self.eop {
             EopSource::None => None,
-            EopSource::Builtin => builtin_eop_at(mjd_utc),
+            EopSource::Builtin => {
+                let data = active_time_data();
+                time_data_eop_at(data.as_ref(), mjd_utc)
+            }
         }
     }
 

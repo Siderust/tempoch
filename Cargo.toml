@@ -1,6 +1,12 @@
 [workspace]
 resolver = "2"
-members = ["tempoch", "tempoch-core", "tempoch-ffi", "tempoch-time-data-updater"]
+members = [
+    "tempoch",
+    "tempoch-core",
+    "tempoch-ffi",
+    "tempoch-time-data",
+    "tempoch-time-data-updater",
+]
 
 [patch.crates-io]
 qtty = { git = "https://github.com/Siderust/qtty", branch = "main" }

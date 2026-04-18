@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Valles Puig, Ramon
 
-use tempoch_core::runtime_data::{EopPoint, UtcTaiSegment};
+use tempoch_time_data::{EopPoint, UtcTaiSegment};
 
 pub struct Sources<'a> {
     pub utc_tai_history_url: &'a str,

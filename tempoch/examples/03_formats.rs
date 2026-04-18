@@ -19,7 +19,7 @@ use chrono::Utc;
 use qtty::{Day, Second};
 use tempoch::{
     constats::{J2000_JD_TT, UNIX_EPOCH_JD, UNIX_EPOCH_MJD},
-    JD, MJD, Time, TAI, TT, UTC,
+    Time, JD, MJD, TAI, TT, UTC,
 };
 
 fn main() {
@@ -76,7 +76,10 @@ fn main() {
 
     println!();
     println!("── 3. POSIX / Unix seconds (UTC) ─────────────────────────────");
-    println!("  Unix epoch        : {:.3}", unix_epoch_utc.unix_seconds().unwrap());
+    println!(
+        "  Unix epoch        : {:.3}",
+        unix_epoch_utc.unix_seconds().unwrap()
+    );
     println!("  2024-01-01 UTC    : {:.3}", y2024_unix_roundtrip);
     println!(
         "  Unix round-trip err: {:.3e} s",

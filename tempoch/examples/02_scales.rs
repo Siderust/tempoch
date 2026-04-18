@@ -15,7 +15,7 @@
 use chrono::Utc;
 use qtty::Second;
 use tempoch::{
-    constats::J2000_JD_TT, JD, MJD, Time, TimeContext, TAI, TCB, TCG, TDB, TT, UT1, UTC,
+    constats::J2000_JD_TT, Time, TimeContext, JD, MJD, TAI, TCB, TCG, TDB, TT, UT1, UTC,
 };
 
 fn main() {

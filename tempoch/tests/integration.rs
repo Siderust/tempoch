@@ -5,7 +5,7 @@ use serde_json::json;
 use tempoch::{
     complement_within,
     constats::{J2000_JD_TT, TT_MINUS_TAI},
-    intersect_periods, JD, MJD, Period, Time, TimeContext, TAI, TT, UT1, UTC,
+    intersect_periods, Period, Time, TimeContext, JD, MJD, TAI, TT, UT1, UTC,
 };
 #[cfg(feature = "serde")]
 use tempoch::{DayCount, GpsSecs, UnixSecs};

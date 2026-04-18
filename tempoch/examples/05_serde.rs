@@ -9,7 +9,7 @@
 //! ```
 
 use qtty::Second;
-use tempoch::{MJD, Period, Time, UnixSecs, TT, UTC};
+use tempoch::{Period, Time, UnixSecs, MJD, TT, UTC};
 
 fn main() {
     let tt = Time::<TT>::from_si_seconds(Second::new(42.5)).unwrap();

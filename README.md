@@ -36,8 +36,8 @@ Typed astronomical time primitives for Rust.
   sources.
 - Optional `serde` support for `Time<S, F>` as raw format values and
   `Period<S, F>` / `Interval<T>` as `{start, end}` objects.
-- Optional runtime refresh and cache management under `tempoch::runtime_data`
-  when the `runtime-data` feature is enabled.
+- Optional automatic runtime freshness when the `runtime-data` feature is
+  enabled, while keeping the same public API.
 - Public typed epoch/offset constants under `tempoch::constats`, such as
   `J2000_JD_TT`, `TT_MINUS_TAI`, and `DELTA_T_PREDICTION_HORIZON_MJD`.
 - A utility `Interval<T>` type for half-open time ranges over `Time<A>`,
@@ -60,8 +60,8 @@ to reference the compiled boundary programmatically.
 tempoch = "0.4"
 ```
 
-Enable runtime refresh support explicitly if you want to fetch current
-timekeeping data at runtime:
+Enable runtime freshness explicitly if you want `tempoch` to prefer a cached
+or auto-refreshed time-data bundle at runtime while keeping the ordinary API:
 
 ```toml
 [dependencies]
@@ -157,33 +157,30 @@ assert_eq!(gaps.len(), 3);
 ## Runtime Time Data
 
 The default `tempoch` path remains compile-time and network-free. If you need
-fresh UTC-TAI history, modern Delta T, and daily IERS EOP at runtime, enable
-the `runtime-data` feature and use `tempoch::runtime_data` explicitly.
+fresher UTC-TAI history, modern Delta T, and daily IERS EOP at runtime, enable
+the `runtime-data` feature. The public API does not change: `TimeContext`,
+`Time::to_scale_with`, and the normal UTC civil helpers automatically consult a
+cached bundle in `~/.tempoch/data`, refreshing it once on first use when the
+cache is missing, invalid, or older than 24 hours.
 
-Downloaded raw upstream files are cached under `~/.tempoch/data` by default.
-Set `TEMPOCH_DATA_DIR` to override that location.
+Set `TEMPOCH_DATA_DIR` to override the cache location.
 
-For a runnable end-to-end refresh example that replaces the active runtime
-context after downloading a new bundle, run:
+For a runnable example that uses the ordinary API under `runtime-data`, run:
 
 ```bash
 cargo run -p tempoch --example 06_runtime_tables --features runtime-data
 ```
 
 ```rust,no_run
-use tempoch::runtime_data::{RuntimeTimeContext, TimeDataManager};
-use tempoch::{JD, Time, TT, UT1, UTC};
+use tempoch::{JD, Time, TimeContext, TT, UT1, UTC};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let manager = TimeDataManager::new()?;
-    let data = manager.refresh_and_load()?;
-    let ctx = RuntimeTimeContext::new(data);
-
+    let ctx = TimeContext::with_builtin_eop();
     let tt = Time::<TT, JD>::from_julian_days(2_460_000.25.into())?;
-    let ut1: Time<UT1, JD> = tt.to_scale_with_runtime(&ctx)?;
+    let ut1: Time<UT1, JD> = tt.to_scale_with::<UT1>(&ctx)?;
 
-    let unix = Time::<UTC>::from_unix_seconds_with_runtime(1_700_000_000.0.into(), &ctx)?;
-    let back = unix.unix_seconds_with_runtime(&ctx)?;
+    let unix = Time::<UTC>::from_unix_seconds(1_700_000_000.0.into())?;
+    let back = unix.unix_seconds()?;
 
     println!("UT1 JD     : {ut1:.9}");
     println!("Unix roundtrip: {:.3}", back.value());
@@ -196,8 +193,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 The compile-time path still uses checked-in generated tables in `tempoch-core`.
 The dedicated Rust CLI `tempoch-time-data-updater` regenerates those committed
 files from the official UTC-TAI, Delta T, and IERS finals2000A.all sources.
-Its fetch/parse/build pipeline now reuses the same shared runtime-data logic
-that powers the optional `tempoch::runtime_data` feature. To refresh locally:
+Its fetch/parse/build pipeline now reuses the same shared support crate that
+powers the optional `runtime-data` feature. To refresh locally:
 
 ```bash
 cargo run -p tempoch-time-data-updater

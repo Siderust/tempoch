@@ -7,7 +7,7 @@ use core::marker::PhantomData;
 
 use super::context::TimeContext;
 use super::error::ConversionError;
-use super::format::{DayCount, Format, GpsSecs, J2000s, JD, MJD, UnixSecs};
+use super::format::{DayCount, Format, GpsSecs, J2000s, UnixSecs, JD, MJD};
 use super::format_conversion::{CanonicalRoundtrip, FormatConvertible};
 use super::scale::{ContinuousScale, Scale};
 use super::scale_conversion::{ContextScaleConvert, InfallibleScaleConvert};
@@ -405,7 +405,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::super::format::{DayCount, GpsSecs, J2000s, JD, MJD, UnixSecs};
+    use super::super::format::{DayCount, GpsSecs, J2000s, UnixSecs, JD, MJD};
+    #[cfg(feature = "serde")]
+    use super::super::scale::UTC;
     use super::super::scale::{TAI, TCB, TCG, TDB, TT};
     use super::*;
     use qtty::{Day, QuantityI32, QuantityI64, Second};

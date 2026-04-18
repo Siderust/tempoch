@@ -907,8 +907,7 @@ dependencies = [
  "qtty",
  "serde",
  "serde_json",
- "sha2",
- "ureq",
+ "tempoch-time-data",
 ]
 
 [[package]]
@@ -923,11 +922,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "tempoch-time-data"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde_json",
+ "sha2",
+ "ureq",
+]
+
+[[package]]
 name = "tempoch-time-data-updater"
 version = "0.1.0"
 dependencies = [
  "serde_json",
- "tempoch-core",
+ "tempoch-time-data",
 ]
 
 [[package]]

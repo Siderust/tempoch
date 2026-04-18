@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use tempoch_core::runtime_data::{
+use tempoch_time_data::{
     TimeDataManager, DELTA_T_OBSERVED_URL, DELTA_T_PREDICTIONS_URL, EOP_FINALS_URL,
     PRE_1961_TAI_MINUS_UTC_APPROX, UTC_TAI_HISTORY_URL,
 };
@@ -147,7 +147,7 @@ fn run(check_only: bool) -> Result<i32, String> {
     let rendered_time = render_generated_module(
         data.utc_tai_segments(),
         data.modern_delta_t_points(),
-        data.modern_delta_t_observed_end_mjd().value(),
+        data.modern_delta_t_observed_end_mjd(),
         &sources,
         &provenance,
     );
@@ -198,15 +198,15 @@ fn run(check_only: bool) -> Result<i32, String> {
         tag(time_changed),
         data.utc_tai_segments().len(),
         data.modern_delta_t_points().len(),
-        data.modern_delta_t_observed_end_mjd().value()
+        data.modern_delta_t_observed_end_mjd()
     );
     println!(
         "{} {} (EOP points={}, observed through MJD {}, last MJD {})",
         eop_out.display(),
         tag(eop_changed),
         data.eop_points().len(),
-        data.eop_observed_end_mjd().value() as i32,
-        data.eop_end_mjd().value() as i32,
+        data.eop_observed_end_mjd(),
+        data.eop_end_mjd(),
     );
     println!(
         "{} {}",

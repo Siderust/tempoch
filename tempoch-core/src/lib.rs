@@ -21,6 +21,7 @@
 //!
 //! See [`constats`] for typed epoch and offset constants.
 
+mod active_data;
 mod civil;
 pub mod constats;
 mod context;
@@ -32,8 +33,6 @@ mod format;
 mod format_conversion;
 pub(crate) mod generated;
 mod interval;
-#[cfg(feature = "runtime-data")]
-pub mod runtime_data;
 mod scale;
 mod scale_conversion;
 mod sealed;
@@ -42,7 +41,7 @@ mod time;
 pub use context::TimeContext;
 pub use delta_t::{delta_t_seconds, delta_t_seconds_extrapolated, DELTA_T_PREDICTION_HORIZON_MJD};
 pub use error::ConversionError;
-pub use format::{DayCount, Format, GpsSecs, J2000s, JD, MJD, UnixSecs};
+pub use format::{DayCount, Format, GpsSecs, J2000s, UnixSecs, JD, MJD};
 pub use generated::{
     EOP_END_MJD, EOP_OBSERVED_END_MJD, EOP_START_MJD, MODERN_DELTA_T_OBSERVED_END_MJD,
 };
