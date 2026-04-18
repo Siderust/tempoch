@@ -1,13 +1,13 @@
 use chrono::{DateTime, NaiveDate};
 use qtty::{Day, Second};
+#[cfg(feature = "serde")]
+use serde_json::json;
 use tempoch::{
     complement_within,
     constats::{J2000_JD_TT, TT_MINUS_TAI},
-    intersect_periods, DayCount, GpsSecs, Jd, Mjd, Period, Time, TimeContext, TAI, TT, UT1, UTC,
-    UnixSecs,
+    intersect_periods, DayCount, GpsSecs, Jd, Mjd, Period, Time, TimeContext, UnixSecs, TAI, TT,
+    UT1, UTC,
 };
-#[cfg(feature = "serde")]
-use serde_json::json;
 
 #[test]
 fn utc_roundtrip_j2000_is_stable() {
@@ -103,7 +103,10 @@ fn public_serde_roundtrips_time_and_periods() {
         serde_json::to_value(mjd_period).unwrap(),
         json!({"start": 61_000.0, "end": 61_001.0})
     );
-    assert_eq!(serde_json::to_value(unix).unwrap(), json!(1_700_000_000_i64));
+    assert_eq!(
+        serde_json::to_value(unix).unwrap(),
+        json!(1_700_000_000_i64)
+    );
     assert_eq!(serde_json::to_value(gps).unwrap(), json!(345.25));
     assert_eq!(serde_json::to_value(daycount).unwrap(), json!(42));
 

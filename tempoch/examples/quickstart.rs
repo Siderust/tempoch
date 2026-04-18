@@ -10,6 +10,6 @@ fn main() {
     let tt_mjd: Time<TT, Mjd> = tt_now.reformat();
 
     println!("UTC       : {}", utc_now.to_chrono().unwrap());
-    println!("JD(TT)    : {:.9}", tt_jd.julian_days());
-    println!("MJD(TT)   : {:.9}", tt_mjd.modified_julian_days());
+    println!("TT in JD  : {tt_jd:.9}");
+    println!("TT in MJD : {tt_mjd:.9}");
 }

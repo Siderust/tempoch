@@ -29,9 +29,9 @@ fn main() {
     // TT — Terrestrial Time
     // ─────────────────────────────────────────────────────────────────────────
     println!("── TT: Terrestrial Time ──────────────────────────────────────");
-    println!("  JD(TT)  : {:.9}", j2000_tt.julian_days());
-    println!("  MJD(TT) : {:.9}", j2000_tt_mjd.modified_julian_days());
-    println!("  SI(s)   : {:.3}", j2000_tt_s.si_seconds());
+    println!("  JD(TT)  : {j2000_tt:.9}");
+    println!("  MJD(TT) : {j2000_tt_mjd:.9}");
+    println!("  SI(s)   : {j2000_tt_s:.3}");
 
     // ─────────────────────────────────────────────────────────────────────────
     // TAI — International Atomic Time
@@ -39,7 +39,7 @@ fn main() {
     let tai: Time<TAI> = j2000_tt_s.to_scale();
     println!();
     println!("── TAI: International Atomic Time ────────────────────────────");
-    println!("  SI(s)       : {:.3}", tai.si_seconds());
+    println!("  SI(s)       : {tai:.3}");
     println!(
         "  TT − TAI    : {:.3}",
         j2000_tt_s.si_seconds() - tai.si_seconds()
@@ -68,7 +68,7 @@ fn main() {
     let delta_t = j2000_tt_s.si_seconds() - ut1.si_seconds();
     println!();
     println!("── UT1: Universal Time 1 (rotation-angle scale) ─────────────");
-    println!("  SI(s)    : {:.6}", ut1.si_seconds());
+    println!("  SI(s)    : {ut1:.6}");
     println!("  ΔT(TT−UT1): {:.3}", delta_t);
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -77,7 +77,7 @@ fn main() {
     let tdb: Time<TDB> = j2000_tt_s.to_scale();
     println!();
     println!("── TDB: Barycentric Dynamical Time ───────────────────────────");
-    println!("  SI(s)   : {:.6}", tdb.si_seconds());
+    println!("  SI(s)   : {tdb:.6}");
     println!(
         "  TT−TDB  : {:.9}",
         j2000_tt_s.si_seconds() - tdb.si_seconds()
@@ -91,7 +91,7 @@ fn main() {
     let drift_per_day = (tcg_next_day - tcg) - Second::new(86_400.0);
     println!();
     println!("── TCG: Geocentric Coordinate Time ───────────────────────────");
-    println!("  SI(s)        : {:.6}", tcg.si_seconds());
+    println!("  SI(s)        : {tcg:.6}");
     println!("  Drift/day    : {:.4} μs", drift_per_day.value() * 1e6);
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -100,7 +100,7 @@ fn main() {
     let tcb: Time<TCB> = tdb.to_scale();
     println!();
     println!("── TCB: Barycentric Coordinate Time ──────────────────────────");
-    println!("  SI(s)    : {:.6}", tcb.si_seconds());
+    println!("  SI(s)    : {tcb:.6}");
     println!(
         "  TT − TCB : {:.3}",
         j2000_tt_s.si_seconds() - tcb.si_seconds()
@@ -114,7 +114,7 @@ fn main() {
     println!();
     println!("── Current instant ───────────────────────────────────────────");
     println!("  UTC : {}", now_utc.to_chrono().unwrap());
-    println!("  TDB : {:.3}", now_tdb.si_seconds());
+    println!("  TDB : {now_tdb:.3}");
 
     // ─────────────────────────────────────────────────────────────────────────
     // Summary

@@ -117,8 +117,8 @@ let tt_jd: Time<TT, Jd> = tt_now.reformat();
 let tt_mjd: Time<TT, Mjd> = tt_now.reformat();
 
 println!("UTC       : {}", utc_now.to_chrono().unwrap());
-println!("JD(TT)    : {:.9}", tt_jd.julian_days());
-println!("MJD(TT)   : {:.9}", tt_mjd.modified_julian_days());
+println!("TT in JD  : {tt_jd:.9}");
+println!("TT in MJD : {tt_mjd:.9}");
 ```
 
 ## Period Operations
@@ -176,7 +176,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let unix = Time::<UTC>::from_unix_seconds_with_runtime(1_700_000_000.0.into(), &ctx)?;
     let back = unix.unix_seconds_with_runtime(&ctx)?;
 
-    println!("UT1 JD     : {:.9}", ut1.julian_days());
+    println!("UT1 JD     : {ut1:.9}");
     println!("Unix roundtrip: {:.3}", back.value());
     Ok(())
 }

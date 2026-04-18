@@ -85,6 +85,15 @@ pub struct Interval<T: Copy + PartialOrd> {
     pub end: T,
 }
 
+impl<T> fmt::Display for Interval<T>
+where
+    T: Copy + PartialOrd + fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[{}, {})", self.start, self.end)
+    }
+}
+
 #[cfg(feature = "serde")]
 impl<T> Serialize for Interval<T>
 where
@@ -271,7 +280,7 @@ pub fn normalize_periods<T: Copy + PartialOrd>(periods: &[Interval<T>]) -> Vec<I
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Jd, Mjd, TT};
+    use crate::{Mjd, TT};
     use qtty::Day;
     #[cfg(feature = "serde")]
     use serde::de::{value, IntoDeserializer};
@@ -410,6 +419,13 @@ mod tests {
         );
     }
 
+    #[test]
+    fn display_formats_periods_via_endpoint_display() {
+        let mjd = Period::<TT, Mjd>::new(51_544.5, 51_545.25);
+
+        assert_eq!(mjd.to_string(), "[TT/MJD 51544.5 d, TT/MJD 51545.25 d)");
+    }
+
     #[cfg(feature = "serde")]
     #[test]
     fn serde_roundtrips_period_shapes() {
@@ -436,8 +452,10 @@ mod tests {
             mjd
         );
         assert_eq!(
-            serde_json::from_value::<Period<TT, Jd>>(json!({"start": 2_451_545.0, "end": 2_451_546.0}))
-                .unwrap(),
+            serde_json::from_value::<Period<TT, Jd>>(
+                json!({"start": 2_451_545.0, "end": 2_451_546.0})
+            )
+            .unwrap(),
             jd
         );
         assert_eq!(
@@ -458,14 +476,8 @@ mod tests {
     #[test]
     fn serde_rejects_nonfinite_nested_time_values() {
         let entries = vec![
-            (
-                "start".into_deserializer(),
-                f64::NAN.into_deserializer(),
-            ),
-            (
-                "end".into_deserializer(),
-                5.0_f64.into_deserializer(),
-            ),
+            ("start".into_deserializer(), f64::NAN.into_deserializer()),
+            ("end".into_deserializer(), 5.0_f64.into_deserializer()),
         ];
         let deserializer = value::MapDeserializer::<_, value::Error>::new(entries.into_iter());
         let err = Period::<TT, Mjd>::deserialize(deserializer).unwrap_err();

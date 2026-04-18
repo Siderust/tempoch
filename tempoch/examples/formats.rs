@@ -36,9 +36,9 @@ fn main() {
     let one_year_before = Time::<TT>::from_si_seconds(Second::new(-365.25 * 86_400.0)).unwrap();
 
     println!("── 1. SI seconds (J2000-TT offset) ───────────────────────────");
-    println!("  J2000             : {:.3}", j2000_tt.si_seconds());
-    println!("  J2000 + 1 day     : {:.3}", one_day_later.si_seconds());
-    println!("  J2000 − 1 year    : {:.3}", one_year_before.si_seconds());
+    println!("  J2000             : {j2000_tt:.3}");
+    println!("  J2000 + 1 day     : {one_day_later:.3}");
+    println!("  J2000 − 1 year    : {one_year_before:.3}");
     println!("  Elapsed (b − a)   : {:.3}", one_day_later - j2000_tt);
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -54,12 +54,12 @@ fn main() {
 
     println!();
     println!("── 2. Julian Day ─────────────────────────────────────────────");
-    println!("  J2000 JD(TT)   : {:.9}", j2000_from_jd.julian_days());
-    println!("  Unix epoch JD  : {:.9}", unix_epoch_jd.julian_days());
-    println!("  JD + 0.5 (noon): {:.9}", half_day_jd.julian_days());
+    println!("  J2000 JD(TT)   : {j2000_from_jd:.9}");
+    println!("  Unix epoch JD  : {unix_epoch_jd:.9}");
+    println!("  JD + 0.5 (noon): {half_day_jd:.9}");
     // Reformat to SI seconds to show the round-trip
     let j2000_roundtrip: Time<TT> = j2000_from_jd.reformat();
-    println!("  Round-trip SI  : {:.3}", j2000_roundtrip.si_seconds());
+    println!("  Round-trip SI  : {j2000_roundtrip:.3}");
 
     // ─────────────────────────────────────────────────────────────────────────
     // 3. Modified Julian Day (MJD)
@@ -72,14 +72,8 @@ fn main() {
 
     println!();
     println!("── 3. Modified Julian Day (MJD) ──────────────────────────────");
-    println!(
-        "  J2000 MJD(TT)  : {:.9}",
-        j2000_from_mjd.modified_julian_days()
-    );
-    println!(
-        "  Unix epoch MJD : {:.9}",
-        unix_epoch_mjd.modified_julian_days()
-    );
+    println!("  J2000 MJD(TT)  : {j2000_from_mjd:.9}");
+    println!("  Unix epoch MJD : {unix_epoch_mjd:.9}");
     // Cross-format comparison: reformat JD to MJD
     let j2000_as_mjd: Time<TT, Mjd> = j2000_from_jd.reformat();
     println!(

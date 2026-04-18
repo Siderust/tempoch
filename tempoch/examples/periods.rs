@@ -20,8 +20,5 @@ fn main() {
     ];
     let intersection = intersect_periods(&windows, &constraints);
     println!("Intersection windows: {}", intersection.len());
-    println!(
-        "First overlap starts at MJD {:.5}",
-        intersection[0].start.modified_julian_days()
-    );
+    println!("First overlap starts at {:.5}", intersection[0].start);
 }

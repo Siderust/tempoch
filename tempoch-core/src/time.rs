@@ -85,6 +85,16 @@ where
     }
 }
 
+impl<S: Scale, F: Format> core::fmt::Display for Time<S, F>
+where
+    F::Storage: core::fmt::Display,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}/{} ", S::NAME, F::NAME)?;
+        core::fmt::Display::fmt(&self.value, f)
+    }
+}
+
 #[cfg(feature = "serde")]
 #[allow(private_bounds)]
 impl<S: Scale, F> Serialize for Time<S, F>
@@ -396,7 +406,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::super::format::{DayCount, GpsSecs, J2000s, Jd, Mjd, UnixSecs};
-    use super::super::scale::{TAI, TCB, TCG, TDB, TT, UTC};
+    use super::super::scale::{TAI, TCB, TCG, TDB, TT};
     use super::*;
     use qtty::{Day, QuantityI32, QuantityI64, Second};
     #[cfg(feature = "serde")]
@@ -523,6 +533,24 @@ mod tests {
     }
 
     #[test]
+    fn display_includes_scale_format_and_qtty_units() {
+        let tt = Time::<TT>::from_si_seconds(Second::new(42.5)).unwrap();
+        let mjd = Time::<TT, Mjd>::from_modified_julian_days(Day::new(51_544.5)).unwrap();
+
+        assert_eq!(tt.to_string(), "TT/J2000s 42.5 s");
+        assert_eq!(mjd.to_string(), "TT/MJD 51544.5 d");
+    }
+
+    #[test]
+    fn display_forwards_precision_to_underlying_quantity() {
+        let tt = Time::<TT>::from_si_seconds(Second::new(42.5)).unwrap();
+        let jd = Time::<TT, Jd>::from_julian_days(Day::new(2_451_545.0)).unwrap();
+
+        assert_eq!(format!("{tt:.3}"), "TT/J2000s 42.500 s");
+        assert_eq!(format!("{jd:.2}"), "TT/JD 2451545.00 d");
+    }
+
+    #[test]
     fn from_impls_for_all_formats() {
         let _: Time<TT, J2000s> = Second::new(0.0).into();
         let _: Time<TT, J2000s> = (0.0_f64).into();
@@ -581,7 +609,10 @@ mod tests {
         assert_eq!(serde_json::to_value(tt).unwrap(), json!(42.5));
         assert_eq!(serde_json::to_value(jd).unwrap(), json!(2_451_545.25));
         assert_eq!(serde_json::to_value(mjd).unwrap(), json!(51_544.75));
-        assert_eq!(serde_json::to_value(unix).unwrap(), json!(1_700_000_000_i64));
+        assert_eq!(
+            serde_json::to_value(unix).unwrap(),
+            json!(1_700_000_000_i64)
+        );
         assert_eq!(serde_json::to_value(gps).unwrap(), json!(123.5));
         assert_eq!(serde_json::to_value(daycount).unwrap(), json!(12));
 
@@ -611,31 +642,27 @@ mod tests {
     #[cfg(feature = "serde")]
     #[test]
     fn serde_rejects_nonfinite_real_time_values() {
-        assert!(
-            Time::<TT>::deserialize(serde::de::value::F64Deserializer::<serde::de::value::Error>::new(
-                f64::NAN,
-            ))
-                .unwrap_err()
-                .to_string()
-                .contains("finite")
-        );
+        assert!(Time::<TT>::deserialize(serde::de::value::F64Deserializer::<
+            serde::de::value::Error,
+        >::new(f64::NAN,))
+        .unwrap_err()
+        .to_string()
+        .contains("finite"));
         assert!(
             Time::<TT, Jd>::deserialize(
                 serde::de::value::F64Deserializer::<serde::de::value::Error>::new(f64::INFINITY),
             )
-                .unwrap_err()
-                .to_string()
-                .contains("finite")
+            .unwrap_err()
+            .to_string()
+            .contains("finite")
         );
         assert!(
-            Time::<TAI, GpsSecs>::deserialize(
-                serde::de::value::F64Deserializer::<serde::de::value::Error>::new(
-                    f64::NEG_INFINITY,
-                ),
-            )
-                .unwrap_err()
-                .to_string()
-                .contains("finite")
+            Time::<TAI, GpsSecs>::deserialize(serde::de::value::F64Deserializer::<
+                serde::de::value::Error,
+            >::new(f64::NEG_INFINITY,),)
+            .unwrap_err()
+            .to_string()
+            .contains("finite")
         );
     }
 }
