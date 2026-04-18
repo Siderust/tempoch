@@ -21,6 +21,8 @@ use super::sealed::Sealed;
 use qtty::unit::{Day, Second};
 use qtty::{Quantity, QuantityI32, QuantityI64};
 
+pub(crate) mod conversion;
+
 /// Marker trait for a time representation format.
 ///
 /// Sealed: implementations live in this crate only — downstream crates cannot
@@ -34,15 +36,6 @@ pub trait Format: Sealed + Copy + Clone + core::fmt::Debug + 'static {
     type Storage: Copy + Clone + core::fmt::Debug;
     /// Display name of the format. Used by `Debug` on `Time`.
     const NAME: &'static str;
-}
-
-#[cfg(feature = "serde")]
-const NONFINITE_TIME_VALUE_ERROR: &str = "time value must be finite (not NaN or infinity)";
-
-#[cfg(feature = "serde")]
-#[allow(private_bounds)]
-pub(crate) trait SerdeFormat: Format {
-    fn validate_serde_value(value: &Self::Storage) -> Result<(), &'static str>;
 }
 
 // ── Format macros ────────────────────────────────────────────────────────
@@ -152,41 +145,3 @@ define_format!(
     QuantityI32<Day>,
     "DayCount"
 );
-
-#[cfg(feature = "serde")]
-macro_rules! impl_serde_format_finite {
-    ($($format:ty),+ $(,)?) => {
-        $(
-            impl SerdeFormat for $format {
-                #[inline]
-                fn validate_serde_value(value: &Self::Storage) -> Result<(), &'static str> {
-                    if value.is_finite() {
-                        Ok(())
-                    } else {
-                        Err(NONFINITE_TIME_VALUE_ERROR)
-                    }
-                }
-            }
-        )+
-    };
-}
-
-#[cfg(feature = "serde")]
-macro_rules! impl_serde_format_passthrough {
-    ($($format:ty),+ $(,)?) => {
-        $(
-            impl SerdeFormat for $format {
-                #[inline]
-                fn validate_serde_value(_value: &Self::Storage) -> Result<(), &'static str> {
-                    Ok(())
-                }
-            }
-        )+
-    };
-}
-
-#[cfg(feature = "serde")]
-impl_serde_format_finite!(J2000s, JD, MJD, GpsSecs);
-
-#[cfg(feature = "serde")]
-impl_serde_format_passthrough!(UnixSecs, DayCount);

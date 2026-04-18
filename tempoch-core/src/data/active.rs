@@ -14,17 +14,15 @@ use chrono::{DateTime, Utc};
 use qtty::time::{Days, Nanoseconds, Seconds};
 use qtty::unit::{Day, Nanosecond, Second as SecondUnit};
 use qtty::{Day as DayQuantity, Second};
-use std::sync::{Arc, OnceLock};
-use tempoch_time_data::{EopPoint, TimeDataBundle, TimeDataProvenance, UtcTaiSegment};
+use std::sync::{Arc, OnceLock, RwLock};
+use tempoch_time_data::{
+    EopPoint, TimeDataBundle, TimeDataError, TimeDataManager, TimeDataProvenance, UtcTaiSegment,
+};
 
-#[cfg(feature = "runtime-data")]
-use std::time::Duration as StdDuration;
-#[cfg(feature = "runtime-data")]
-use tempoch_time_data::TimeDataManager;
+#[cfg(test)]
+use std::sync::Mutex;
 
 const NANOS_PER_SECOND: Nanoseconds = Nanoseconds::new(1_000_000_000.0);
-#[cfg(feature = "runtime-data")]
-const REFRESH_TTL: StdDuration = StdDuration::from_secs(24 * 60 * 60);
 
 #[derive(Clone, Copy)]
 enum UtcTaiRegion {
@@ -37,47 +35,76 @@ enum UtcTaiRegion {
 }
 
 static COMPILED_TIME_DATA: OnceLock<Arc<TimeDataBundle>> = OnceLock::new();
-#[cfg(all(not(test), feature = "runtime-data"))]
-static ACTIVE_TIME_DATA: OnceLock<Arc<TimeDataBundle>> = OnceLock::new();
+static ACTIVE_TIME_DATA: OnceLock<RwLock<Arc<TimeDataBundle>>> = OnceLock::new();
 
-#[cfg(all(test, feature = "runtime-data"))]
-use std::sync::Mutex;
-
-#[cfg(all(test, feature = "runtime-data"))]
+#[cfg(test)]
 static TEST_TIME_DATA_GUARD: Mutex<()> = Mutex::new(());
-#[cfg(all(test, feature = "runtime-data"))]
+#[cfg(test)]
 static TEST_TIME_DATA: Mutex<Option<Arc<TimeDataBundle>>> = Mutex::new(None);
 
-#[cfg(all(not(test), not(feature = "runtime-data")))]
-pub(crate) fn active_time_data() -> Arc<TimeDataBundle> {
-    compiled_time_data()
+fn active_time_data_slot() -> &'static RwLock<Arc<TimeDataBundle>> {
+    ACTIVE_TIME_DATA.get_or_init(|| RwLock::new(compiled_time_data()))
 }
 
-#[cfg(all(not(test), feature = "runtime-data"))]
-pub(crate) fn active_time_data() -> Arc<TimeDataBundle> {
-    ACTIVE_TIME_DATA
-        .get_or_init(|| match TimeDataManager::new() {
-            Ok(manager) => Arc::new(resolve_time_data_with(&manager, Utc::now())),
-            Err(_) => compiled_time_data(),
-        })
-        .clone()
+fn set_active_time_data(bundle: TimeDataBundle) {
+    let mut slot = active_time_data_slot()
+        .write()
+        .unwrap_or_else(|err| err.into_inner());
+    *slot = Arc::new(bundle);
 }
 
-#[cfg(all(test, not(feature = "runtime-data")))]
 pub(crate) fn active_time_data() -> Arc<TimeDataBundle> {
-    compiled_time_data()
-}
-
-#[cfg(all(test, feature = "runtime-data"))]
-pub(crate) fn active_time_data() -> Arc<TimeDataBundle> {
+    #[cfg(test)]
     if let Some(bundle) = TEST_TIME_DATA
         .lock()
         .unwrap_or_else(|err| err.into_inner())
         .clone()
     {
-        bundle
-    } else {
-        compiled_time_data()
+        return bundle;
+    }
+
+    active_time_data_slot()
+        .read()
+        .unwrap_or_else(|err| err.into_inner())
+        .clone()
+}
+
+/// Load runtime time data into the active bundle.
+///
+/// This is cache-first: it uses the current cached bundle if present,
+/// falling back to a refresh when no valid cache is available.
+pub fn update_runtime_time_data() -> Result<(), TimeDataError> {
+    load_and_activate_runtime_time_data(false)
+}
+
+/// Force-refresh runtime time data and load it into the active bundle.
+pub fn refresh_runtime_time_data() -> Result<(), TimeDataError> {
+    load_and_activate_runtime_time_data(true)
+}
+
+fn load_and_activate_runtime_time_data(force_refresh: bool) -> Result<(), TimeDataError> {
+    let manager = TimeDataManager::new()?;
+    let bundle = select_time_data(
+        manager.load_cached(),
+        || manager.refresh_and_load(),
+        force_refresh,
+    )?;
+    set_active_time_data(bundle);
+    Ok(())
+}
+
+fn select_time_data(
+    cached: Result<TimeDataBundle, TimeDataError>,
+    refresh: impl FnOnce() -> Result<TimeDataBundle, TimeDataError>,
+    force_refresh: bool,
+) -> Result<TimeDataBundle, TimeDataError> {
+    if force_refresh {
+        return refresh();
+    }
+
+    match cached {
+        Ok(bundle) => Ok(bundle),
+        Err(_) => refresh(),
     }
 }
 
@@ -218,7 +245,7 @@ pub(crate) fn time_data_tai_seconds_is_in_leap_window(
     )
 }
 
-#[cfg(all(test, feature = "runtime-data"))]
+#[cfg(test)]
 pub(crate) fn with_test_time_data<T>(data: TimeDataBundle, f: impl FnOnce() -> T) -> T {
     let _guard = TEST_TIME_DATA_GUARD
         .lock()
@@ -266,41 +293,6 @@ fn compiled_time_data() -> Arc<TimeDataBundle> {
             ))
         })
         .clone()
-}
-
-#[cfg(all(not(test), feature = "runtime-data"))]
-fn resolve_time_data_with(manager: &TimeDataManager, now: DateTime<Utc>) -> TimeDataBundle {
-    let cached = manager.load_cached().ok();
-    select_time_data(cached, || manager.refresh_and_load().ok(), now)
-}
-
-#[cfg(feature = "runtime-data")]
-fn bundle_is_fresh(data: &TimeDataBundle, now: DateTime<Utc>) -> bool {
-    let Some(fetched_at) = data.provenance().fetched_at() else {
-        return false;
-    };
-    match now.signed_duration_since(fetched_at).to_std() {
-        Ok(age) => age < REFRESH_TTL,
-        Err(_) => true,
-    }
-}
-
-#[cfg(feature = "runtime-data")]
-fn select_time_data(
-    cached: Option<TimeDataBundle>,
-    refresh: impl FnOnce() -> Option<TimeDataBundle>,
-    now: DateTime<Utc>,
-) -> TimeDataBundle {
-    if cached
-        .as_ref()
-        .is_some_and(|bundle| bundle_is_fresh(bundle, now))
-    {
-        return cached.unwrap();
-    }
-
-    refresh()
-        .or(cached)
-        .unwrap_or_else(|| (*compiled_time_data()).clone())
 }
 
 fn utc_offset_seconds_in_segment(mjd_utc: Days, segment: UtcTaiSegment) -> Seconds {
@@ -383,19 +375,14 @@ fn datetime_from_utc_mjd(mjd_utc: Days) -> Option<DateTime<Utc>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(feature = "runtime-data")]
     use crate::{Time, TimeContext, JD, TT, UT1, UTC};
-    #[cfg(feature = "runtime-data")]
     use qtty::Second;
-    #[cfg(feature = "runtime-data")]
     use tempoch_time_data::TimeDataProvenance;
 
-    #[cfg(feature = "runtime-data")]
     fn compiled_bundle_owned() -> TimeDataBundle {
         (*compiled_time_data()).clone()
     }
 
-    #[cfg(feature = "runtime-data")]
     fn bundle_with_timestamp(timestamp: &str) -> TimeDataBundle {
         let bundle = compiled_bundle_owned();
         TimeDataBundle::new(
@@ -407,77 +394,52 @@ mod tests {
         )
     }
 
-    #[cfg(feature = "runtime-data")]
     #[test]
-    fn cache_freshness_uses_24_hour_ttl() {
-        let now = DateTime::parse_from_rfc3339("2026-04-18T12:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        assert!(bundle_is_fresh(
-            &bundle_with_timestamp("2026-04-17T12:01:00"),
-            now
-        ));
-        assert!(!bundle_is_fresh(
-            &bundle_with_timestamp("2026-04-17T11:59:59"),
-            now
-        ));
-        assert!(!bundle_is_fresh(&bundle_with_timestamp("compiled"), now));
+    fn cache_is_selected_when_not_forcing_refresh() {
+        let cached = bundle_with_timestamp("cached");
+        let selected = select_time_data(
+            Ok(cached.clone()),
+            || Err(TimeDataError::Integrity("refresh should not be called".into())),
+            false,
+        )
+        .unwrap();
+        assert_eq!(selected.provenance().fetched_utc(), "cached");
     }
 
-    #[cfg(feature = "runtime-data")]
     #[test]
-    fn fresh_cache_skips_refresh_and_wins() {
-        let now = DateTime::parse_from_rfc3339("2026-04-18T12:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        let cached = bundle_with_timestamp("2026-04-18T11:30:00");
-        let selected = select_time_data(Some(cached.clone()), || None, now);
-        assert_eq!(
-            selected.provenance().fetched_utc(),
-            cached.provenance().fetched_utc()
+    fn missing_cache_triggers_refresh() {
+        let refreshed = bundle_with_timestamp("refreshed");
+        let selected = select_time_data(
+            Err(TimeDataError::Integrity("missing cache".into())),
+            || Ok(refreshed.clone()),
+            false,
+        )
+        .unwrap();
+        assert_eq!(selected.provenance().fetched_utc(), "refreshed");
+    }
+
+    #[test]
+    fn force_refresh_ignores_cache() {
+        let cached = bundle_with_timestamp("cached");
+        let refreshed = bundle_with_timestamp("refreshed");
+        let selected = select_time_data(Ok(cached), || Ok(refreshed.clone()), true).unwrap();
+        assert_eq!(selected.provenance().fetched_utc(), "refreshed");
+    }
+
+    #[test]
+    fn force_refresh_propagates_refresh_error() {
+        let err = select_time_data(
+            Ok(bundle_with_timestamp("cached")),
+            || Err(TimeDataError::Download("network unreachable".into())),
+            true,
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("network unreachable"),
+            "unexpected error: {err}"
         );
     }
 
-    #[cfg(feature = "runtime-data")]
-    #[test]
-    fn stale_cache_prefers_successful_refresh() {
-        let now = DateTime::parse_from_rfc3339("2026-04-18T12:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        let cached = bundle_with_timestamp("2026-04-16T12:00:00");
-        let refreshed = bundle_with_timestamp("2026-04-18T11:59:00");
-        let selected = select_time_data(Some(cached), || Some(refreshed.clone()), now);
-        assert_eq!(
-            selected.provenance().fetched_utc(),
-            refreshed.provenance().fetched_utc()
-        );
-    }
-
-    #[cfg(feature = "runtime-data")]
-    #[test]
-    fn stale_cache_survives_failed_refresh() {
-        let now = DateTime::parse_from_rfc3339("2026-04-18T12:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        let cached = bundle_with_timestamp("2026-04-16T12:00:00");
-        let selected = select_time_data(Some(cached.clone()), || None, now);
-        assert_eq!(
-            selected.provenance().fetched_utc(),
-            cached.provenance().fetched_utc()
-        );
-    }
-
-    #[cfg(feature = "runtime-data")]
-    #[test]
-    fn missing_cache_and_failed_refresh_fall_back_to_compiled() {
-        let now = DateTime::parse_from_rfc3339("2026-04-18T12:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        let selected = select_time_data(None, || None, now);
-        assert_eq!(selected.provenance().fetched_utc(), "compiled");
-    }
-
-    #[cfg(feature = "runtime-data")]
     #[test]
     fn ordinary_ut1_api_uses_override_bundle() {
         let bundle = compiled_bundle_owned();
@@ -511,7 +473,6 @@ mod tests {
         });
     }
 
-    #[cfg(feature = "runtime-data")]
     #[test]
     fn ordinary_utc_api_uses_override_bundle() {
         let bundle = compiled_bundle_owned();
@@ -546,7 +507,6 @@ mod tests {
         });
     }
 
-    #[cfg(feature = "runtime-data")]
     #[test]
     fn runtime_bundle_can_extend_delta_t_horizon_through_existing_api() {
         let bundle = compiled_bundle_owned();

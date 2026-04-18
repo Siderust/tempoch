@@ -8,13 +8,11 @@ use core::marker::PhantomData;
 use super::context::TimeContext;
 use super::error::ConversionError;
 use super::format::{DayCount, Format, GpsSecs, J2000s, UnixSecs, JD, MJD};
-use super::format_conversion::{CanonicalRoundtrip, FormatConvertible};
+use super::format::conversion::{CanonicalRoundtrip, FormatConvertible};
 use super::scale::{ContinuousScale, Scale};
-use super::scale_conversion::{ContextScaleConvert, InfallibleScaleConvert};
+use super::scale::conversion::{ContextScaleConvert, InfallibleScaleConvert};
 use qtty::time::Seconds;
 use qtty::{Day, QuantityI32, QuantityI64, Second};
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Time
@@ -92,39 +90,6 @@ where
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}/{} ", S::NAME, F::NAME)?;
         core::fmt::Display::fmt(&self.value, f)
-    }
-}
-
-#[cfg(feature = "serde")]
-#[allow(private_bounds)]
-impl<S: Scale, F> Serialize for Time<S, F>
-where
-    F: Format + super::format::SerdeFormat,
-    F::Storage: Serialize,
-{
-    fn serialize<Ser>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error>
-    where
-        Ser: Serializer,
-    {
-        self.value.serialize(serializer)
-    }
-}
-
-#[cfg(feature = "serde")]
-#[allow(private_bounds)]
-impl<'de, S: Scale, F> Deserialize<'de> for Time<S, F>
-where
-    F: Format + super::format::SerdeFormat,
-    F::Storage: Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let value = F::Storage::deserialize(deserializer)?;
-        <F as super::format::SerdeFormat>::validate_serde_value(&value)
-            .map_err(serde::de::Error::custom)?;
-        Ok(Self::new(value))
     }
 }
 
@@ -411,6 +376,8 @@ mod tests {
     use super::super::scale::{TAI, TCB, TCG, TDB, TT};
     use super::*;
     use qtty::{Day, QuantityI32, QuantityI64, Second};
+    #[cfg(feature = "serde")]
+    use serde::Deserialize;
     #[cfg(feature = "serde")]
     use serde_json::json;
 

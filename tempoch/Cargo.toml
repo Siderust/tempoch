@@ -17,7 +17,6 @@ path = "src/lib.rs"
 [features]
 default = []
 serde = ["tempoch-core/serde"]
-runtime-data = ["tempoch-core/runtime-data"]
 
 [dependencies]
 tempoch-core = { path = "../tempoch-core", version = "0.4.1" }
@@ -35,4 +34,3 @@ required-features = ["serde"]
 [[example]]
 name = "06_runtime_tables"
 path = "examples/06_runtime_tables.rs"
-required-features = ["runtime-data"]

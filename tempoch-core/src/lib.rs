@@ -21,7 +21,7 @@
 //!
 //! See [`constats`] for typed epoch and offset constants.
 
-mod active_data;
+mod data;
 mod civil;
 pub mod constats;
 mod context;
@@ -30,16 +30,19 @@ pub(crate) mod encoding;
 pub mod eop;
 pub mod error;
 mod format;
-mod format_conversion;
 pub(crate) mod generated;
 mod interval;
 mod scale;
-mod scale_conversion;
 mod sealed;
 mod time;
 
+#[cfg(feature = "serde")]
+#[path = "serde.rs"]
+mod serde_impl;
+
 pub use context::TimeContext;
 pub use delta_t::{delta_t_seconds, delta_t_seconds_extrapolated, DELTA_T_PREDICTION_HORIZON_MJD};
+pub use data::active::{refresh_runtime_time_data, update_runtime_time_data};
 pub use error::ConversionError;
 pub use format::{DayCount, Format, GpsSecs, J2000s, UnixSecs, JD, MJD};
 pub use generated::{
@@ -51,6 +54,7 @@ pub use interval::{
 };
 pub use scale::{ContinuousScale, Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
 pub use time::Time;
+pub use tempoch_time_data::TimeDataError;
 
 #[cfg(test)]
 mod size_tests {

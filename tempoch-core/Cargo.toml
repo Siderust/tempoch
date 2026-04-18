@@ -10,7 +10,6 @@ repository = "https://github.com/Siderust/tempoch"
 [features]
 default = []
 serde = ["dep:serde", "qtty/serde"]
-runtime-data = ["tempoch-time-data/fetch"]
 
 [lib]
 name = "tempoch_core"

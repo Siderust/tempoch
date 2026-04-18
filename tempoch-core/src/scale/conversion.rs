@@ -13,16 +13,16 @@
 //! All conversions operate on `Quantity<Second, f64>` (J2000 TT seconds).
 //! The format layer handles lifting to/from the canonical representation.
 
-use super::constats::{IAU_TIME_EPOCH_T0_JD, L_B, L_G, TDB0, TT_MINUS_TAI};
-use super::context::TimeContext;
-use super::delta_t::delta_t_seconds;
-use super::encoding::{
+use crate::constats::{IAU_TIME_EPOCH_T0_JD, L_B, L_G, TDB0, TT_MINUS_TAI};
+use crate::context::TimeContext;
+use crate::delta_t::delta_t_seconds;
+use crate::encoding::{
     j2000_seconds_to_jd, jd_to_j2000_seconds, jd_to_julian_centuries, jd_to_mjd,
 };
-use super::error::ConversionError;
-use super::scale::{Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
-use super::sealed::Sealed;
-use crate::active_data::{active_time_data, time_data_delta_t, time_data_try_tai_minus_utc_mjd};
+use crate::error::ConversionError;
+use super::{Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
+use crate::sealed::Sealed;
+use crate::data::active::{active_time_data, time_data_delta_t, time_data_try_tai_minus_utc_mjd};
 use crate::generated::time_data::{UtcTaiSegment, UTC_TAI_SEGMENTS};
 use crate::generated::{PRE_1961_TAI_MINUS_UTC_APPROX, UTC_TAI_HISTORY_START_MJD};
 use qtty::time::{Days, Seconds};
@@ -34,7 +34,7 @@ use qtty::time::{Days, Seconds};
 pub(crate) fn unix_epoch_tai_secs() -> Seconds {
     let ls = try_tai_minus_utc_mjd(crate::constats::UNIX_EPOCH_MJD)
         .unwrap_or(PRE_1961_TAI_MINUS_UTC_APPROX);
-    super::encoding::mjd_to_j2000_seconds(crate::constats::UNIX_EPOCH_MJD) + ls + TT_MINUS_TAI
+    crate::encoding::mjd_to_j2000_seconds(crate::constats::UNIX_EPOCH_MJD) + ls + TT_MINUS_TAI
 }
 
 // ── UTC-TAI history lookup ────────────────────────────────────────────────

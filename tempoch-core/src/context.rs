@@ -3,7 +3,7 @@
 
 //! Conversion context.
 
-use crate::active_data::{active_time_data, time_data_eop_at};
+use crate::data::active::{active_time_data, time_data_eop_at};
 use crate::eop::EopValues;
 use qtty::{Day, Second};
 
@@ -28,9 +28,9 @@ use qtty::{Day, Second};
 /// | Beyond EOP | ~0.01–growing | falls back to monthly ΔT |
 ///
 /// The builtin EOP is only consulted inside the active bundle's coverage;
-/// outside of that range the monthly ΔT path applies unchanged. With the
-/// `runtime-data` feature enabled, the active bundle may be fresher than the
-/// compiled baseline.
+/// outside of that range the monthly ΔT path applies unchanged. Call
+/// [`crate::update_runtime_time_data`] (or [`crate::refresh_runtime_time_data`])
+/// to replace the compiled baseline with a cached/refreshed runtime bundle.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct TimeContext {
     eop: EopSource,

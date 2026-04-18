@@ -32,12 +32,12 @@
 //!
 //! [`Time::<TAI>::from_gps_seconds`]: crate::Time::from_gps_seconds
 
-use super::constats::{GPS_EPOCH_TAI, JD_MINUS_MJD};
-use super::encoding::{
+use crate::constats::{GPS_EPOCH_TAI, JD_MINUS_MJD};
+use crate::encoding::{
     j2000_seconds_to_jd, j2000_seconds_to_mjd, jd_to_j2000_seconds, mjd_to_j2000_seconds,
 };
-use super::format::{DayCount, GpsSecs, J2000s, JD, MJD};
-use super::sealed::Sealed;
+use super::{DayCount, Format, GpsSecs, J2000s, JD, MJD};
+use crate::sealed::Sealed;
 use qtty::time::{Days, Seconds};
 use qtty::unit::Day;
 use qtty::QuantityI32;
@@ -53,7 +53,7 @@ use qtty::QuantityI32;
 /// conversions on `Time<UTC, GpsSecs>` etc. would silently produce incorrect
 /// values. Users must `.reformat::<J2000s>()` first, making the precision
 /// and scale-semantic trade-off explicit at the call site.
-pub(crate) trait CanonicalRoundtrip: super::format::Format {
+pub(crate) trait CanonicalRoundtrip: Format {
     fn to_j2000s(src: Self::Storage) -> Seconds;
     fn from_j2000s(secs: Seconds) -> Self::Storage;
 }
@@ -95,8 +95,7 @@ impl CanonicalRoundtrip for MJD {
 
 /// Witness that format `Self` can be converted to format `F2` via pure
 /// arithmetic (epoch offsets, unit scaling). Used by `Time::reformat()`.
-pub(crate) trait FormatConvertible<F2: super::format::Format>:
-    super::format::Format + Sealed
+pub(crate) trait FormatConvertible<F2: Format>: Format + Sealed
 {
     fn convert(src: Self::Storage) -> F2::Storage;
 }
@@ -108,7 +107,7 @@ macro_rules! identity_format {
         $(
             impl FormatConvertible<$fmt> for $fmt {
                 #[inline]
-                fn convert(src: <$fmt as super::format::Format>::Storage) -> <$fmt as super::format::Format>::Storage {
+                fn convert(src: <$fmt as Format>::Storage) -> <$fmt as Format>::Storage {
                     src
                 }
             }

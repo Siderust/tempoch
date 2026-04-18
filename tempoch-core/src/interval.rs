@@ -11,10 +11,6 @@
 use core::fmt;
 
 use crate::{J2000s, Time};
-#[cfg(feature = "serde")]
-use serde::ser::SerializeStruct;
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[inline]
 fn partial_max<T: PartialOrd + Copy>(a: T, b: T) -> T {
@@ -91,42 +87,6 @@ where
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "[{}, {})", self.start, self.end)
-    }
-}
-
-#[cfg(feature = "serde")]
-impl<T> Serialize for Interval<T>
-where
-    T: Copy + PartialOrd + Serialize,
-{
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut state = serializer.serialize_struct("Interval", 2)?;
-        state.serialize_field("start", &self.start)?;
-        state.serialize_field("end", &self.end)?;
-        state.end()
-    }
-}
-
-#[cfg(feature = "serde")]
-impl<'de, T> Deserialize<'de> for Interval<T>
-where
-    T: Copy + PartialOrd + Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        struct RawInterval<T> {
-            start: T,
-            end: T,
-        }
-
-        let raw = RawInterval::<T>::deserialize(deserializer)?;
-        Self::try_new(raw.start, raw.end).map_err(serde::de::Error::custom)
     }
 }
 
@@ -284,6 +244,8 @@ mod tests {
     use crate::JD;
     use crate::{MJD, TT};
     use qtty::Day;
+    #[cfg(feature = "serde")]
+    use serde::Deserialize;
     #[cfg(feature = "serde")]
     use serde::de::{value, IntoDeserializer};
     #[cfg(feature = "serde")]

@@ -29,10 +29,10 @@ use super::constats::GPS_EPOCH_TAI;
 use super::encoding::{mjd_to_j2000_seconds, unix_seconds_to_mjd};
 use super::error::ConversionError;
 use super::format::Format;
-use super::format_conversion::CanonicalRoundtrip;
+use super::format::conversion::CanonicalRoundtrip;
 use super::scale::{TAI, UTC};
 use super::time::Time;
-use crate::active_data::{
+use crate::data::active::{
     active_time_data, time_data_tai_seconds_from_utc, time_data_tai_seconds_is_in_leap_window,
     time_data_try_tai_minus_utc_mjd, time_data_utc_from_tai_seconds,
 };

@@ -14,6 +14,8 @@
 
 use super::sealed::Sealed;
 
+pub(crate) mod conversion;
+
 /// Marker trait for a scientifically distinct time scale.
 ///
 /// Sealed: implementations live in this crate only — downstream crates cannot
