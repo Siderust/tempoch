@@ -640,6 +640,7 @@ source = "git+https://github.com/Siderust/qtty?branch=main#a452e147db6cfa033933b
 dependencies = [
  "libm",
  "qtty-derive",
+ "serde",
  "typenum",
 ]
 
@@ -894,6 +895,7 @@ version = "0.4.1"
 dependencies = [
  "chrono",
  "qtty",
+ "serde_json",
  "tempoch-core",
 ]
 
@@ -903,6 +905,7 @@ version = "0.4.1"
 dependencies = [
  "chrono",
  "qtty",
+ "serde",
  "serde_json",
  "sha2",
  "ureq",

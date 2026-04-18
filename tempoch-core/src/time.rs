@@ -13,6 +13,8 @@ use super::scale::{ContinuousScale, Scale};
 use super::scale_conversion::{ContextScaleConvert, InfallibleScaleConvert};
 use qtty::time::Seconds;
 use qtty::{Day, QuantityI32, QuantityI64, Second};
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Time
@@ -80,6 +82,39 @@ where
 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "Time<{}, {}>({:?})", S::NAME, F::NAME, self.value)
+    }
+}
+
+#[cfg(feature = "serde")]
+#[allow(private_bounds)]
+impl<S: Scale, F> Serialize for Time<S, F>
+where
+    F: Format + super::format::SerdeFormat,
+    F::Storage: Serialize,
+{
+    fn serialize<Ser>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error>
+    where
+        Ser: Serializer,
+    {
+        self.value.serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+#[allow(private_bounds)]
+impl<'de, S: Scale, F> Deserialize<'de> for Time<S, F>
+where
+    F: Format + super::format::SerdeFormat,
+    F::Storage: Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = F::Storage::deserialize(deserializer)?;
+        <F as super::format::SerdeFormat>::validate_serde_value(&value)
+            .map_err(serde::de::Error::custom)?;
+        Ok(Self::new(value))
     }
 }
 
@@ -361,9 +396,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::super::format::{DayCount, GpsSecs, J2000s, Jd, Mjd, UnixSecs};
-    use super::super::scale::{TAI, TCB, TCG, TDB, TT};
+    use super::super::scale::{TAI, TCB, TCG, TDB, TT, UTC};
     use super::*;
     use qtty::{Day, QuantityI32, QuantityI64, Second};
+    #[cfg(feature = "serde")]
+    use serde_json::json;
 
     const SECONDS_PER_DAY: Second = Second::new(86_400.0);
 
@@ -529,5 +566,76 @@ mod tests {
         assert_eq!(t.si_seconds(), Second::new(5.0));
         t -= Second::new(2.0);
         assert_eq!(t.si_seconds(), Second::new(3.0));
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn serde_roundtrips_all_public_time_storage_shapes() {
+        let tt = Time::<TT>::from_si_seconds(Second::new(42.5)).unwrap();
+        let jd = Time::<TT, Jd>::from_julian_days(Day::new(2_451_545.25)).unwrap();
+        let mjd = Time::<TT, Mjd>::from_modified_julian_days(Day::new(51_544.75)).unwrap();
+        let unix = Time::<UTC, UnixSecs>::from(1_700_000_000_i64);
+        let gps = Time::<TAI, GpsSecs>::from(123.5_f64);
+        let daycount = Time::<TT, DayCount>::from(12_i32);
+
+        assert_eq!(serde_json::to_value(tt).unwrap(), json!(42.5));
+        assert_eq!(serde_json::to_value(jd).unwrap(), json!(2_451_545.25));
+        assert_eq!(serde_json::to_value(mjd).unwrap(), json!(51_544.75));
+        assert_eq!(serde_json::to_value(unix).unwrap(), json!(1_700_000_000_i64));
+        assert_eq!(serde_json::to_value(gps).unwrap(), json!(123.5));
+        assert_eq!(serde_json::to_value(daycount).unwrap(), json!(12));
+
+        assert_eq!(serde_json::from_value::<Time<TT>>(json!(42.5)).unwrap(), tt);
+        assert_eq!(
+            serde_json::from_value::<Time<TT, Jd>>(json!(2_451_545.25)).unwrap(),
+            jd
+        );
+        assert_eq!(
+            serde_json::from_value::<Time<TT, Mjd>>(json!(51_544.75)).unwrap(),
+            mjd
+        );
+        assert_eq!(
+            serde_json::from_value::<Time<UTC, UnixSecs>>(json!(1_700_000_000_i64)).unwrap(),
+            unix
+        );
+        assert_eq!(
+            serde_json::from_value::<Time<TAI, GpsSecs>>(json!(123.5)).unwrap(),
+            gps
+        );
+        assert_eq!(
+            serde_json::from_value::<Time<TT, DayCount>>(json!(12)).unwrap(),
+            daycount
+        );
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn serde_rejects_nonfinite_real_time_values() {
+        assert!(
+            Time::<TT>::deserialize(serde::de::value::F64Deserializer::<serde::de::value::Error>::new(
+                f64::NAN,
+            ))
+                .unwrap_err()
+                .to_string()
+                .contains("finite")
+        );
+        assert!(
+            Time::<TT, Jd>::deserialize(
+                serde::de::value::F64Deserializer::<serde::de::value::Error>::new(f64::INFINITY),
+            )
+                .unwrap_err()
+                .to_string()
+                .contains("finite")
+        );
+        assert!(
+            Time::<TAI, GpsSecs>::deserialize(
+                serde::de::value::F64Deserializer::<serde::de::value::Error>::new(
+                    f64::NEG_INFINITY,
+                ),
+            )
+                .unwrap_err()
+                .to_string()
+                .contains("finite")
+        );
     }
 }

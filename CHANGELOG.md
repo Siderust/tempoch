@@ -9,6 +9,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Reintroduced an optional `serde` feature on `tempoch-core` and `tempoch`.
+  `Time<S, F>` now serializes as the underlying format scalar, while
+  `Interval<T>` / `Period<S, F>` serialize as `{start, end}` and preserve
+  existing validation on deserialize.
 - Feature-gated runtime time-data refresh under `tempoch::runtime_data` /
   `tempoch_core::runtime_data`, including:
   - `TimeDataManager` for explicit fetch/cache/load workflows

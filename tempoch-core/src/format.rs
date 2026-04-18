@@ -36,6 +36,15 @@ pub trait Format: Sealed + Copy + Clone + core::fmt::Debug + 'static {
     const NAME: &'static str;
 }
 
+#[cfg(feature = "serde")]
+const NONFINITE_TIME_VALUE_ERROR: &str = "time value must be finite (not NaN or infinity)";
+
+#[cfg(feature = "serde")]
+#[allow(private_bounds)]
+pub(crate) trait SerdeFormat: Format {
+    fn validate_serde_value(value: &Self::Storage) -> Result<(), &'static str>;
+}
+
 // ── Format macros ────────────────────────────────────────────────────────
 
 macro_rules! define_format {
@@ -143,3 +152,41 @@ define_format!(
     QuantityI32<Day>,
     "DayCount"
 );
+
+#[cfg(feature = "serde")]
+macro_rules! impl_serde_format_finite {
+    ($($format:ty),+ $(,)?) => {
+        $(
+            impl SerdeFormat for $format {
+                #[inline]
+                fn validate_serde_value(value: &Self::Storage) -> Result<(), &'static str> {
+                    if value.is_finite() {
+                        Ok(())
+                    } else {
+                        Err(NONFINITE_TIME_VALUE_ERROR)
+                    }
+                }
+            }
+        )+
+    };
+}
+
+#[cfg(feature = "serde")]
+macro_rules! impl_serde_format_passthrough {
+    ($($format:ty),+ $(,)?) => {
+        $(
+            impl SerdeFormat for $format {
+                #[inline]
+                fn validate_serde_value(_value: &Self::Storage) -> Result<(), &'static str> {
+                    Ok(())
+                }
+            }
+        )+
+    };
+}
+
+#[cfg(feature = "serde")]
+impl_serde_format_finite!(J2000s, Jd, Mjd, GpsSecs);
+
+#[cfg(feature = "serde")]
+impl_serde_format_passthrough!(UnixSecs, DayCount);

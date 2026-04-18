@@ -11,6 +11,10 @@
 use core::fmt;
 
 use crate::{J2000s, Time};
+#[cfg(feature = "serde")]
+use serde::ser::SerializeStruct;
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[inline]
 fn partial_max<T: PartialOrd + Copy>(a: T, b: T) -> T {
@@ -79,6 +83,42 @@ impl std::error::Error for PeriodListError {}
 pub struct Interval<T: Copy + PartialOrd> {
     pub start: T,
     pub end: T,
+}
+
+#[cfg(feature = "serde")]
+impl<T> Serialize for Interval<T>
+where
+    T: Copy + PartialOrd + Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("Interval", 2)?;
+        state.serialize_field("start", &self.start)?;
+        state.serialize_field("end", &self.end)?;
+        state.end()
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, T> Deserialize<'de> for Interval<T>
+where
+    T: Copy + PartialOrd + Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct RawInterval<T> {
+            start: T,
+            end: T,
+        }
+
+        let raw = RawInterval::<T>::deserialize(deserializer)?;
+        Self::try_new(raw.start, raw.end).map_err(serde::de::Error::custom)
+    }
 }
 
 /// Typed time period on a given scale and format.
@@ -231,8 +271,12 @@ pub fn normalize_periods<T: Copy + PartialOrd>(periods: &[Interval<T>]) -> Vec<I
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Mjd, TT};
+    use crate::{Jd, Mjd, TT};
     use qtty::Day;
+    #[cfg(feature = "serde")]
+    use serde::de::{value, IntoDeserializer};
+    #[cfg(feature = "serde")]
+    use serde_json::json;
 
     #[test]
     fn try_new_rejects_reversed() {
@@ -364,5 +408,67 @@ mod tests {
             validate_period_list(&periods),
             Err(PeriodListError::Unsorted { index: 1 })
         );
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn serde_roundtrips_period_shapes() {
+        let mjd = Period::<TT, Mjd>::new(51_544.5, 51_545.25);
+        let jd = Period::<TT, Jd>::new(2_451_545.0, 2_451_546.0);
+        let native = Period::<TT>::new(100.0, 200.0);
+
+        assert_eq!(
+            serde_json::to_value(mjd).unwrap(),
+            json!({"start": 51_544.5, "end": 51_545.25})
+        );
+        assert_eq!(
+            serde_json::to_value(jd).unwrap(),
+            json!({"start": 2_451_545.0, "end": 2_451_546.0})
+        );
+        assert_eq!(
+            serde_json::to_value(native).unwrap(),
+            json!({"start": 100.0, "end": 200.0})
+        );
+
+        assert_eq!(
+            serde_json::from_value::<Period<TT, Mjd>>(json!({"start": 51_544.5, "end": 51_545.25}))
+                .unwrap(),
+            mjd
+        );
+        assert_eq!(
+            serde_json::from_value::<Period<TT, Jd>>(json!({"start": 2_451_545.0, "end": 2_451_546.0}))
+                .unwrap(),
+            jd
+        );
+        assert_eq!(
+            serde_json::from_value::<Period<TT>>(json!({"start": 100.0, "end": 200.0})).unwrap(),
+            native
+        );
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn serde_rejects_reversed_periods() {
+        let err = serde_json::from_value::<Period<TT, Mjd>>(json!({"start": 10.0, "end": 9.0}))
+            .unwrap_err();
+        assert!(err.to_string().contains("start"));
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn serde_rejects_nonfinite_nested_time_values() {
+        let entries = vec![
+            (
+                "start".into_deserializer(),
+                f64::NAN.into_deserializer(),
+            ),
+            (
+                "end".into_deserializer(),
+                5.0_f64.into_deserializer(),
+            ),
+        ];
+        let deserializer = value::MapDeserializer::<_, value::Error>::new(entries.into_iter());
+        let err = Period::<TT, Mjd>::deserialize(deserializer).unwrap_err();
+        assert!(err.to_string().contains("finite"));
     }
 }

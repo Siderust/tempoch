@@ -16,6 +16,7 @@ path = "src/lib.rs"
 
 [features]
 default = []
+serde = ["tempoch-core/serde"]
 runtime-data = ["tempoch-core/runtime-data"]
 
 [dependencies]
@@ -24,3 +25,9 @@ tempoch-core = { path = "../tempoch-core", version = "0.4.1" }
 [dev-dependencies]
 chrono = "0.4.44"
 qtty = "0.5.0"
+serde_json = "1"
+
+[[example]]
+name = "serde"
+path = "examples/serde.rs"
+required-features = ["serde"]

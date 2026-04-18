@@ -34,6 +34,8 @@ Typed astronomical time primitives for Rust.
 - GPS transport values via `Time::<TAI>::from_gps_seconds` / `gps_seconds`.
 - Compiled time-data tables generated from official UTC-TAI and Delta T
   sources.
+- Optional `serde` support for `Time<S, F>` as raw format values and
+  `Period<S, F>` / `Interval<T>` as `{start, end}` objects.
 - Optional runtime refresh and cache management under `tempoch::runtime_data`
   when the `runtime-data` feature is enabled.
 - Public typed epoch/offset constants under `tempoch::constats`, such as
@@ -64,6 +66,41 @@ timekeeping data at runtime:
 ```toml
 [dependencies]
 tempoch = { version = "0.4", features = ["runtime-data"] }
+```
+
+Enable `serde` if you want to serialize typed times and periods:
+
+```toml
+[dependencies]
+tempoch = { version = "0.4", features = ["serde"] }
+```
+
+Features compose normally:
+
+```toml
+[dependencies]
+tempoch = { version = "0.4", features = ["serde", "runtime-data"] }
+```
+
+## Serde
+
+With the `serde` feature enabled:
+
+- `Time<S, F>` serializes as the underlying format value only.
+- `Period<S, F>` serializes as `{"start": ..., "end": ...}`.
+- Scale and format remain type-level and are not embedded in the payload.
+
+```rust
+use tempoch::{Mjd, Period, Time, TT};
+
+let tt = Time::<TT>::from(42.5);
+let period = Period::<TT, Mjd>::new(61_000.0, 61_001.0);
+
+assert_eq!(serde_json::to_string(&tt).unwrap(), "42.5");
+assert_eq!(
+    serde_json::to_string(&period).unwrap(),
+    r#"{"start":61000.0,"end":61001.0}"#
+);
 ```
 
 ## Quick Start
@@ -112,6 +149,7 @@ assert_eq!(gaps.len(), 3);
 
 - `cargo run --example quickstart`
 - `cargo run --example periods`
+- `cargo run --example serde --features serde`
 - `cargo run --example timescales`
 
 ## Runtime Time Data

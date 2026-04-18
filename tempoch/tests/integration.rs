@@ -3,8 +3,11 @@ use qtty::{Day, Second};
 use tempoch::{
     complement_within,
     constats::{J2000_JD_TT, TT_MINUS_TAI},
-    intersect_periods, Jd, Mjd, Period, Time, TimeContext, TAI, TT, UT1, UTC,
+    intersect_periods, DayCount, GpsSecs, Jd, Mjd, Period, Time, TimeContext, TAI, TT, UT1, UTC,
+    UnixSecs,
 };
+#[cfg(feature = "serde")]
+use serde_json::json;
 
 #[test]
 fn utc_roundtrip_j2000_is_stable() {
@@ -82,4 +85,49 @@ fn interval_set_ops_match_expected_intervals() {
     assert_eq!(between[1].end.modified_julian_days(), Day::new(7.0));
     assert_eq!(between[2].start.modified_julian_days(), Day::new(8.0));
     assert_eq!(between[2].end.modified_julian_days(), Day::new(9.0));
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn public_serde_roundtrips_time_and_periods() {
+    let tt = Time::<TT>::from_si_seconds(Second::new(12.5)).unwrap();
+    let jd = Time::<TT, Jd>::from_julian_days(Day::new(2_451_545.25)).unwrap();
+    let mjd_period = Period::<TT, Mjd>::new(61_000.0, 61_001.0);
+    let unix = Time::<UTC, UnixSecs>::from(1_700_000_000_i64);
+    let gps = Time::<TAI, GpsSecs>::from(345.25_f64);
+    let daycount = Time::<TT, DayCount>::from(42_i32);
+
+    assert_eq!(serde_json::to_value(tt).unwrap(), json!(12.5));
+    assert_eq!(serde_json::to_value(jd).unwrap(), json!(2_451_545.25));
+    assert_eq!(
+        serde_json::to_value(mjd_period).unwrap(),
+        json!({"start": 61_000.0, "end": 61_001.0})
+    );
+    assert_eq!(serde_json::to_value(unix).unwrap(), json!(1_700_000_000_i64));
+    assert_eq!(serde_json::to_value(gps).unwrap(), json!(345.25));
+    assert_eq!(serde_json::to_value(daycount).unwrap(), json!(42));
+
+    assert_eq!(serde_json::from_value::<Time<TT>>(json!(12.5)).unwrap(), tt);
+    assert_eq!(
+        serde_json::from_value::<Time<TT, Jd>>(json!(2_451_545.25)).unwrap(),
+        jd
+    );
+    assert_eq!(
+        serde_json::from_value::<Period<TT, Mjd>>(json!({"start": 61_000.0, "end": 61_001.0}))
+            .unwrap(),
+        mjd_period
+    );
+}
+
+#[cfg(all(feature = "serde", feature = "runtime-data"))]
+#[test]
+fn serde_still_works_with_all_features_enabled() {
+    let tt = Time::<TT>::from_si_seconds(Second::new(1.25)).unwrap();
+    let period = Period::<TT>::new(1.25, 2.5);
+
+    assert_eq!(serde_json::from_value::<Time<TT>>(json!(1.25)).unwrap(), tt);
+    assert_eq!(
+        serde_json::from_value::<Period<TT>>(json!({"start": 1.25, "end": 2.5})).unwrap(),
+        period
+    );
 }
