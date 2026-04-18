@@ -99,17 +99,11 @@ fn datetime_from_seconds_since_epoch(seconds_since_epoch: Seconds) -> Option<Dat
         return None;
     }
 
-    let secs_floor = seconds_since_epoch.floor();
-    let frac = seconds_since_epoch - secs_floor;
+    let mut secs = seconds_since_epoch.floor();
+    let mut nanos: Nanoseconds = (seconds_since_epoch - secs).to::<Nanosecond>().round();
 
-    let mut secs = secs_floor;
-    let mut nanos: Nanoseconds = frac.to::<Nanosecond>().round();
-
-    // Normalize nanos into [0, NANOS_PER_SECOND)
-    if nanos < Nanoseconds::zero() {
-        secs -= Seconds::one();
-        nanos += NANOS_PER_SECOND;
-    } else if nanos >= NANOS_PER_SECOND {
+    // Handle fractional rounding that reaches exactly one extra second.
+    if nanos >= NANOS_PER_SECOND {
         secs += Seconds::one();
         nanos -= NANOS_PER_SECOND;
     }

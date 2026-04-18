@@ -324,9 +324,15 @@ mod tests {
 
     #[test]
     fn display_period_list_errors() {
-        assert!(PeriodListError::InvalidInterval { index: 2 }.to_string().contains("2"));
-        assert!(PeriodListError::Unsorted { index: 3 }.to_string().contains("3"));
-        assert!(PeriodListError::Overlapping { index: 4 }.to_string().contains("4"));
+        assert!(PeriodListError::InvalidInterval { index: 2 }
+            .to_string()
+            .contains("2"));
+        assert!(PeriodListError::Unsorted { index: 3 }
+            .to_string()
+            .contains("3"));
+        assert!(PeriodListError::Overlapping { index: 4 }
+            .to_string()
+            .contains("4"));
     }
 
     #[test]
@@ -338,7 +344,10 @@ mod tests {
     #[test]
     fn validate_detects_invalid_interval() {
         // Interval::new does not validate; create one with start > end directly
-        let periods = vec![Interval::<f64> { start: 5.0, end: 1.0 }];
+        let periods = vec![Interval::<f64> {
+            start: 5.0,
+            end: 1.0,
+        }];
         assert_eq!(
             validate_period_list(&periods),
             Err(PeriodListError::InvalidInterval { index: 0 })

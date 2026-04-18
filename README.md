@@ -98,15 +98,24 @@ assert_eq!(gaps.len(), 3);
 ## Time Data Updates
 
 The crate compiles generated time-data tables into `tempoch-core`, rather than
-fetching them at runtime. To refresh the checked-in data locally:
+fetching them at runtime. A dedicated Rust CLI,
+`tempoch-time-data-updater`, regenerates the checked-in tables from the
+official UTC-TAI and Delta T sources. To refresh locally:
 
 ```bash
-python3 scripts/update_time_data.py
+cargo run -p tempoch-time-data-updater
 cargo test --all-features
 ```
 
-A scheduled GitHub Actions workflow also runs this refresh automatically and
-opens a pull request when the generated tables change.
+To verify that the committed generated file is still in sync with upstream
+(this is also enforced in CI):
+
+```bash
+cargo run -p tempoch-time-data-updater -- --check
+```
+
+A scheduled GitHub Actions workflow runs the refresh automatically and pushes
+the resulting commit directly to `main` when the generated tables change.
 
 ## Tests and Coverage
 

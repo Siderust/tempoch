@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
 
 concurrency:
   group: update-time-data
@@ -20,30 +19,34 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.x"
-
       - name: Regenerate compiled time data
-        run: python3 scripts/update_time_data.py
+        run: cargo run --release -p tempoch-time-data-updater
 
       - name: Validate generated data
         run: cargo test --all-features
 
-      - name: Open pull request
-        uses: peter-evans/create-pull-request@v7
-        with:
-          branch: automation/update-time-data
-          commit-message: "chore: refresh generated time data"
-          title: "chore: refresh generated time data"
-          body: |
-            Automated refresh of the compiled UTC-TAI and Delta T tables.
-
-            This workflow runs `scripts/update_time_data.py`, validates the crate
-            with `cargo test --all-features`, and opens a PR only when the
-            generated Rust tables change.
-          labels: chore, automation
-          delete-branch: true
+      - name: Commit and push if changed
+        env:
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: |
+          set -euo pipefail
+          git add \
+            tempoch-core/src/generated/time_data.rs \
+            tempoch-core/src/generated/time_data.provenance.json
+          if git diff --cached --quiet; then
+            echo "No time-data changes; skipping commit."
+            exit 0
+          fi
+          git commit -m "chore: refresh generated time data"
+          git push origin HEAD:main

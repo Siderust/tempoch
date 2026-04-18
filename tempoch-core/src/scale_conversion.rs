@@ -353,7 +353,7 @@ ut1_through_tt!(UTC);
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ConversionError, TimeContext, UT1, TAI, TDB, TCG, TCB, UTC};
+    use crate::{ConversionError, TimeContext, TAI, TCB, TCG, TDB, UT1, UTC};
     use qtty::time::Days;
 
     /// TDB-TT at J2000.0: reference value from USNO Circular 179 §2.6 seven-term
@@ -394,20 +394,15 @@ mod tests {
     #[test]
     fn ut1_to_tt_nonfinite_rejected() {
         let ctx = TimeContext::new();
-        let result = <UT1 as ContextScaleConvert<TT>>::convert_with(
-            Seconds::new(f64::NAN),
-            &ctx,
-        );
+        let result = <UT1 as ContextScaleConvert<TT>>::convert_with(Seconds::new(f64::NAN), &ctx);
         assert_eq!(result.unwrap_err(), ConversionError::NonFinite);
     }
 
     #[test]
     fn tt_to_ut1_nonfinite_rejected() {
         let ctx = TimeContext::new();
-        let result = <TT as ContextScaleConvert<UT1>>::convert_with(
-            Seconds::new(f64::INFINITY),
-            &ctx,
-        );
+        let result =
+            <TT as ContextScaleConvert<UT1>>::convert_with(Seconds::new(f64::INFINITY), &ctx);
         assert_eq!(result.unwrap_err(), ConversionError::NonFinite);
     }
 

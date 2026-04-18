@@ -58,7 +58,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
-- Automated time-data refresh tooling via `scripts/update_time_data.py` and a scheduled GitHub Actions workflow.
+- Automated time-data refresh tooling via the `tempoch-time-data-updater` Rust CLI and a scheduled GitHub Actions workflow that pushes refreshed generated tables directly to `main`. CI also runs the updater in `--check` mode to catch drift on every PR/push.
 
 ### Changed
 

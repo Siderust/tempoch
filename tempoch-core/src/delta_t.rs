@@ -147,7 +147,7 @@ fn interpolate_modern_delta_t(mjd: Day) -> Option<Second> {
 fn delta_t_modern_series(jd_ut: Day) -> Second {
     // Source: USNO monthly determinations (MODERN_DELTA_T_POINTS).
     // Points up to MODERN_DELTA_T_OBSERVED_END_MJD are confirmed observations;
-    // later points are C0-adjusted USNO predictions (see update_time_data.py).
+    // later points are C0-adjusted USNO predictions (see tempoch-time-data-updater).
     let mjd = jd_to_mjd(jd_ut);
     interpolate_modern_delta_t(mjd).expect("modern Delta T interpolation requires in-range MJD")
 }

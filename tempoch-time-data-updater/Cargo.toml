@@ -1,0 +1,17 @@
+[package]
+name = "tempoch-time-data-updater"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "AGPL-3.0-only"
+description = "Maintenance CLI that regenerates tempoch-core's checked-in time-data tables."
+
+[[bin]]
+name = "tempoch-time-data-updater"
+path = "src/main.rs"
+
+[dependencies]
+ureq = "2.10"
+sha2 = "0.10"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+serde_json = "1"
