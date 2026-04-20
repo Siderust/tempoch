@@ -105,7 +105,7 @@ define_continuous_scale!(
     ///
     /// The built-in approximation is context-free because the model has no
     /// runtime-settable parameters, but its advertised high-accuracy regime is
-    /// finite: the implementation is documented to stay within about 2 µs only
+    /// finite: the implementation is documented to stay within about 10 µs only
     /// over the interval bracketed by
     /// [`TDB_TT_MODEL_HIGH_ACCURACY_START_JD`] and
     /// [`TDB_TT_MODEL_HIGH_ACCURACY_END_JD`] (roughly 1600-01-01 to
@@ -142,14 +142,18 @@ define_continuous_scale!(
     ///   Houlden 1986; Meeus *Astronomical Algorithms*). Accuracy varies from
     ///   ±15 s (1620–1973) to ±hundreds of seconds (pre-948).
     /// * **Modern (1973 – horizon)**: USNO monthly determinations with linear
-    ///   interpolation. Observed points are accurate to ~0.01 s; prediction
-    ///   points (beyond `MODERN_DELTA_T_OBSERVED_END_MJD`) carry growing
-    ///   uncertainty. See [`DELTA_T_PREDICTION_HORIZON_MJD`] for the hard stop.
+    ///   interpolation. For the currently compiled bundle fetched 2026-04-18,
+    ///   the default monthly-ΔT path differs from the bundled daily
+    ///   IERS-derived path by less than 10 ms over the observed overlap
+    ///   through 2026-04-16, and by less than 0.2 s over the compiled
+    ///   short-range prediction overlap through 2027-04-24. See
+    ///   [`DELTA_T_PREDICTION_HORIZON_MJD`] for the hard stop.
     ///
     /// This model is suitable for archival astronomy and telescope scheduling,
     /// but **not** for precision geodesy, VLBI, or pulsar timing, which
-    /// require daily IERS EOP (DUT1) solutions. The compiled monthly series
-    /// can differ from daily IERS values by up to ~1 s in recent years.
+    /// require daily IERS EOP (DUT1) solutions. Use
+    /// [`crate::TimeContext::with_builtin_eop`] when you want the most accurate
+    /// bundled UT1 route.
     ///
     /// [`DELTA_T_PREDICTION_HORIZON_MJD`]: crate::DELTA_T_PREDICTION_HORIZON_MJD
     UT1 = "UT1"

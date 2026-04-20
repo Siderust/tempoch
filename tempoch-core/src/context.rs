@@ -12,8 +12,8 @@ use qtty::{Day, Second};
 /// A `TimeContext` selects which active data tables back UT1 conversions.
 /// The default constructor [`TimeContext::new`] uses the monthly ΔT series,
 /// matching the behaviour of previous versions; [`TimeContext::with_builtin_eop`]
-/// selects the daily IERS `finals2000A.all` series for sub-ΔT-quantum UT1
-/// accuracy inside its coverage window.
+/// selects the daily IERS `finals2000A.all` series for the highest-fidelity
+/// bundled UT1 path inside its coverage window.
 ///
 /// # ΔT / UT1 accuracy
 ///
@@ -23,9 +23,9 @@ use qtty::{Day, Second};
 /// | 948–1619 | ±15 s (Stephenson & Houlden) | same |
 /// | 1620–1973 | ±0.1–1 s (Meeus biennial table) | same |
 /// | 1973 – EOP start | ~0.01 s (USNO monthly) | same |
-/// | EOP observed range | ~0.01 s | ≲ 10 ms (daily IERS) |
-/// | EOP prediction range | ~0.01 s | short-range Bulletin A prediction |
-/// | Beyond EOP | ~0.01–growing | falls back to monthly ΔT |
+/// | EOP observed range | For the compiled bundle fetched 2026-04-18, < 10 ms from the bundled daily IERS-derived path through 2026-04-16 | preferred highest-fidelity bundled UT1 path |
+/// | EOP prediction range | For the compiled bundle fetched 2026-04-18, < 0.2 s from the bundled short-range daily prediction through 2027-04-24 | preferred highest-fidelity bundled UT1 path |
+/// | Beyond EOP | monthly ΔT only; prediction uncertainty grows | falls back to monthly ΔT |
 ///
 /// The builtin EOP is only consulted inside the active bundle's coverage;
 /// outside of that range the monthly ΔT path applies unchanged. Call

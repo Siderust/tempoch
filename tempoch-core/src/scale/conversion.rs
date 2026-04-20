@@ -42,6 +42,10 @@ fn total_seconds(src_hi: Second, src_lo: Second) -> Second {
 
 #[inline]
 fn tdb_minus_tt_seconds(jd_tt: Days) -> Seconds {
+    // Source: USNO Circular 179 truncated seven-term Fairhead-Bretagnon
+    // approximation for TDB - TT. The documented high-accuracy regime for this
+    // specific truncation is about 10 microseconds over 1600-01-01 to
+    // 2200-01-01 TT.
     let t = jd_to_julian_centuries(jd_tt);
     Seconds::new(
         0.001_657 * (628.3076 * t + 6.2401).sin()
@@ -325,3 +329,101 @@ ut1_through_tt!(TDB);
 ut1_through_tt!(TCG);
 ut1_through_tt!(TCB);
 ut1_through_tt!(UTC);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::constats::TT_MINUS_TAI;
+    use crate::delta_t::interpolate_modern_delta_t_points;
+    use crate::generated::eop_data::{EOP_END_MJD, EOP_OBSERVED_END_MJD, EOP_POINTS};
+    use crate::generated::time_data::{MODERN_DELTA_T_POINTS, UTC_TAI_SEGMENTS};
+    use chrono::{Duration, NaiveDate};
+    use qtty::Day as JulianDay;
+
+    const TDB_TT_GOLDEN_SAMPLES: &[(f64, f64)] = &[
+        // Curated from an independent maintenance-time reference script that
+        // evaluated the published USNO Circular 179 seven-term series outside
+        // the Rust conversion path. Columns: (JD_TT, TDB-TT seconds).
+        (2_305_447.5, 0.000_132_413_656_208),
+        (2_415_020.5, -0.000_018_411_200_301),
+        (2_451_545.0, -0.000_095_757_434_861),
+        (2_488_070.5, -0.000_056_504_654_873),
+        (2_524_598.5, -0.000_053_339_853_687),
+    ];
+
+    fn tai_minus_utc_seconds_at_mjd(mjd_utc: f64) -> f64 {
+        let idx =
+            UTC_TAI_SEGMENTS.partition_point(|segment| segment.start_mjd as f64 <= mjd_utc);
+        let segment = UTC_TAI_SEGMENTS[idx - 1];
+        segment.base_seconds + segment.slope_seconds_per_day * (mjd_utc - segment.reference_mjd)
+    }
+
+    fn mjd_to_date_string(mjd: i32) -> String {
+        let epoch = NaiveDate::from_ymd_opt(1858, 11, 17).expect("valid MJD epoch");
+        (epoch + Duration::days(mjd as i64)).to_string()
+    }
+
+    #[test]
+    fn tdb_minus_tt_matches_curated_circular_179_samples() {
+        for &(jd_tt, expected_delta_seconds) in TDB_TT_GOLDEN_SAMPLES {
+            let got = tdb_minus_tt_seconds(JulianDay::new(jd_tt)).value();
+            let delta = (got - expected_delta_seconds).abs();
+            assert!(
+                delta < 1e-12,
+                "TDB-TT mismatch at JD(TT) {jd_tt:.1}: got {got:.15e} s, expected {expected_delta_seconds:.15e} s, |Δ|={delta:.3e} s"
+            );
+        }
+    }
+
+    #[test]
+    fn monthly_delta_t_stays_within_documented_daily_overlap_bounds() {
+        let mut observed_worst: Option<(f64, i32, f64)> = None;
+        let mut prediction_worst: Option<(f64, i32, f64)> = None;
+
+        for point in EOP_POINTS.iter() {
+            let mjd = point.mjd as f64;
+            let Some(monthly_delta_t) =
+                interpolate_modern_delta_t_points(&MODERN_DELTA_T_POINTS, JulianDay::new(mjd))
+            else {
+                continue;
+            };
+            let daily_delta_t = TT_MINUS_TAI.value()
+                + tai_minus_utc_seconds_at_mjd(mjd)
+                - point.ut1_minus_utc_seconds;
+            let signed_diff = monthly_delta_t.value() - daily_delta_t;
+            let candidate = (signed_diff.abs(), point.mjd, signed_diff);
+
+            if point.ut1_observed {
+                if observed_worst
+                    .map(|worst| candidate.0 > worst.0)
+                    .unwrap_or(true)
+                {
+                    observed_worst = Some(candidate);
+                }
+            } else if prediction_worst
+                .map(|worst| candidate.0 > worst.0)
+                .unwrap_or(true)
+            {
+                prediction_worst = Some(candidate);
+            }
+        }
+
+        let (obs_abs, obs_mjd, obs_signed) = observed_worst.expect("observed EOP overlap");
+        assert!(
+            obs_abs < 0.01,
+            "monthly ΔT exceeded observed-overlap bound: |Δ|={obs_abs:.9} s at MJD {obs_mjd} ({}) with signed diff {obs_signed:.9} s; expected < 0.01 s through {} ({})",
+            mjd_to_date_string(obs_mjd),
+            EOP_OBSERVED_END_MJD,
+            mjd_to_date_string(EOP_OBSERVED_END_MJD),
+        );
+
+        let (pred_abs, pred_mjd, pred_signed) = prediction_worst.expect("prediction EOP overlap");
+        assert!(
+            pred_abs < 0.2,
+            "monthly ΔT exceeded prediction-overlap bound: |Δ|={pred_abs:.9} s at MJD {pred_mjd} ({}) with signed diff {pred_signed:.9} s; expected < 0.2 s through {} ({})",
+            mjd_to_date_string(pred_mjd),
+            EOP_END_MJD,
+            mjd_to_date_string(EOP_END_MJD),
+        );
+    }
+}

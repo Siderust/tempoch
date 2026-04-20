@@ -17,16 +17,20 @@ Typed astronomical time primitives for Rust.
   - `.try_to::<UnixSecs>()` and `.to::<GpsSecs>()` for transport encodings
 - UTC conversion through `chrono`, covering 1961 onward and leap-second aware.
 - Automatic `ΔT = TT - UT1` handling for `UT1` conversions via an explicit
-  `TimeContext`. Opt into daily IERS Earth Orientation Parameters (finals2000A.all)
-  with `TimeContext::with_builtin_eop()` for ≲ 10 ms UT1 accuracy inside
-  the compiled coverage window; raw values are available under
-  `tempoch::eop` and bracketed by the public `EOP_START_MJD` /
-  `EOP_OBSERVED_END_MJD` / `EOP_END_MJD` constants.
+  `TimeContext`. For the currently compiled bundle fetched 2026-04-18, the
+  default monthly-ΔT path stays within 10 ms of the bundled daily IERS-derived
+  path over the observed overlap through 2026-04-16, and within 0.2 s over the
+  compiled short-range prediction overlap through 2027-04-24. Opt into
+  `TimeContext::with_builtin_eop()` when you want the highest-fidelity bundled
+  UT1 path; raw EOP values are available under `tempoch::eop` and bracketed by
+  the public `EOP_START_MJD` / `EOP_OBSERVED_END_MJD` / `EOP_END_MJD`
+  constants.
 - TT↔TDB conversion via the built-in seven-term Fairhead–Bretagnon
-  approximation. The crate documents microsecond-level accuracy only inside
-  the public `constats::TDB_TT_MODEL_HIGH_ACCURACY_START_JD` →
-  `constats::TDB_TT_MODEL_HIGH_ACCURACY_END_JD` interval (about
-  1600-01-01 to 2200-01-01 TT).
+  approximation from USNO Circular 179. The crate documents about 10 µs
+  accuracy only inside the public
+  `constats::TDB_TT_MODEL_HIGH_ACCURACY_START_JD` →
+  `constats::TDB_TT_MODEL_HIGH_ACCURACY_END_JD` interval (about 1600-01-01 to
+  2200-01-01 TT).
 - Julian Day, Modified Julian Day, and SI-second views via `JD`, `MJD`, and
   `J2000s` conversion targets.
 - Unix/POSIX timestamps via `Time::<UTC>::from_unix_seconds` and
