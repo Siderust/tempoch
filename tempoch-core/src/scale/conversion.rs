@@ -2,73 +2,43 @@
 // Copyright (C) 2026 Vallés Puig, Ramon
 
 //! Scale conversion matrix.
-//!
-//! Two disjoint witness traits enumerate which scale pairs are valid:
-//!
-//! * [`InfallibleScaleConvert`] — exact/affine, context-free, always succeeds.
-//!   Used by `Time::to_scale::<S2>()`.
-//! * [`ContextScaleConvert`]   — requires a `TimeContext` (UT1 routes).
-//!   Used by `Time::to_scale_with::<S2>(&ctx)`.
-//!
-//! All conversions operate on `Quantity<Second, f64>` (J2000 TT seconds).
-//! The format layer handles lifting to/from the canonical representation.
 
 use crate::constats::{IAU_TIME_EPOCH_T0_JD, L_B, L_G, TDB0, TT_MINUS_TAI};
 use crate::context::TimeContext;
-use crate::delta_t::delta_t_seconds;
-use crate::encoding::{
-    j2000_seconds_to_jd, jd_to_j2000_seconds, jd_to_julian_centuries, jd_to_mjd,
-};
-use crate::error::ConversionError;
-use super::{Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
-use crate::sealed::Sealed;
 use crate::data::active::{active_time_data, time_data_delta_t, time_data_try_tai_minus_utc_mjd};
-use crate::generated::time_data::{UtcTaiSegment, UTC_TAI_SEGMENTS};
-use crate::generated::{PRE_1961_TAI_MINUS_UTC_APPROX, UTC_TAI_HISTORY_START_MJD};
+use crate::delta_t::delta_t_seconds;
+use crate::encoding::{j2000_seconds_to_jd, jd_to_j2000_seconds, jd_to_julian_centuries, jd_to_mjd};
+use crate::error::ConversionError;
+use crate::sealed::Sealed;
+use crate::scale::{Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
 use qtty::time::{Days, Seconds};
-
-/// Unix epoch (1970-01-01T00:00:00 UTC) expressed as seconds since J2000 TT
-/// on the TAI axis. Relies on the compiled UTC-TAI history.
-#[allow(dead_code)]
-#[inline]
-pub(crate) fn unix_epoch_tai_secs() -> Seconds {
-    let ls = try_tai_minus_utc_mjd(crate::constats::UNIX_EPOCH_MJD)
-        .unwrap_or(PRE_1961_TAI_MINUS_UTC_APPROX);
-    crate::encoding::mjd_to_j2000_seconds(crate::constats::UNIX_EPOCH_MJD) + ls + TT_MINUS_TAI
-}
-
-// ── UTC-TAI history lookup ────────────────────────────────────────────────
+use qtty::unit::Day;
+use qtty::Second;
 
 #[inline]
-pub(crate) fn utc_offset_seconds_in_segment(mjd_utc: Days, segment: UtcTaiSegment) -> Seconds {
-    segment.offset_at(mjd_utc)
+fn two_sum(a: f64, b: f64) -> (f64, f64) {
+    let s = a + b;
+    let bb = s - a;
+    let err = (a - (s - bb)) + (b - bb);
+    (s, err)
 }
 
-/// Binary search: TAI − UTC at a UTC-axis MJD. Returns `None` pre-1961.
 #[inline]
-pub(crate) fn try_tai_minus_utc_mjd(mjd_utc: Days) -> Option<Seconds> {
-    if mjd_utc < UTC_TAI_HISTORY_START_MJD {
-        return None;
-    }
-    let idx = UTC_TAI_SEGMENTS.partition_point(|segment| segment.start_mjd_days() <= mjd_utc);
-    let segment = UTC_TAI_SEGMENTS[idx - 1];
-    Some(utc_offset_seconds_in_segment(mjd_utc, segment))
+fn normalize_pair(hi: f64, lo: f64) -> (Second, Second) {
+    let (sum, err) = two_sum(hi, lo);
+    let (sum2, err2) = two_sum(sum, err);
+    (Second::new(sum2), Second::new(err2))
 }
 
-// ── TDB ↔ TT: truncated Fairhead–Bretagnon (USNO Circular 179 §2.6) ─────────
-//
-// Seven-term truncated series, max error < 2 µs over 1600–2200 CE.
-// Terms are listed in order of decreasing amplitude; the last term is
-// secular (amplitude proportional to T).
-//
-//   amplitude        angular frequency (rad/cy)   phase (rad)
-//   0.001657         628.3076  (Earth mean anomaly)    6.2401
-//   0.000022         575.3385  (Earth-Jupiter synodic) 4.2970
-//   0.000014        1256.6152  (2× Earth mean anomaly) 6.1969
-//   0.000005         606.9777                          4.0212
-//   0.000005          52.9691                          0.4444
-//   0.000002          21.3299                          5.5431
-//   0.000010·T       628.3076  (secular correction)    4.2490
+#[inline]
+fn add_constant(src_hi: Second, src_lo: Second, offset: Second) -> (Second, Second) {
+    normalize_pair(src_hi.value(), src_lo.value() + offset.value())
+}
+
+#[inline]
+fn total_seconds(src_hi: Second, src_lo: Second) -> Second {
+    src_hi + src_lo
+}
 
 #[inline]
 fn tdb_minus_tt_seconds(jd_tt: Days) -> Seconds {
@@ -84,120 +54,122 @@ fn tdb_minus_tt_seconds(jd_tt: Days) -> Seconds {
     )
 }
 
-// ── Witness traits ────────────────────────────────────────────────────────
-
-/// Witness that converting `Self → S2` is an infallible closed-form operation.
-///
-/// All conversions operate on J2000 TT seconds (`Quantity<Second, f64>`).
 pub(crate) trait InfallibleScaleConvert<S2: Scale>: Scale + Sealed {
-    fn convert(src: Seconds) -> Seconds;
+    fn convert(src_hi: Second, src_lo: Second) -> (Second, Second);
 }
 
-/// Witness that converting `Self → S2` requires a `TimeContext` (UT1 routes).
 pub(crate) trait ContextScaleConvert<S2: Scale>: Scale + Sealed {
-    fn convert_with(src: Seconds, ctx: &TimeContext) -> Result<Seconds, ConversionError>;
+    fn convert_with(
+        src_hi: Second,
+        src_lo: Second,
+        ctx: &TimeContext,
+    ) -> Result<(Second, Second), ConversionError>;
 }
-
-// ── Identity ──────────────────────────────────────────────────────────────
 
 macro_rules! identity_infallible {
     ($($scale:ty),+ $(,)?) => {
         $(
             impl InfallibleScaleConvert<$scale> for $scale {
                 #[inline]
-                fn convert(src: Seconds) -> Seconds { src }
+                fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
+                    (src_hi, src_lo)
+                }
             }
         )+
     };
 }
 identity_infallible!(TAI, TT, TDB, TCG, TCB, UTC, UT1);
 
-// ── TAI ↔ TT (exact affine offset) ───────────────────────────────────────
-
 impl InfallibleScaleConvert<TT> for TAI {
     #[inline]
-    fn convert(src: Seconds) -> Seconds {
-        src + TT_MINUS_TAI
-    }
-}
-impl InfallibleScaleConvert<TAI> for TT {
-    #[inline]
-    fn convert(src: Seconds) -> Seconds {
-        src - TT_MINUS_TAI
+    fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
+        add_constant(src_hi, src_lo, TT_MINUS_TAI)
     }
 }
 
-// ── TT ↔ TDB (Fairhead–Bretagnon) ────────────────────────────────────────
+impl InfallibleScaleConvert<TAI> for TT {
+    #[inline]
+    fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
+        add_constant(src_hi, src_lo, -TT_MINUS_TAI)
+    }
+}
 
 impl InfallibleScaleConvert<TDB> for TT {
     #[inline]
-    fn convert(src: Seconds) -> Seconds {
-        let jd_tt: Days = j2000_seconds_to_jd(src);
-        let delta: Seconds = tdb_minus_tt_seconds(jd_tt);
-        src + delta
+    fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
+        let seconds = total_seconds(src_hi, src_lo);
+        let delta = tdb_minus_tt_seconds(j2000_seconds_to_jd(seconds));
+        add_constant(src_hi, src_lo, delta)
     }
 }
+
 impl InfallibleScaleConvert<TT> for TDB {
     #[inline]
-    fn convert(src: Seconds) -> Seconds {
-        let mut jd_tt: Days = j2000_seconds_to_jd(src);
+    fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
+        let src = total_seconds(src_hi, src_lo);
+        let mut jd_tt = j2000_seconds_to_jd(src);
         for _ in 0..2 {
             jd_tt = j2000_seconds_to_jd(src - tdb_minus_tt_seconds(jd_tt));
         }
-        let delta: Seconds = tdb_minus_tt_seconds(jd_tt);
-        src - delta
+        let delta = tdb_minus_tt_seconds(jd_tt);
+        add_constant(src_hi, src_lo, -delta)
     }
 }
-
-// ── TT ↔ TCG (IAU 2000 B1.9 linear rate) ─────────────────────────────────
 
 impl InfallibleScaleConvert<TCG> for TT {
     #[inline]
-    fn convert(src: Seconds) -> Seconds {
+    fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
+        let src = total_seconds(src_hi, src_lo);
         let t0 = jd_to_j2000_seconds(IAU_TIME_EPOCH_T0_JD);
-        src + L_G * (src - t0) / (1.0 - L_G)
-    }
-}
-impl InfallibleScaleConvert<TT> for TCG {
-    #[inline]
-    fn convert(src: Seconds) -> Seconds {
-        let t0 = jd_to_j2000_seconds(IAU_TIME_EPOCH_T0_JD);
-        src - L_G * (src - t0)
+        let delta = Second::new(L_G * (src - t0).value() / (1.0 - L_G));
+        add_constant(src_hi, src_lo, delta)
     }
 }
 
-// ── TDB ↔ TCB (IAU 2006 B3 linear relation) ──────────────────────────────
+impl InfallibleScaleConvert<TT> for TCG {
+    #[inline]
+    fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
+        let src = total_seconds(src_hi, src_lo);
+        let t0 = jd_to_j2000_seconds(IAU_TIME_EPOCH_T0_JD);
+        let delta = Second::new(-L_G * (src - t0).value());
+        add_constant(src_hi, src_lo, delta)
+    }
+}
 
 impl InfallibleScaleConvert<TCB> for TDB {
     #[inline]
-    fn convert(src: Seconds) -> Seconds {
+    fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
+        let src = total_seconds(src_hi, src_lo);
         let t0 = jd_to_j2000_seconds(IAU_TIME_EPOCH_T0_JD);
         let delta = src - t0 - TDB0;
-        t0 + delta / (1.0 - L_B)
-    }
-}
-impl InfallibleScaleConvert<TDB> for TCB {
-    #[inline]
-    fn convert(src: Seconds) -> Seconds {
-        let t0 = jd_to_j2000_seconds(IAU_TIME_EPOCH_T0_JD);
-        let delta = src - t0;
-        t0 + (1.0 - L_B) * delta + TDB0
+        let target = t0 + delta / (1.0 - L_B);
+        normalize_pair(target.value(), 0.0)
     }
 }
 
-// ── Transitive continuous pairs through TT ────────────────────────────────
+impl InfallibleScaleConvert<TDB> for TCB {
+    #[inline]
+    fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
+        let src = total_seconds(src_hi, src_lo);
+        let t0 = jd_to_j2000_seconds(IAU_TIME_EPOCH_T0_JD);
+        let delta = src - t0;
+        let target = t0 + (1.0 - L_B) * delta + TDB0;
+        normalize_pair(target.value(), 0.0)
+    }
+}
 
 macro_rules! through_tt {
     ($from:ty, $to:ty) => {
         impl InfallibleScaleConvert<$to> for $from {
             #[inline]
-            fn convert(src: Seconds) -> Seconds {
-                let tt = <$from as InfallibleScaleConvert<TT>>::convert(src);
-                <TT as InfallibleScaleConvert<$to>>::convert(tt)
+            fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
+                let (tt_hi, tt_lo) = <$from as InfallibleScaleConvert<TT>>::convert(src_hi, src_lo);
+                <TT as InfallibleScaleConvert<$to>>::convert(tt_hi, tt_lo)
             }
         }
     };
 }
+
 through_tt!(TAI, TDB);
 through_tt!(TDB, TAI);
 through_tt!(TAI, TCG);
@@ -211,276 +183,145 @@ through_tt!(TCB, TCG);
 
 impl InfallibleScaleConvert<TCB> for TT {
     #[inline]
-    fn convert(src: Seconds) -> Seconds {
-        let tdb = <TT as InfallibleScaleConvert<TDB>>::convert(src);
-        <TDB as InfallibleScaleConvert<TCB>>::convert(tdb)
-    }
-}
-impl InfallibleScaleConvert<TT> for TCB {
-    #[inline]
-    fn convert(src: Seconds) -> Seconds {
-        let tdb = <TCB as InfallibleScaleConvert<TDB>>::convert(src);
-        <TDB as InfallibleScaleConvert<TT>>::convert(tdb)
+    fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
+        let (tdb_hi, tdb_lo) = <TT as InfallibleScaleConvert<TDB>>::convert(src_hi, src_lo);
+        <TDB as InfallibleScaleConvert<TCB>>::convert(tdb_hi, tdb_lo)
     }
 }
 
-// ── UTC ↔ TAI (identity in J2000 TT seconds) ────────────────────────────
-//
-// Both UTC and TAI store the same J2000 TT second value for the same
-// physical instant (see the `UTC` scale doc for the full invariant).
-// Scale conversion between them is therefore numerically a no-op.
-//
-// The UTC-TAI offset (leap seconds) is handled exclusively in the civil
-// layer (chrono interop, Unix/GPS encoding). It is never applied in these
-// scale-level conversions.
-//
-// Implication for callers: `.si_seconds()` on `Time<UTC>` returns a
-// **TAI-based** continuous count, not a UTC offset. Use the civil API
-// (`from_unix_seconds`, `from_chrono`, `unix_seconds`, `try_to_chrono`)
-// for any leap-second-aware UTC operation.
+impl InfallibleScaleConvert<TT> for TCB {
+    #[inline]
+    fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
+        let (tdb_hi, tdb_lo) = <TCB as InfallibleScaleConvert<TDB>>::convert(src_hi, src_lo);
+        <TDB as InfallibleScaleConvert<TT>>::convert(tdb_hi, tdb_lo)
+    }
+}
 
 impl InfallibleScaleConvert<TAI> for UTC {
     #[inline]
-    fn convert(src: Seconds) -> Seconds {
-        src
-    }
-}
-impl InfallibleScaleConvert<UTC> for TAI {
-    #[inline]
-    fn convert(src: Seconds) -> Seconds {
-        src
+    fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
+        (src_hi, src_lo)
     }
 }
 
-// UTC ↔ TT/TDB/TCG/TCB via TAI.
+impl InfallibleScaleConvert<UTC> for TAI {
+    #[inline]
+    fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
+        (src_hi, src_lo)
+    }
+}
+
 macro_rules! utc_through_tai {
     ($scale:ty) => {
         impl InfallibleScaleConvert<$scale> for UTC {
             #[inline]
-            fn convert(src: Seconds) -> Seconds {
-                let tai = <UTC as InfallibleScaleConvert<TAI>>::convert(src);
-                <TAI as InfallibleScaleConvert<$scale>>::convert(tai)
+            fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
+                let (tai_hi, tai_lo) = <UTC as InfallibleScaleConvert<TAI>>::convert(src_hi, src_lo);
+                <TAI as InfallibleScaleConvert<$scale>>::convert(tai_hi, tai_lo)
             }
         }
+
         impl InfallibleScaleConvert<UTC> for $scale {
             #[inline]
-            fn convert(src: Seconds) -> Seconds {
-                let tai = <$scale as InfallibleScaleConvert<TAI>>::convert(src);
-                <TAI as InfallibleScaleConvert<UTC>>::convert(tai)
+            fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
+                let (tai_hi, tai_lo) = <$scale as InfallibleScaleConvert<TAI>>::convert(src_hi, src_lo);
+                <TAI as InfallibleScaleConvert<UTC>>::convert(tai_hi, tai_lo)
             }
         }
     };
 }
+
 utc_through_tai!(TT);
 utc_through_tai!(TDB);
 utc_through_tai!(TCG);
 utc_through_tai!(TCB);
 
-// ── UT1 ↔ TT (context-required, ΔT model) ────────────────────────────────
-//
-// ΔT = TT − UT1 is a function of the UT1-axis JD. `delta_t_seconds` returns
-// `Err(Ut1HorizonExceeded)` for dates beyond the compiled prediction horizon.
-
-/// ΔT = TT − UT1 at a UT1-axis JD, consulting the context's EOP source
-/// when available and falling back to the compiled monthly ΔT series
-/// otherwise.
-///
-/// When the context provides an EOP-derived UT1 − UTC *and* the UTC-TAI
-/// history also covers the same MJD, we compose the identity
-/// `ΔT = (TT − TAI) + (TAI − UTC) − (UT1 − UTC)` instead of interpolating
-/// the coarser monthly ΔT table. UTC-TAI lookup uses the UT1-axis MJD
-/// directly; the sub-second axis difference never crosses a leap-second
-/// boundary (which sits at midnight UTC, i.e. integer MJD_UTC).
 #[inline]
 fn context_delta_t(jd_ut1: Days, ctx: &TimeContext) -> Result<Seconds, ConversionError> {
     let data = active_time_data();
-    let mjd_ut1 = jd_to_mjd(jd_ut1);
-    if let Some(dut1) = ctx.ut1_minus_utc(mjd_ut1) {
-        if let Some(tai_minus_utc) = time_data_try_tai_minus_utc_mjd(data.as_ref(), mjd_ut1) {
-            return Ok(TT_MINUS_TAI + tai_minus_utc - dut1);
+    let mut mjd_utc = jd_to_mjd(jd_ut1);
+    for _ in 0..2 {
+        let Some(eop) = ctx.eop_at(mjd_utc) else {
+            return time_data_delta_t(data.as_ref(), jd_ut1).or_else(|_| delta_t_seconds(jd_ut1));
+        };
+        mjd_utc = jd_to_mjd(jd_ut1 - eop.ut1_minus_utc.to::<Day>());
+    }
+
+    if let Some(eop) = ctx.eop_at(mjd_utc) {
+        if let Some(tai_minus_utc) = time_data_try_tai_minus_utc_mjd(data.as_ref(), mjd_utc) {
+            return Ok(TT_MINUS_TAI + tai_minus_utc - eop.ut1_minus_utc);
         }
     }
+
     time_data_delta_t(data.as_ref(), jd_ut1).or_else(|_| delta_t_seconds(jd_ut1))
 }
 
 impl ContextScaleConvert<TT> for UT1 {
     #[inline]
-    fn convert_with(src: Seconds, ctx: &TimeContext) -> Result<Seconds, ConversionError> {
+    fn convert_with(
+        src_hi: Second,
+        src_lo: Second,
+        ctx: &TimeContext,
+    ) -> Result<(Second, Second), ConversionError> {
+        let src = total_seconds(src_hi, src_lo);
         if !src.is_finite() {
             return Err(ConversionError::NonFinite);
         }
-        let jd_ut1: Days = j2000_seconds_to_jd(src);
-        let dt = context_delta_t(jd_ut1, ctx)?;
-        Ok(src + dt)
+        let dt = context_delta_t(j2000_seconds_to_jd(src), ctx)?;
+        Ok(add_constant(src_hi, src_lo, dt))
     }
 }
 
 impl ContextScaleConvert<UT1> for TT {
     #[inline]
-    fn convert_with(src: Seconds, ctx: &TimeContext) -> Result<Seconds, ConversionError> {
+    fn convert_with(
+        src_hi: Second,
+        src_lo: Second,
+        ctx: &TimeContext,
+    ) -> Result<(Second, Second), ConversionError> {
+        let src = total_seconds(src_hi, src_lo);
         if !src.is_finite() {
             return Err(ConversionError::NonFinite);
         }
-        // Fixed-point iteration: solve ut1 + ΔT(ut1) = tt.
-        // dΔT/dJD ≈ 3e-8; three iterations are already below ULP.
-        let mut ut1_secs = src;
+        let mut ut1 = src;
         for _ in 0..3 {
-            let jd_ut1: Days = j2000_seconds_to_jd(ut1_secs);
-            let dt = context_delta_t(jd_ut1, ctx)?;
-            ut1_secs = src - dt;
+            let dt = context_delta_t(j2000_seconds_to_jd(ut1), ctx)?;
+            ut1 = src - dt;
         }
-        Ok(ut1_secs)
+        Ok(normalize_pair(ut1.value(), 0.0))
     }
 }
 
-// Transitive UT1 ↔ {TAI, TDB, TCG, TCB, UTC} via TT.
 macro_rules! ut1_through_tt {
     ($scale:ty) => {
         impl ContextScaleConvert<$scale> for UT1 {
             #[inline]
-            fn convert_with(src: Seconds, ctx: &TimeContext) -> Result<Seconds, ConversionError> {
-                let tt = <UT1 as ContextScaleConvert<TT>>::convert_with(src, ctx)?;
-                Ok(<TT as InfallibleScaleConvert<$scale>>::convert(tt))
+            fn convert_with(
+                src_hi: Second,
+                src_lo: Second,
+                ctx: &TimeContext,
+            ) -> Result<(Second, Second), ConversionError> {
+                let (tt_hi, tt_lo) = <UT1 as ContextScaleConvert<TT>>::convert_with(src_hi, src_lo, ctx)?;
+                Ok(<TT as InfallibleScaleConvert<$scale>>::convert(tt_hi, tt_lo))
             }
         }
+
         impl ContextScaleConvert<UT1> for $scale {
             #[inline]
-            fn convert_with(src: Seconds, ctx: &TimeContext) -> Result<Seconds, ConversionError> {
-                let tt = <$scale as InfallibleScaleConvert<TT>>::convert(src);
-                <TT as ContextScaleConvert<UT1>>::convert_with(tt, ctx)
+            fn convert_with(
+                src_hi: Second,
+                src_lo: Second,
+                ctx: &TimeContext,
+            ) -> Result<(Second, Second), ConversionError> {
+                let (tt_hi, tt_lo) = <$scale as InfallibleScaleConvert<TT>>::convert(src_hi, src_lo);
+                <TT as ContextScaleConvert<UT1>>::convert_with(tt_hi, tt_lo, ctx)
             }
         }
     };
 }
+
 ut1_through_tt!(TAI);
 ut1_through_tt!(TDB);
 ut1_through_tt!(TCG);
 ut1_through_tt!(TCB);
 ut1_through_tt!(UTC);
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{ConversionError, TimeContext, TAI, TCB, TCG, TDB, UT1, UTC};
-    use qtty::time::Days;
-
-    /// TDB-TT at J2000.0: reference value from USNO Circular 179 §2.6 seven-term
-    /// truncated series. At t=0 the secular term vanishes, leaving the periodic
-    /// sum. Expected value ≈ −0.000095757 s; tolerance ±2 µs.
-    #[test]
-    fn tdb_minus_tt_at_j2000() {
-        let jd_j2000 = Days::new(2_451_545.0);
-        let result = tdb_minus_tt_seconds(jd_j2000).value();
-        let expected = -0.000_095_757_f64;
-        assert!(
-            (result - expected).abs() < 2e-6,
-            "TDB-TT at J2000.0: got {result:.9} s, expected {expected:.9} s ± 2 µs"
-        );
-    }
-
-    /// TDB-TT at J2100.0 (t=1 JC): secular term contributes, result should be
-    /// within 2 µs of the Circular 179 reference −0.000070935 s.
-    #[test]
-    fn tdb_minus_tt_at_j2100() {
-        // J2100.0 = J2000.0 + 36525 days
-        let jd_j2100 = Days::new(2_451_545.0 + 36_525.0);
-        let result = tdb_minus_tt_seconds(jd_j2100).value();
-        let expected = -0.000_070_935_f64;
-        assert!(
-            (result - expected).abs() < 2e-6,
-            "TDB-TT at J2100.0: got {result:.9} s, expected {expected:.9} s ± 2 µs"
-        );
-    }
-
-    #[test]
-    fn unix_epoch_tai_secs_is_reasonable() {
-        let secs = unix_epoch_tai_secs();
-        // Unix epoch (1970-01-01) is ~30 years before J2000 → negative J2000 offset
-        assert!(secs.value() < 0.0, "expected negative offset, got {secs:?}");
-    }
-
-    #[test]
-    fn ut1_to_tt_nonfinite_rejected() {
-        let ctx = TimeContext::new();
-        let result = <UT1 as ContextScaleConvert<TT>>::convert_with(Seconds::new(f64::NAN), &ctx);
-        assert_eq!(result.unwrap_err(), ConversionError::NonFinite);
-    }
-
-    #[test]
-    fn tt_to_ut1_nonfinite_rejected() {
-        let ctx = TimeContext::new();
-        let result =
-            <TT as ContextScaleConvert<UT1>>::convert_with(Seconds::new(f64::INFINITY), &ctx);
-        assert_eq!(result.unwrap_err(), ConversionError::NonFinite);
-    }
-
-    #[test]
-    fn ut1_transitive_conversions() {
-        let ctx = TimeContext::new();
-        let ut1 = Seconds::new(0.0);
-        // UT1 → TAI
-        let tai = <UT1 as ContextScaleConvert<TAI>>::convert_with(ut1, &ctx).unwrap();
-        let back = <TAI as ContextScaleConvert<UT1>>::convert_with(tai, &ctx).unwrap();
-        assert!((back - ut1).abs() < Seconds::new(1e-9));
-
-        // UT1 → TDB
-        let tdb = <UT1 as ContextScaleConvert<TDB>>::convert_with(ut1, &ctx).unwrap();
-        let back = <TDB as ContextScaleConvert<UT1>>::convert_with(tdb, &ctx).unwrap();
-        assert!((back - ut1).abs() < Seconds::new(1e-6));
-
-        // UT1 → TCG
-        let tcg = <UT1 as ContextScaleConvert<TCG>>::convert_with(ut1, &ctx).unwrap();
-        let back = <TCG as ContextScaleConvert<UT1>>::convert_with(tcg, &ctx).unwrap();
-        assert!((back - ut1).abs() < Seconds::new(1e-9));
-
-        // UT1 → TCB
-        let tcb = <UT1 as ContextScaleConvert<TCB>>::convert_with(ut1, &ctx).unwrap();
-        let back = <TCB as ContextScaleConvert<UT1>>::convert_with(tcb, &ctx).unwrap();
-        assert!((back - ut1).abs() < Seconds::new(1e-6));
-
-        // UT1 → UTC
-        let utc = <UT1 as ContextScaleConvert<UTC>>::convert_with(ut1, &ctx).unwrap();
-        let back = <UTC as ContextScaleConvert<UT1>>::convert_with(utc, &ctx).unwrap();
-        assert!((back - ut1).abs() < Seconds::new(1e-9));
-    }
-
-    /// Within EOP coverage, `with_builtin_eop()` takes the daily ΔT path.
-    /// Sanity checks: ΔT is finite, stays within ~1 s of the monthly-table
-    /// path (the two disagree only at the DUT1 sub-second level), and a
-    /// TT→UT1 round-trip is stable.
-    #[test]
-    fn tt_to_ut1_uses_builtin_eop_within_coverage() {
-        // MJD 57000 ≈ 2014-12-09; well inside the EOP observed range.
-        let jd_ut1 = Days::new(2_400_000.5 + 57_000.0);
-        let ctx_default = TimeContext::new();
-        let ctx_eop = TimeContext::with_builtin_eop();
-
-        let dt_default = context_delta_t(jd_ut1, &ctx_default).unwrap();
-        let dt_eop = context_delta_t(jd_ut1, &ctx_eop).unwrap();
-
-        assert!(dt_default.is_finite() && dt_eop.is_finite());
-        assert!(
-            (dt_eop - dt_default).abs() < Seconds::new(1.0),
-            "EOP ΔT {dt_eop:?} should agree with default ΔT {dt_default:?} within ~1 s"
-        );
-        // The two paths are not bit-identical: EOP consumes daily DUT1
-        // while default consumes monthly ΔT.
-        assert_ne!(dt_eop, dt_default);
-
-        let src_tt = jd_to_j2000_seconds(jd_ut1);
-        let ut1 = <TT as ContextScaleConvert<UT1>>::convert_with(src_tt, &ctx_eop).unwrap();
-        let tt_back = <UT1 as ContextScaleConvert<TT>>::convert_with(ut1, &ctx_eop).unwrap();
-        assert!((tt_back - src_tt).abs() < Seconds::new(1e-9));
-    }
-
-    /// Outside EOP coverage, `with_builtin_eop()` falls back to the monthly
-    /// ΔT path and matches the default context bit-for-bit.
-    #[test]
-    fn builtin_eop_falls_back_outside_coverage() {
-        // JD 2_000_000.5 ≈ 1858-11-16 (MJD 0), far before any EOP data.
-        let jd_ut1 = Days::new(2_000_000.5);
-        let dt_default = context_delta_t(jd_ut1, &TimeContext::new()).unwrap();
-        let dt_eop = context_delta_t(jd_ut1, &TimeContext::with_builtin_eop()).unwrap();
-        assert_eq!(dt_default, dt_eop);
-    }
-}

@@ -3,21 +3,17 @@
 
 //! Typed astronomical time primitives.
 //!
-//! The central type is [`Time<S, F>`], where `S` is a [`Scale`] marker
-//! (`TT`, `TAI`, `UTC`, `UT1`, `TDB`, `TCG`, `TCB`) and `F` is a
-//! [`Format`] marker (`J2000s`, `JD`, `MJD`, `UnixSecs`, `GpsSecs`,
-//! `DayCount`).
+//! The central type is [`Time<S>`], where `S` is a [`Scale`] marker
+//! (`TT`, `TAI`, `UTC`, `UT1`, `TDB`, `TCG`, `TCB`).
 //!
-//! Scale conversions:
+//! The old format-generic storage model has been replaced with explicit
+//! constructors and accessors:
 //!
-//! - `.to_scale::<S2>()` — infallible closed-form routes (TT↔TAI, TT↔TDB,
-//!   UTC↔any, etc.). Returns `Time<S2, F>` directly.
-//! - `.to_scale_with::<S2>(&ctx)` — context-required routes (UT1, via ΔT).
-//!   Returns `Result<Time<S2, F>, ConversionError>`.
-//!
-//! Format conversions:
-//!
-//! - `.reformat::<F2>()` — convert to a different format on the same scale.
+//! - continuous scales expose J2000-second, JD, and MJD constructors/accessors
+//! - `UTC` exposes civil/transport APIs (`chrono`, POSIX)
+//! - `TAI` exposes GPS transport helpers
+//! - unified conversion targets are available through `time.to::<Target>()`,
+//!   `time.try_to::<Target>()`, and `time.to_with::<Target>(&ctx)`
 //!
 //! See [`constats`] for typed epoch and offset constants.
 
@@ -29,11 +25,11 @@ mod delta_t;
 pub(crate) mod encoding;
 pub mod eop;
 pub mod error;
-mod format;
 pub(crate) mod generated;
 mod interval;
 mod scale;
 mod sealed;
+mod target;
 mod time;
 
 #[cfg(feature = "serde")]
@@ -44,7 +40,6 @@ pub use context::TimeContext;
 pub use delta_t::{delta_t_seconds, delta_t_seconds_extrapolated, DELTA_T_PREDICTION_HORIZON_MJD};
 pub use data::active::{refresh_runtime_time_data, update_runtime_time_data};
 pub use error::ConversionError;
-pub use format::{DayCount, Format, GpsSecs, J2000s, UnixSecs, JD, MJD};
 pub use generated::{
     EOP_END_MJD, EOP_OBSERVED_END_MJD, EOP_START_MJD, MODERN_DELTA_T_OBSERVED_END_MJD,
 };
@@ -53,6 +48,7 @@ pub use interval::{
     InvalidIntervalError, InvalidPeriodError, Period, PeriodListError,
 };
 pub use scale::{ContinuousScale, Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
+pub use target::{ConversionTarget, ContextConversionTarget, GpsSecs, InfallibleConversionTarget, J2000s, JD, MJD, UnixSecs};
 pub use time::Time;
 pub use tempoch_time_data::TimeDataError;
 
@@ -60,25 +56,13 @@ pub use tempoch_time_data::TimeDataError;
 mod size_tests {
     use super::*;
     #[test]
-    fn continuous_j2000s_is_eight_bytes() {
-        assert_eq!(core::mem::size_of::<Time<TT>>(), 8);
-        assert_eq!(core::mem::size_of::<Time<TAI>>(), 8);
-        assert_eq!(core::mem::size_of::<Time<TDB>>(), 8);
-        assert_eq!(core::mem::size_of::<Time<TCG>>(), 8);
-        assert_eq!(core::mem::size_of::<Time<TCB>>(), 8);
-        assert_eq!(core::mem::size_of::<Time<UT1>>(), 8);
-    }
-    #[test]
-    fn utc_j2000s_is_eight_bytes() {
-        // No longer 16 — leap flag is computed on demand.
-        assert_eq!(core::mem::size_of::<Time<UTC>>(), 8);
-    }
-    #[test]
-    fn daycount_is_four_bytes() {
-        assert_eq!(core::mem::size_of::<Time<TT, DayCount>>(), 4);
-    }
-    #[test]
-    fn jd_is_eight_bytes() {
-        assert_eq!(core::mem::size_of::<Time<TT, JD>>(), 8);
+    fn time_uses_compensated_pair_storage() {
+        assert_eq!(core::mem::size_of::<Time<TT>>(), 16);
+        assert_eq!(core::mem::size_of::<Time<TAI>>(), 16);
+        assert_eq!(core::mem::size_of::<Time<TDB>>(), 16);
+        assert_eq!(core::mem::size_of::<Time<TCG>>(), 16);
+        assert_eq!(core::mem::size_of::<Time<TCB>>(), 16);
+        assert_eq!(core::mem::size_of::<Time<UT1>>(), 16);
+        assert_eq!(core::mem::size_of::<Time<UTC>>(), 16);
     }
 }

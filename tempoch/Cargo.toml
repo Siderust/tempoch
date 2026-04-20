@@ -17,6 +17,7 @@ path = "src/lib.rs"
 [features]
 default = []
 serde = ["tempoch-core/serde"]
+runtime-data = []
 
 [dependencies]
 tempoch-core = { path = "../tempoch-core", version = "0.4.1" }

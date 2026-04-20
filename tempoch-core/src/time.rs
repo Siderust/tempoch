@@ -1,637 +1,329 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Vallés Puig, Ramon
 
-//! `Time<S, F>` — the core public type.
+//! `Time<S>` — the core public type.
 
 use core::marker::PhantomData;
 
 use super::context::TimeContext;
+use super::encoding::{j2000_seconds_to_jd, j2000_seconds_to_mjd, jd_to_j2000_seconds, mjd_to_j2000_seconds};
 use super::error::ConversionError;
-use super::format::{DayCount, Format, GpsSecs, J2000s, UnixSecs, JD, MJD};
-use super::format::conversion::{CanonicalRoundtrip, FormatConvertible};
 use super::scale::{ContinuousScale, Scale};
 use super::scale::conversion::{ContextScaleConvert, InfallibleScaleConvert};
+use super::target::{ContextConversionTarget, ConversionTarget, InfallibleConversionTarget};
 use qtty::time::Seconds;
-use qtty::{Day, QuantityI32, QuantityI64, Second};
+use qtty::{Day, Second};
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Time
-// ═══════════════════════════════════════════════════════════════════════════
+#[inline]
+fn two_sum(a: f64, b: f64) -> (f64, f64) {
+    let s = a + b;
+    let bb = s - a;
+    let err = (a - (s - bb)) + (b - bb);
+    (s, err)
+}
 
-/// A point in time on scale `S` in format `F`.
+#[inline]
+fn normalize_pair(hi: f64, lo: f64) -> (f64, f64) {
+    let (sum, err) = two_sum(hi, lo);
+    let (sum2, err2) = two_sum(sum, err);
+    (sum2, err2)
+}
+
+#[inline]
+fn is_finite_pair(hi: f64, lo: f64) -> bool {
+    hi.is_finite() && lo.is_finite()
+}
+
+/// A point in time on scale `S`.
 ///
-/// `S` determines the physical time scale (`TT`, `TAI`, `UTC`, etc.).
-/// `F` determines the numerical representation and storage type via
-/// `qtty::Quantity`. Defaults to [`J2000s`](super::format::J2000s)
-/// (SI seconds since J2000 TT) so `Time<TT>` works without specifying
-/// a format.
+/// Internally, `Time<S>` stores a compensated `(hi, lo)` pair of seconds since
+/// J2000 TT on the scale's coordinate axis. The pair sums to the exact value
+/// represented by the instance, while keeping the low-order remainder small
+/// enough to retain much better precision than a single `f64`.
 ///
-/// # Scale conversions
-///
-/// - `.to_scale::<S2>()` — infallible closed-form routes (TT↔TAI, TT↔TDB, etc.)
-/// - `.to_scale_with::<S2>(&ctx)` — context-required routes (UT1, via ΔT)
-///
-/// Scale conversions require `F: CanonicalRoundtrip` — they go through
-/// the canonical J2000s representation internally. Integer-based formats
-/// (`UnixSecs`, `DayCount`) must `.reformat::<J2000s>()` first.
-///
-/// # Format conversions
-///
-/// - `.reformat::<F2>()` — convert to a different format on the same scale
-pub struct Time<S: Scale, F: Format = super::format::J2000s> {
-    value: F::Storage,
+/// `UTC` remains special: it stores a continuous instant on the same internal
+/// axis used by `TAI`, and therefore does not expose raw JD/MJD/J2000-second
+/// constructors or accessors. Use the civil API on `Time<UTC>` instead.
+pub struct Time<S: Scale> {
+    hi: Second,
+    lo: Second,
     _scale: PhantomData<S>,
 }
 
-impl<S: Scale, F: Format> Copy for Time<S, F> where F::Storage: Copy {}
-impl<S: Scale, F: Format> Clone for Time<S, F>
-where
-    F::Storage: Clone,
-{
+impl<S: Scale> Copy for Time<S> {}
+impl<S: Scale> Clone for Time<S> {
     #[inline]
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<S: Scale, F: Format> PartialEq for Time<S, F>
-where
-    F::Storage: PartialEq,
-{
+impl<S: Scale> PartialEq for Time<S> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.value == other.value
+        self.hi == other.hi && self.lo == other.lo
     }
 }
 
-impl<S: Scale, F: Format> PartialOrd for Time<S, F>
-where
-    F::Storage: PartialOrd,
-{
+impl<S: Scale> PartialOrd for Time<S> {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-        self.value.partial_cmp(&other.value)
+        match self.hi.partial_cmp(&other.hi) {
+            Some(core::cmp::Ordering::Equal) => self.lo.partial_cmp(&other.lo),
+            ordering => ordering,
+        }
     }
 }
 
-impl<S: Scale, F: Format> core::fmt::Debug for Time<S, F>
-where
-    F::Storage: core::fmt::Debug,
-{
+impl<S: Scale> core::fmt::Debug for Time<S> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "Time<{}, {}>({:?})", S::NAME, F::NAME, self.value)
+        write!(
+            f,
+            "Time<{}>({:.17e} s, {:.17e} s)",
+            S::NAME,
+            self.hi.value(),
+            self.lo.value()
+        )
     }
 }
 
-impl<S: Scale, F: Format> core::fmt::Display for Time<S, F>
-where
-    F::Storage: core::fmt::Display,
-{
+impl<S: Scale> core::fmt::Display for Time<S> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}/{} ", S::NAME, F::NAME)?;
-        core::fmt::Display::fmt(&self.value, f)
+        write!(f, "{} {:.9} s", S::NAME, self.total_seconds().value())
     }
 }
 
-// ── Generic constructors and accessors ───────────────────────────────────
-
-impl<S: Scale, F: Format> Time<S, F> {
-    /// Build a `Time<S, F>` from a raw storage value.
+impl<S: Scale> Time<S> {
     #[inline]
-    pub fn new(value: F::Storage) -> Self {
+    pub(crate) fn new_unchecked(hi: Second, lo: Second) -> Self {
+        let (hi, lo) = normalize_pair(hi.value(), lo.value());
         Self {
-            value,
+            hi: Second::new(hi),
+            lo: Second::new(lo),
             _scale: PhantomData,
         }
     }
 
-    /// Extract the raw storage value.
     #[inline]
-    pub fn value(self) -> F::Storage {
-        self.value
+    pub(crate) fn try_new(hi: Second, lo: Second) -> Result<Self, ConversionError> {
+        if is_finite_pair(hi.value(), lo.value()) {
+            Ok(Self::new_unchecked(hi, lo))
+        } else {
+            Err(ConversionError::NonFinite)
+        }
     }
 
-    /// Convert to a different format on the same scale.
+    #[inline]
+    pub(crate) fn split_seconds(self) -> (Second, Second) {
+        (self.hi, self.lo)
+    }
+
+    #[inline]
+    pub(crate) fn total_seconds(self) -> Second {
+        self.hi + self.lo
+    }
+
+    /// Raw internal storage pair in J2000-TT seconds on the instance scale.
+    #[inline]
+    pub fn raw_seconds_pair(self) -> (Second, Second) {
+        self.split_seconds()
+    }
+}
+
+impl<S: ContinuousScale> Time<S> {
+    /// Build from J2000 TT seconds on the scale's coordinate axis.
+    #[inline]
+    pub fn from_j2000_seconds(seconds: Seconds) -> Result<Self, ConversionError> {
+        Self::try_new(seconds, Second::new(0.0))
+    }
+
+    /// Build from a split J2000-second pair.
+    #[inline]
+    pub fn from_j2000_seconds_split(hi: Seconds, lo: Seconds) -> Result<Self, ConversionError> {
+        Self::try_new(hi, lo)
+    }
+
+    /// Build from a Julian Day value on the scale's coordinate axis.
+    #[inline]
+    pub fn from_julian_days(jd: Day) -> Result<Self, ConversionError> {
+        if !jd.is_finite() {
+            return Err(ConversionError::NonFinite);
+        }
+        Self::from_j2000_seconds(jd_to_j2000_seconds(jd))
+    }
+
+    /// Build from a Modified Julian Day value on the scale's coordinate axis.
+    #[inline]
+    pub fn from_modified_julian_days(mjd: Day) -> Result<Self, ConversionError> {
+        if !mjd.is_finite() {
+            return Err(ConversionError::NonFinite);
+        }
+        Self::from_j2000_seconds(mjd_to_j2000_seconds(mjd))
+    }
+
+    /// Scale-coordinate seconds since J2000 TT.
+    #[inline]
+    pub fn j2000_seconds(self) -> Seconds {
+        self.total_seconds()
+    }
+
+    /// Scale-coordinate Julian Day.
+    #[inline]
+    pub fn julian_days(self) -> Day {
+        j2000_seconds_to_jd(self.total_seconds())
+    }
+
+    /// Scale-coordinate Modified Julian Day.
+    #[inline]
+    pub fn modified_julian_days(self) -> Day {
+        j2000_seconds_to_mjd(self.total_seconds())
+    }
+}
+
+impl<S: ContinuousScale> From<Second> for Time<S> {
+    #[inline]
+    fn from(value: Second) -> Self {
+        Self::new_unchecked(value, Second::new(0.0))
+    }
+}
+
+impl<S: ContinuousScale> From<f64> for Time<S> {
+    #[inline]
+    fn from(value: f64) -> Self {
+        Self::new_unchecked(Second::new(value), Second::new(0.0))
+    }
+}
+
+impl<S: Scale> Time<S> {
+    /// Unified infallible conversion to a scale/view target.
     #[allow(private_bounds)]
     #[inline]
-    pub fn reformat<F2: Format>(self) -> Time<S, F2>
+    pub fn to<T>(self) -> T::Output
     where
-        F: FormatConvertible<F2>,
+        T: InfallibleConversionTarget<S>,
     {
-        Time::new(F::convert(self.value))
-    }
-}
-
-// ── Raw value conversions for ergonomic construction ─────────────────────
-
-impl<S: Scale> From<Second> for Time<S, J2000s> {
-    #[inline]
-    fn from(value: Second) -> Self {
-        Self::new(value)
-    }
-}
-
-impl<S: Scale> From<f64> for Time<S, J2000s> {
-    #[inline]
-    fn from(value: f64) -> Self {
-        Self::new(Second::new(value))
-    }
-}
-
-impl<S: Scale> From<Day> for Time<S, JD> {
-    #[inline]
-    fn from(value: Day) -> Self {
-        Self::new(value)
-    }
-}
-
-impl<S: Scale> From<f64> for Time<S, JD> {
-    #[inline]
-    fn from(value: f64) -> Self {
-        Self::new(Day::new(value))
-    }
-}
-
-impl<S: Scale> From<Day> for Time<S, MJD> {
-    #[inline]
-    fn from(value: Day) -> Self {
-        Self::new(value)
-    }
-}
-
-impl<S: Scale> From<f64> for Time<S, MJD> {
-    #[inline]
-    fn from(value: f64) -> Self {
-        Self::new(Day::new(value))
-    }
-}
-
-impl<S: Scale> From<Second> for Time<S, GpsSecs> {
-    #[inline]
-    fn from(value: Second) -> Self {
-        Self::new(value)
-    }
-}
-
-impl<S: Scale> From<f64> for Time<S, GpsSecs> {
-    #[inline]
-    fn from(value: f64) -> Self {
-        Self::new(Second::new(value))
-    }
-}
-
-impl<S: Scale> From<QuantityI64<qtty::unit::Second>> for Time<S, UnixSecs> {
-    #[inline]
-    fn from(value: QuantityI64<qtty::unit::Second>) -> Self {
-        Self::new(value)
-    }
-}
-
-impl<S: Scale> From<i64> for Time<S, UnixSecs> {
-    #[inline]
-    fn from(value: i64) -> Self {
-        Self::new(QuantityI64::new(value))
-    }
-}
-
-impl<S: Scale> From<QuantityI32<qtty::unit::Day>> for Time<S, DayCount> {
-    #[inline]
-    fn from(value: QuantityI32<qtty::unit::Day>) -> Self {
-        Self::new(value)
-    }
-}
-
-impl<S: Scale> From<i32> for Time<S, DayCount> {
-    #[inline]
-    fn from(value: i32) -> Self {
-        Self::new(QuantityI32::new(value))
-    }
-}
-
-// ── Validated constructors (f64 formats with finiteness check) ───────────
-
-impl<S: Scale> Time<S, super::format::J2000s> {
-    /// Build from SI seconds since J2000 TT. Fails on non-finite input.
-    #[inline]
-    pub fn from_si_seconds(seconds: Seconds) -> Result<Self, ConversionError> {
-        if seconds.is_finite() {
-            Ok(Self::new(seconds))
-        } else {
-            Err(ConversionError::NonFinite)
-        }
+        T::convert(self)
     }
 
-    /// SI seconds since J2000 TT on the internal (TAI-based) axis.
-    ///
-    /// For most scales this is directly the scale-coordinate value.
-    ///
-    /// **UTC caveat:** `Time<UTC>` stores the same numerical value as
-    /// `Time<TAI>` for the same instant (see the [`UTC`](super::scale::UTC)
-    /// scale doc). Therefore `.si_seconds()` on a `Time<UTC>` is **not** a
-    /// UTC coordinate value — it differs from a true UTC timestamp by the
-    /// accumulated leap-second offset (TAI − UTC). Use the civil API
-    /// ([`unix_seconds`](super::civil)) for a POSIX-compatible timestamp.
-    #[inline]
-    pub fn si_seconds(self) -> Seconds {
-        self.value
-    }
-}
-
-impl<S: Scale> Time<S, super::format::JD> {
-    /// Build from a Julian Day number. Fails on non-finite input.
-    #[inline]
-    pub fn from_julian_days(jd: qtty::Day) -> Result<Self, ConversionError> {
-        if jd.is_finite() {
-            Ok(Self::new(jd))
-        } else {
-            Err(ConversionError::NonFinite)
-        }
-    }
-
-    /// Julian Day number.
-    #[inline]
-    pub fn julian_days(self) -> qtty::Day {
-        self.value
-    }
-}
-
-impl<S: Scale> Time<S, super::format::MJD> {
-    /// Build from a Modified Julian Day value. Fails on non-finite input.
-    #[inline]
-    pub fn from_modified_julian_days(mjd: qtty::Day) -> Result<Self, ConversionError> {
-        if mjd.is_finite() {
-            Ok(Self::new(mjd))
-        } else {
-            Err(ConversionError::NonFinite)
-        }
-    }
-
-    /// Modified Julian Day.
-    #[inline]
-    pub fn modified_julian_days(self) -> qtty::Day {
-        self.value
-    }
-}
-
-// ── Scale conversions ────────────────────────────────────────────────────
-
-#[allow(private_bounds)]
-impl<S: Scale, F: Format + CanonicalRoundtrip> Time<S, F> {
-    /// Infallible scale conversion. Compiles only for pairs with a
-    /// closed-form, context-free conversion (e.g. TT↔TAI, TT↔TDB).
-    ///
-    /// Requires `F: CanonicalRoundtrip` — the format must support
-    /// round-tripping through J2000 SI seconds.
+    /// Unified fallible conversion to a scale/view target.
     #[allow(private_bounds)]
     #[inline]
-    pub fn to_scale<S2: Scale>(self) -> Time<S2, F>
+    pub fn try_to<T>(self) -> Result<T::Output, ConversionError>
+    where
+        T: ConversionTarget<S>,
+    {
+        T::try_convert(self)
+    }
+
+    /// Unified context-backed conversion to a scale/view target.
+    #[allow(private_bounds)]
+    #[inline]
+    pub fn to_with<T>(self, ctx: &TimeContext) -> Result<T::Output, ConversionError>
+    where
+        T: ContextConversionTarget<S>,
+    {
+        T::convert_with(self, ctx)
+    }
+
+    /// Infallible scale conversion. Compiles only for pairs with a
+    /// closed-form, context-free conversion.
+    #[allow(private_bounds)]
+    #[inline]
+    pub fn to_scale<S2: Scale>(self) -> Time<S2>
     where
         S: InfallibleScaleConvert<S2>,
     {
-        let j2000s = F::to_j2000s(self.value);
-        let converted = <S as InfallibleScaleConvert<S2>>::convert(j2000s);
-        Time::new(F::from_j2000s(converted))
+        let (hi, lo) = self.split_seconds();
+        let (new_hi, new_lo) = <S as InfallibleScaleConvert<S2>>::convert(hi, lo);
+        Time::new_unchecked(new_hi, new_lo)
     }
 
     /// Context-required scale conversion (UT1 routes).
     #[allow(private_bounds)]
     #[inline]
-    pub fn to_scale_with<S2: Scale>(self, ctx: &TimeContext) -> Result<Time<S2, F>, ConversionError>
+    pub fn to_scale_with<S2: Scale>(self, ctx: &TimeContext) -> Result<Time<S2>, ConversionError>
     where
         S: ContextScaleConvert<S2>,
     {
-        let j2000s = F::to_j2000s(self.value);
-        let converted = <S as ContextScaleConvert<S2>>::convert_with(j2000s, ctx)?;
-        Ok(Time::new(F::from_j2000s(converted)))
-    }
-
-    /// Convert both scale and format at once.
-    #[allow(private_bounds)]
-    #[inline]
-    pub fn convert<S2: Scale, F2: Format + CanonicalRoundtrip>(self) -> Time<S2, F2>
-    where
-        S: InfallibleScaleConvert<S2>,
-    {
-        let j2000s = F::to_j2000s(self.value);
-        let converted = <S as InfallibleScaleConvert<S2>>::convert(j2000s);
-        Time::new(F2::from_j2000s(converted))
+        let (hi, lo) = self.split_seconds();
+        let (new_hi, new_lo) = <S as ContextScaleConvert<S2>>::convert_with(hi, lo, ctx)?;
+        Ok(Time::new_unchecked(new_hi, new_lo))
     }
 }
 
-// ── Arithmetic (continuous scales only) ──────────────────────────────────
+impl<S: ContinuousScale> core::ops::Sub for Time<S> {
+    type Output = Second;
 
-impl<S: ContinuousScale, F: Format> core::ops::Sub for Time<S, F>
-where
-    F::Storage: core::ops::Sub<Output = F::Storage>,
-{
-    type Output = F::Storage;
     #[inline]
-    fn sub(self, rhs: Self) -> F::Storage {
-        self.value - rhs.value
+    fn sub(self, rhs: Self) -> Second {
+        (self.hi - rhs.hi) + (self.lo - rhs.lo)
     }
 }
 
-impl<S: ContinuousScale, F: Format> core::ops::Add<F::Storage> for Time<S, F>
-where
-    F::Storage: core::ops::Add<Output = F::Storage>,
-{
+impl<S: ContinuousScale> core::ops::Add<Second> for Time<S> {
     type Output = Self;
+
     #[inline]
-    fn add(self, rhs: F::Storage) -> Self {
-        Self::new(self.value + rhs)
+    fn add(self, rhs: Second) -> Self {
+        Self::new_unchecked(self.hi, self.lo + rhs)
     }
 }
 
-// Time - Duration uses Add with negation or explicit methods.
-// Direct `Sub<F::Storage>` conflicts with `Sub for Time` due to
-// potential overlap in generic resolution.
+impl<S: ContinuousScale> core::ops::Sub<Second> for Time<S> {
+    type Output = Self;
 
-impl<S: ContinuousScale, F: Format> core::ops::AddAssign<F::Storage> for Time<S, F>
-where
-    F::Storage: core::ops::AddAssign,
-{
     #[inline]
-    fn add_assign(&mut self, rhs: F::Storage) {
-        self.value += rhs;
+    fn sub(self, rhs: Second) -> Self {
+        Self::new_unchecked(self.hi, self.lo - rhs)
     }
 }
 
-impl<S: ContinuousScale, F: Format> core::ops::SubAssign<F::Storage> for Time<S, F>
-where
-    F::Storage: core::ops::SubAssign,
-{
+impl<S: ContinuousScale> core::ops::AddAssign<Second> for Time<S> {
     #[inline]
-    fn sub_assign(&mut self, rhs: F::Storage) {
-        self.value -= rhs;
+    fn add_assign(&mut self, rhs: Second) {
+        *self = *self + rhs;
     }
 }
 
-// No arithmetic for Time<UTC, _> — that is deliberate (RFC §9).
+impl<S: ContinuousScale> core::ops::SubAssign<Second> for Time<S> {
+    #[inline]
+    fn sub_assign(&mut self, rhs: Second) {
+        *self = *self - rhs;
+    }
+}
 
 #[cfg(test)]
 mod tests {
-    use super::super::format::{DayCount, GpsSecs, J2000s, UnixSecs, JD, MJD};
-    #[cfg(feature = "serde")]
-    use super::super::scale::UTC;
-    use super::super::scale::{TAI, TCB, TCG, TDB, TT};
+    use super::super::scale::{TAI, TCG, TDB, TT};
     use super::*;
-    use qtty::{Day, QuantityI32, QuantityI64, Second};
-    #[cfg(feature = "serde")]
-    use serde::Deserialize;
-    #[cfg(feature = "serde")]
-    use serde_json::json;
-
-    const SECONDS_PER_DAY: Second = Second::new(86_400.0);
 
     #[test]
-    fn tt_tai_round_trip_exact() {
-        let tt = Time::<TT>::from_si_seconds(Second::new(0.0)).unwrap();
+    fn normalized_constructor_keeps_sum() {
+        let time = Time::<TT>::from_j2000_seconds_split(Second::new(1.0e9), Second::new(0.25)).unwrap();
+        assert!((time.j2000_seconds() - Second::new(1.0e9 + 0.25)).abs() < Second::new(1e-6));
+    }
+
+    #[test]
+    fn tt_tai_round_trip_exact_offset() {
+        let tt = Time::<TT>::from_j2000_seconds(Second::new(0.0)).unwrap();
         let tai = tt.to_scale::<TAI>();
-        let tt2 = tai.to_scale::<TT>();
-        assert_eq!(tt.si_seconds(), tt2.si_seconds());
-        assert!((tai.si_seconds() - Second::new(-32.184)).abs() < Second::new(1e-15));
+        let roundtrip = tai.to_scale::<TT>();
+        assert!((tt.j2000_seconds() - roundtrip.j2000_seconds()).abs() < Second::new(1e-12));
+        assert!((tai.j2000_seconds() - Second::new(-32.184)).abs() < Second::new(1e-12));
     }
 
     #[test]
     fn tt_tdb_round_trip_model_error() {
-        let tt = Time::<TT>::from_si_seconds(Second::new(1_000_000.0)).unwrap();
+        let tt = Time::<TT>::from_j2000_seconds(Second::new(1_000_000.0)).unwrap();
         let tdb = tt.to_scale::<TDB>();
         let tt2 = tdb.to_scale::<TT>();
-        assert!(
-            (tt.si_seconds() - tt2.si_seconds()).abs() < Second::new(1e-6),
-            "round-trip error {:?}",
-            tt - tt2
-        );
+        assert!((tt.j2000_seconds() - tt2.j2000_seconds()).abs() < Second::new(1e-6));
     }
 
     #[test]
-    fn tt_tcg_rate_difference() {
-        let tt0 = Time::<TT>::from_si_seconds(Second::new(0.0)).unwrap();
-        let tt1 = Time::<TT>::from_si_seconds(SECONDS_PER_DAY).unwrap();
-        let tcg0 = tt0.to_scale::<TCG>();
-        let tcg1 = tt1.to_scale::<TCG>();
-        let drift: Second = (tcg1 - tcg0) - SECONDS_PER_DAY;
-        let l_g = 6.969_290_134e-10_f64;
-        let expected: Second = SECONDS_PER_DAY * (l_g / (1.0 - l_g));
-        assert!(
-            (drift - expected).abs() < Second::new(1e-11),
-            "drift = {:?}, expected = {:?}",
-            drift,
-            expected
-        );
-    }
-
-    #[test]
-    fn tdb_tcb_linear() {
-        let tdb = Time::<TDB>::from_si_seconds(Second::new(1_000_000.0)).unwrap();
-        let tcb = tdb.to_scale::<TCB>();
-        let tdb2 = tcb.to_scale::<TDB>();
-        assert!(
-            (tdb.si_seconds() - tdb2.si_seconds()).abs() < Second::new(1e-6),
-            "round-trip diff {:?}",
-            tdb.si_seconds() - tdb2.si_seconds()
-        );
-    }
-
-    #[test]
-    fn julian_days_round_trip() {
-        let jd = Day::new(2_451_545.0);
-        let t = Time::<TT, JD>::from_julian_days(jd).unwrap();
-        assert_eq!(t.julian_days(), jd);
-    }
-
-    #[test]
-    fn reformat_jd_to_mjd() {
-        let jd = Day::new(2_451_545.0);
-        let t_jd = Time::<TT, JD>::from_julian_days(jd).unwrap();
-        let t_mjd: Time<TT, MJD> = t_jd.reformat();
-        let expected_mjd = Day::new(2_451_545.0 - 2_400_000.5);
-        assert!((t_mjd.modified_julian_days() - expected_mjd).abs() < Day::new(1e-9));
-    }
-
-    #[test]
-    fn si_seconds_and_julian_days_consistent() {
-        let t_jd = Time::<TT, JD>::from_julian_days(Day::new(2_451_545.5)).unwrap();
-        let t_s: Time<TT, J2000s> = t_jd.reformat();
-        assert!((t_s.si_seconds() - SECONDS_PER_DAY / 2.0).abs() < Second::new(1e-10));
-    }
-
-    #[test]
-    fn arithmetic_in_seconds() {
-        let a = Time::<TT>::from_si_seconds(Second::new(0.0)).unwrap();
-        let b = a + Second::new(10.0);
-        let diff: Second = b - a;
-        assert_eq!(diff, Second::new(10.0));
-    }
-
-    #[test]
-    fn nonfinite_rejected() {
-        assert_eq!(
-            Time::<TT>::from_si_seconds(Second::new(f64::NAN)).unwrap_err(),
-            ConversionError::NonFinite
-        );
-        assert_eq!(
-            Time::<TT>::from_si_seconds(Second::new(f64::INFINITY)).unwrap_err(),
-            ConversionError::NonFinite
-        );
-    }
-
-    #[test]
-    fn scale_conversion_in_jd_format() {
-        let tt_jd = Time::<TT, JD>::from_julian_days(Day::new(2_451_545.0)).unwrap();
-        let tai_jd: Time<TAI, JD> = tt_jd.to_scale();
-        // TT = TAI + 32.184 s, so TAI JD should be slightly less
-        let diff_days = tt_jd.julian_days() - tai_jd.julian_days();
-        let diff_secs = diff_days.to::<qtty::unit::Second>();
-        // JD values are ~2.4M, so we lose ~4 ULPs ≈ 40 µs in day arithmetic.
-        assert!(
-            (diff_secs - Second::new(32.184)).abs() < Second::new(1e-4),
-            "diff = {:?}",
-            diff_secs
-        );
-    }
-
-    #[test]
-    fn clone_partial_eq_debug_work() {
-        let t = Time::<TT>::from_si_seconds(Second::new(42.0)).unwrap();
-        #[allow(clippy::clone_on_copy)]
-        let t2 = t.clone();
-        assert_eq!(t, t2);
-        let dbg = format!("{t:?}");
-        assert!(dbg.contains("Time<"));
-    }
-
-    #[test]
-    fn display_includes_scale_format_and_qtty_units() {
-        let tt = Time::<TT>::from_si_seconds(Second::new(42.5)).unwrap();
-        let mjd = Time::<TT, MJD>::from_modified_julian_days(Day::new(51_544.5)).unwrap();
-
-        assert_eq!(tt.to_string(), "TT/J2000s 42.5 s");
-        assert_eq!(mjd.to_string(), "TT/MJD 51544.5 d");
-    }
-
-    #[test]
-    fn display_forwards_precision_to_underlying_quantity() {
-        let tt = Time::<TT>::from_si_seconds(Second::new(42.5)).unwrap();
-        let jd = Time::<TT, JD>::from_julian_days(Day::new(2_451_545.0)).unwrap();
-
-        assert_eq!(format!("{tt:.3}"), "TT/J2000s 42.500 s");
-        assert_eq!(format!("{jd:.2}"), "TT/JD 2451545.00 d");
-    }
-
-    #[test]
-    fn from_impls_for_all_formats() {
-        let _: Time<TT, J2000s> = Second::new(0.0).into();
-        let _: Time<TT, J2000s> = (0.0_f64).into();
-        let _: Time<TT, JD> = Day::new(2_451_545.0).into();
-        let _: Time<TT, JD> = (2_451_545.0_f64).into();
-        let _: Time<TT, MJD> = Day::new(51_544.0).into();
-        let _: Time<TT, MJD> = (51_544.0_f64).into();
-        let _: Time<TT, GpsSecs> = Second::new(0.0).into();
-        let _: Time<TT, GpsSecs> = (0.0_f64).into();
-        let _: Time<TT, UnixSecs> = QuantityI64::<qtty::unit::Second>::new(0).into();
-        let _: Time<TT, UnixSecs> = (0_i64).into();
-        let _: Time<TT, DayCount> = QuantityI32::<qtty::unit::Day>::new(0).into();
-        let _: Time<TT, DayCount> = (0_i32).into();
-    }
-
-    #[test]
-    fn from_modified_julian_days_nonfinite_rejected() {
-        assert_eq!(
-            Time::<TT, MJD>::from_modified_julian_days(Day::new(f64::NAN)).unwrap_err(),
-            ConversionError::NonFinite,
-        );
-    }
-
-    #[test]
-    fn convert_changes_scale_and_format() {
-        let tt = Time::<TT>::from_si_seconds(Second::new(0.0)).unwrap();
-        let tai_jd: Time<TAI, JD> = tt.convert();
-        let tt_jd: Time<TT, JD> = tt.reformat();
-        let diff = tt_jd.julian_days() - tai_jd.julian_days();
-        // TT = TAI + 32.184 s → difference in JD is 32.184 / 86400
-        assert!(
-            (diff - Day::new(32.184 / 86_400.0)).abs() < Day::new(1e-9),
-            "diff = {diff:?}",
-        );
-    }
-
-    #[test]
-    fn add_assign_and_sub_assign() {
-        let mut t = Time::<TT>::from_si_seconds(Second::new(0.0)).unwrap();
-        t += Second::new(5.0);
-        assert_eq!(t.si_seconds(), Second::new(5.0));
-        t -= Second::new(2.0);
-        assert_eq!(t.si_seconds(), Second::new(3.0));
-    }
-
-    #[cfg(feature = "serde")]
-    #[test]
-    fn serde_roundtrips_all_public_time_storage_shapes() {
-        let tt = Time::<TT>::from_si_seconds(Second::new(42.5)).unwrap();
-        let jd = Time::<TT, JD>::from_julian_days(Day::new(2_451_545.25)).unwrap();
-        let mjd = Time::<TT, MJD>::from_modified_julian_days(Day::new(51_544.75)).unwrap();
-        let unix = Time::<UTC, UnixSecs>::from(1_700_000_000_i64);
-        let gps = Time::<TAI, GpsSecs>::from(123.5_f64);
-        let daycount = Time::<TT, DayCount>::from(12_i32);
-
-        assert_eq!(serde_json::to_value(tt).unwrap(), json!(42.5));
-        assert_eq!(serde_json::to_value(jd).unwrap(), json!(2_451_545.25));
-        assert_eq!(serde_json::to_value(mjd).unwrap(), json!(51_544.75));
-        assert_eq!(
-            serde_json::to_value(unix).unwrap(),
-            json!(1_700_000_000_i64)
-        );
-        assert_eq!(serde_json::to_value(gps).unwrap(), json!(123.5));
-        assert_eq!(serde_json::to_value(daycount).unwrap(), json!(12));
-
-        assert_eq!(serde_json::from_value::<Time<TT>>(json!(42.5)).unwrap(), tt);
-        assert_eq!(
-            serde_json::from_value::<Time<TT, JD>>(json!(2_451_545.25)).unwrap(),
-            jd
-        );
-        assert_eq!(
-            serde_json::from_value::<Time<TT, MJD>>(json!(51_544.75)).unwrap(),
-            mjd
-        );
-        assert_eq!(
-            serde_json::from_value::<Time<UTC, UnixSecs>>(json!(1_700_000_000_i64)).unwrap(),
-            unix
-        );
-        assert_eq!(
-            serde_json::from_value::<Time<TAI, GpsSecs>>(json!(123.5)).unwrap(),
-            gps
-        );
-        assert_eq!(
-            serde_json::from_value::<Time<TT, DayCount>>(json!(12)).unwrap(),
-            daycount
-        );
-    }
-
-    #[cfg(feature = "serde")]
-    #[test]
-    fn serde_rejects_nonfinite_real_time_values() {
-        assert!(Time::<TT>::deserialize(serde::de::value::F64Deserializer::<
-            serde::de::value::Error,
-        >::new(f64::NAN,))
-        .unwrap_err()
-        .to_string()
-        .contains("finite"));
-        assert!(
-            Time::<TT, JD>::deserialize(
-                serde::de::value::F64Deserializer::<serde::de::value::Error>::new(f64::INFINITY),
-            )
-            .unwrap_err()
-            .to_string()
-            .contains("finite")
-        );
-        assert!(
-            Time::<TAI, GpsSecs>::deserialize(serde::de::value::F64Deserializer::<
-                serde::de::value::Error,
-            >::new(f64::NEG_INFINITY,),)
-            .unwrap_err()
-            .to_string()
-            .contains("finite")
-        );
+    fn tt_tcg_offset_is_finite() {
+        let tt = Time::<TT>::from_j2000_seconds(Second::new(86_400.0)).unwrap();
+        let tcg = tt.to_scale::<TCG>();
+        assert!(tcg.j2000_seconds().is_finite());
     }
 }

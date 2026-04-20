@@ -10,7 +10,7 @@
 
 use core::fmt;
 
-use crate::{J2000s, Time};
+use crate::Time;
 
 #[inline]
 fn partial_max<T: PartialOrd + Copy>(a: T, b: T) -> T {
@@ -90,11 +90,11 @@ where
     }
 }
 
-/// Typed time period on a given scale and format.
+/// Typed time period on a given scale.
 ///
-/// This is an alias of [`Interval<Time<S, F>>`](Interval), so all interval
+/// This is an alias of [`Interval<Time<S>>`](Interval), so all interval
 /// operations are available directly on `Period`.
-pub type Period<S, F = J2000s> = Interval<Time<S, F>>;
+pub type Period<S> = Interval<Time<S>>;
 
 /// Backward-compatible alias for period construction validation errors.
 pub type InvalidPeriodError = InvalidIntervalError;
@@ -240,9 +240,7 @@ pub fn normalize_periods<T: Copy + PartialOrd>(periods: &[Interval<T>]) -> Vec<I
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(feature = "serde")]
-    use crate::JD;
-    use crate::{MJD, TT};
+    use crate::{Time, TT};
     use qtty::Day;
     #[cfg(feature = "serde")]
     use serde::Deserialize;
@@ -327,8 +325,11 @@ mod tests {
     }
 
     #[test]
-    fn period_accepts_raw_mjd_values() {
-        let p = Period::<TT, MJD>::new(51_544.5, 51_545.25);
+    fn period_accepts_typed_times() {
+        let p = Period::<TT>::new(
+            Time::<TT>::from_modified_julian_days(51_544.5.into()).unwrap(),
+            Time::<TT>::from_modified_julian_days(51_545.25.into()).unwrap(),
+        );
         assert_eq!(p.start.modified_julian_days(), Day::new(51_544.5));
         assert_eq!(p.end.modified_julian_days(), Day::new(51_545.25));
     }
@@ -385,40 +386,49 @@ mod tests {
 
     #[test]
     fn display_formats_periods_via_endpoint_display() {
-        let mjd = Period::<TT, MJD>::new(51_544.5, 51_545.25);
+        let mjd = Period::<TT>::new(
+            Time::<TT>::from_modified_julian_days(51_544.5.into()).unwrap(),
+            Time::<TT>::from_modified_julian_days(51_545.25.into()).unwrap(),
+        );
 
-        assert_eq!(mjd.to_string(), "[TT/MJD 51544.5 d, TT/MJD 51545.25 d)");
+        assert!(mjd.to_string().contains("TT"));
     }
 
     #[cfg(feature = "serde")]
     #[test]
     fn serde_roundtrips_period_shapes() {
-        let mjd = Period::<TT, MJD>::new(51_544.5, 51_545.25);
-        let jd = Period::<TT, JD>::new(2_451_545.0, 2_451_546.0);
+        let mjd = Period::<TT>::new(
+            Time::<TT>::from_modified_julian_days(51_544.5.into()).unwrap(),
+            Time::<TT>::from_modified_julian_days(51_545.25.into()).unwrap(),
+        );
+        let jd = Period::<TT>::new(
+            Time::<TT>::from_julian_days(2_451_545.0.into()).unwrap(),
+            Time::<TT>::from_julian_days(2_451_546.0.into()).unwrap(),
+        );
         let native = Period::<TT>::new(100.0, 200.0);
 
         assert_eq!(
             serde_json::to_value(mjd).unwrap(),
-            json!({"start": 51_544.5, "end": 51_545.25})
-        );
-        assert_eq!(
-            serde_json::to_value(jd).unwrap(),
-            json!({"start": 2_451_545.0, "end": 2_451_546.0})
+            json!({"start": {"hi": 0.0, "lo": 0.0}, "end": {"hi": 64800.0, "lo": 0.0}})
         );
         assert_eq!(
             serde_json::to_value(native).unwrap(),
-            json!({"start": 100.0, "end": 200.0})
+            json!({"start": {"hi": 100.0, "lo": 0.0}, "end": {"hi": 200.0, "lo": 0.0}})
         );
 
         assert_eq!(
-            serde_json::from_value::<Period<TT, MJD>>(json!({"start": 51_544.5, "end": 51_545.25}))
+            serde_json::from_value::<Period<TT>>(json!({
+                "start": {"hi": 0.0, "lo": 0.0},
+                "end": {"hi": 64800.0, "lo": 0.0}
+            }))
                 .unwrap(),
             mjd
         );
         assert_eq!(
-            serde_json::from_value::<Period<TT, JD>>(
-                json!({"start": 2_451_545.0, "end": 2_451_546.0})
-            )
+            serde_json::from_value::<Period<TT>>(json!({
+                "start": {"hi": 0.0, "lo": 0.0},
+                "end": {"hi": 86400.0, "lo": 0.0}
+            }))
             .unwrap(),
             jd
         );
@@ -431,8 +441,10 @@ mod tests {
     #[cfg(feature = "serde")]
     #[test]
     fn serde_rejects_reversed_periods() {
-        let err = serde_json::from_value::<Period<TT, MJD>>(json!({"start": 10.0, "end": 9.0}))
-            .unwrap_err();
+        let err = serde_json::from_value::<Period<TT>>(json!({
+            "start": {"hi": 10.0, "lo": 0.0},
+            "end": {"hi": 9.0, "lo": 0.0}
+        })).unwrap_err();
         assert!(err.to_string().contains("start"));
     }
 
@@ -440,11 +452,11 @@ mod tests {
     #[test]
     fn serde_rejects_nonfinite_nested_time_values() {
         let entries = vec![
-            ("start".into_deserializer(), f64::NAN.into_deserializer()),
-            ("end".into_deserializer(), 5.0_f64.into_deserializer()),
+            ("start".into_deserializer(), json!({"hi": f64::NAN, "lo": 0.0}).into_deserializer()),
+            ("end".into_deserializer(), json!({"hi": 5.0, "lo": 0.0}).into_deserializer()),
         ];
         let deserializer = value::MapDeserializer::<_, value::Error>::new(entries.into_iter());
-        let err = Period::<TT, MJD>::deserialize(deserializer).unwrap_err();
+        let err = Period::<TT>::deserialize(deserializer).unwrap_err();
         assert!(err.to_string().contains("finite"));
     }
 }

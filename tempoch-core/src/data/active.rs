@@ -133,6 +133,7 @@ pub(crate) fn time_data_eop_at(data: &TimeDataBundle, mjd_utc: DayQuantity) -> O
     };
     let lo = points[lo_idx];
     let hi = points[hi_idx];
+
     let frac = if lo_idx == hi_idx {
         0.0
     } else {
@@ -148,11 +149,25 @@ pub(crate) fn time_data_eop_at(data: &TimeDataBundle, mjd_utc: DayQuantity) -> O
         _ => None,
     };
 
+    let ut1_minus_utc = {
+        let lo_offset = time_data_try_tai_minus_utc_mjd(data, DayQuantity::new(lo_i as f64));
+        let hi_offset = time_data_try_tai_minus_utc_mjd(data, DayQuantity::new(hi_i as f64));
+        let query_offset = time_data_try_tai_minus_utc_mjd(data, mjd_utc);
+        match (lo_offset, hi_offset, query_offset) {
+            (Some(lo_tmu), Some(hi_tmu), Some(query_tmu)) => {
+                let lo_cont = lo.ut1_minus_utc_seconds - lo_tmu.value();
+                let hi_cont = hi.ut1_minus_utc_seconds - hi_tmu.value();
+                Second::new(lerp(lo_cont, hi_cont) + query_tmu.value())
+            }
+            _ => Second::new(lerp(lo.ut1_minus_utc_seconds, hi.ut1_minus_utc_seconds)),
+        }
+    };
+
     Some(EopValues {
         mjd_utc,
         pm_xp_arcsec: lerp_opt(lo.pm_xp_arcsec, hi.pm_xp_arcsec),
         pm_yp_arcsec: lerp_opt(lo.pm_yp_arcsec, hi.pm_yp_arcsec),
-        ut1_minus_utc: Second::new(lerp(lo.ut1_minus_utc_seconds, hi.ut1_minus_utc_seconds)),
+        ut1_minus_utc,
         lod_milliseconds,
         dx_milliarcsec: lerp_opt(lo.dx_milliarcsec, hi.dx_milliarcsec),
         dy_milliarcsec: lerp_opt(lo.dy_milliarcsec, hi.dy_milliarcsec),
@@ -375,7 +390,7 @@ fn datetime_from_utc_mjd(mjd_utc: Days) -> Option<DateTime<Utc>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Time, TimeContext, JD, TT, UT1, UTC};
+    use crate::{Time, TimeContext, TT, UT1, UTC};
     use qtty::Second;
     use tempoch_time_data::TimeDataProvenance;
 
@@ -456,8 +471,7 @@ mod tests {
 
         with_test_time_data(bundle, || {
             let ctx = TimeContext::with_builtin_eop();
-            let tt =
-                Time::<TT, JD>::from_julian_days(DayQuantity::new(2_400_000.5 + 57_000.0)).unwrap();
+            let tt = Time::<TT>::from_julian_days(DayQuantity::new(2_400_000.5 + 57_000.0)).unwrap();
             let compiled = {
                 let data = compiled_time_data();
                 let dut1 = time_data_eop_at(data.as_ref(), DayQuantity::new(57_000.0))
@@ -468,7 +482,7 @@ mod tests {
             let overridden = ctx.ut1_minus_utc(DayQuantity::new(57_000.0)).unwrap();
             assert!((overridden - compiled).abs() > Second::new(0.1));
 
-            let ut1: Time<UT1, JD> = tt.to_scale_with::<UT1>(&ctx).unwrap();
+            let ut1: Time<UT1> = tt.to_scale_with::<UT1>(&ctx).unwrap();
             assert!(ut1.julian_days().is_finite());
         });
     }
@@ -490,19 +504,20 @@ mod tests {
             bundle.provenance().clone(),
         );
         let unix = Second::new(1_680_000_000.25);
-        let compiled_value = Time::<UTC>::from_unix_seconds(unix)
-            .unwrap()
-            .value()
-            .value();
+        let compiled_value = Time::<UTC>::from_unix_seconds(unix).unwrap().raw_seconds_pair().0.value()
+            + Time::<UTC>::from_unix_seconds(unix).unwrap().raw_seconds_pair().1.value();
 
         with_test_time_data(bundle, || {
             let overridden = Time::<UTC>::from_unix_seconds(unix).unwrap();
-            assert!((overridden.value().value() - compiled_value).abs() > 0.1);
+            let overridden_value = overridden.raw_seconds_pair().0.value() + overridden.raw_seconds_pair().1.value();
+            assert!((overridden_value - compiled_value).abs() > 0.1);
             let roundtrip = overridden.unix_seconds().unwrap();
             assert!((roundtrip - unix).abs() < Second::new(1e-3));
             let chrono = overridden.try_to_chrono().unwrap();
             let from_chrono = Time::<UTC>::try_from_chrono(chrono).unwrap();
-            let drift = (from_chrono.value().value() - overridden.value().value()).abs();
+            let drift = ((from_chrono.raw_seconds_pair().0.value() + from_chrono.raw_seconds_pair().1.value())
+                - overridden_value)
+                .abs();
             assert!(drift < 1e-4, "chrono round-trip drift = {drift}");
         });
     }
@@ -522,7 +537,7 @@ mod tests {
         );
         let beyond = crate::DELTA_T_PREDICTION_HORIZON_MJD + DayQuantity::new(15.0);
         let jd = beyond + crate::constats::JD_MINUS_MJD;
-        let tt = Time::<TT, JD>::from_julian_days(jd).unwrap();
+        let tt = Time::<TT>::from_julian_days(jd).unwrap();
 
         assert_eq!(
             tt.to_scale_with::<UT1>(&TimeContext::new()).unwrap_err(),

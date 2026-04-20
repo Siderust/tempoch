@@ -8,7 +8,7 @@
 //! cannot add new scales.
 //!
 //! * Continuous scales (`TAI`, `TT`, `TDB`, `TCG`, `TCB`, `UT1`) implement
-//!   [`ContinuousScale`] and support direct arithmetic on `Time<S, F>`.
+//!   [`ContinuousScale`] and support direct arithmetic on `Time<S>`.
 //! * The civil scale `UTC` does **not** implement `ContinuousScale`;
 //!   arithmetic is intentionally absent (RFC §9).
 
@@ -57,22 +57,18 @@ macro_rules! define_civil_scale {
 define_civil_scale!(
     /// Coordinated Universal Time.
     ///
-    /// Leap-second-aware civil scale. `Time<UTC, F>` stores the value in
-    /// format `F`; the leap-second flag is computed on demand from the
-    /// UTC-TAI segment table. Direct arithmetic is intentionally absent.
+    /// Leap-second-aware civil scale. `Time<UTC>` stores a continuous instant;
+    /// leap-second interpretation is computed on demand from the UTC-TAI
+    /// segment table. Direct arithmetic is intentionally absent.
     ///
     /// # Storage invariant
     ///
-    /// `Time<UTC, F>` and `Time<TAI, F>` store **the same numerical value**
-    /// for the same physical instant: J2000 TT seconds (or the equivalent in
-    /// format `F`) on the continuous TAI axis. They are identical
-    /// bit-for-bit. Scale conversion between them is therefore a no-op at
-    /// the numeric level.
+    /// `Time<UTC>` and `Time<TAI>` store **the same continuous instant** for
+    /// the same physical event. Scale conversion between them is therefore a
+    /// numeric no-op at the storage layer.
     ///
-    /// This means `.si_seconds()` on a `Time<UTC>` returns a **TAI-based**
-    /// J2000 TT second count, *not* a UTC offset or a UTC coordinate value.
-    /// UTC differs from TAI by up to 37 s (as of 2017) due to leap seconds;
-    /// that discontinuous offset exists only in the *civil* interpretation.
+    /// UTC does **not** expose raw J2000/JD/MJD accessors. Use the civil API
+    /// for UTC-facing coordinate work so leap-second handling stays explicit.
     ///
     /// # Authoritative UTC API
     ///

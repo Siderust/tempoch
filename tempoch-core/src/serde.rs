@@ -3,80 +3,44 @@
 
 #![cfg(feature = "serde")]
 
-use crate::format::{DayCount, Format, GpsSecs, J2000s, JD, MJD, UnixSecs};
 use crate::interval::Interval;
 use crate::scale::Scale;
 use crate::time::Time;
+use qtty::Second;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 const NONFINITE_TIME_VALUE_ERROR: &str = "time value must be finite (not NaN or infinity)";
 
-#[allow(private_bounds)]
-pub(crate) trait SerdeFormat: Format {
-    fn validate_serde_value(value: &Self::Storage) -> Result<(), &'static str>;
-}
-
-macro_rules! impl_serde_format_finite {
-    ($($format:ty),+ $(,)?) => {
-        $(
-            impl SerdeFormat for $format {
-                #[inline]
-                fn validate_serde_value(value: &Self::Storage) -> Result<(), &'static str> {
-                    if value.is_finite() {
-                        Ok(())
-                    } else {
-                        Err(NONFINITE_TIME_VALUE_ERROR)
-                    }
-                }
-            }
-        )+
-    };
-}
-
-macro_rules! impl_serde_format_passthrough {
-    ($($format:ty),+ $(,)?) => {
-        $(
-            impl SerdeFormat for $format {
-                #[inline]
-                fn validate_serde_value(_value: &Self::Storage) -> Result<(), &'static str> {
-                    Ok(())
-                }
-            }
-        )+
-    };
-}
-
-impl_serde_format_finite!(J2000s, JD, MJD, GpsSecs);
-impl_serde_format_passthrough!(UnixSecs, DayCount);
-
-#[allow(private_bounds)]
-impl<S: Scale, F> Serialize for Time<S, F>
-where
-    F: Format + SerdeFormat,
-    F::Storage: Serialize,
-{
+impl<S: Scale> Serialize for Time<S> {
     fn serialize<Ser>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error>
     where
         Ser: Serializer,
     {
-        (*self).value().serialize(serializer)
+        let mut state = serializer.serialize_struct("Time", 2)?;
+        let (hi, lo) = self.raw_seconds_pair();
+        state.serialize_field("hi", &hi.value())?;
+        state.serialize_field("lo", &lo.value())?;
+        state.end()
     }
 }
 
-#[allow(private_bounds)]
-impl<'de, S: Scale, F> Deserialize<'de> for Time<S, F>
-where
-    F: Format + SerdeFormat,
-    F::Storage: Deserialize<'de>,
-{
+impl<'de, S: Scale> Deserialize<'de> for Time<S> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        let value = F::Storage::deserialize(deserializer)?;
-        <F as SerdeFormat>::validate_serde_value(&value).map_err(serde::de::Error::custom)?;
-        Ok(Self::new(value))
+        #[derive(Deserialize)]
+        struct RawTime {
+            hi: f64,
+            lo: f64,
+        }
+
+        let raw = RawTime::deserialize(deserializer)?;
+        if !(raw.hi.is_finite() && raw.lo.is_finite()) {
+            return Err(serde::de::Error::custom(NONFINITE_TIME_VALUE_ERROR));
+        }
+        Time::try_new(Second::new(raw.hi), Second::new(raw.lo)).map_err(serde::de::Error::custom)
     }
 }
 
