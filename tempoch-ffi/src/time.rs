@@ -404,7 +404,8 @@ pub extern "C" fn tempoch_jde_to_jd(jde: f64) -> f64 {
 /// Python `datetime.fromtimestamp()`, etc. Internally the conversion routes
 /// through the compiled UTC-TAI history.
 ///
-/// Returns `NaN` if `jd` is out of the compiled UTC-TAI history range (before 1961).
+/// Returns `NaN` if `jd` is non-finite or cannot be represented by the
+/// compiled UTC civil-time model.
 #[no_mangle]
 pub extern "C" fn tempoch_jd_to_unix(jd: f64) -> f64 {
     jd_to_scale_value(jd, TempochScaleId::UnixTime).unwrap_or(f64::NAN)
@@ -415,7 +416,7 @@ pub extern "C" fn tempoch_jd_to_unix(jd: f64) -> f64 {
 /// Accepts a standard Unix timestamp (seconds, not days). The conversion
 /// uses the compiled UTC-TAI history for leap-second handling.
 ///
-/// Returns `NaN` if `unix` is out of the compiled UTC-TAI history range.
+/// Returns `NaN` if `unix` is non-finite or outside the supported UTC civil range.
 #[no_mangle]
 pub extern "C" fn tempoch_unix_to_jd(unix: f64) -> f64 {
     scale_value_to_jd(unix, TempochScaleId::UnixTime).unwrap_or(f64::NAN)
@@ -765,7 +766,7 @@ mod tests {
     }
 
     #[test]
-    fn jd_from_utc_pre_1961_returns_conversion_failed() {
+    fn jd_from_utc_pre_1961_roundtrips_with_approximate_extension() {
         let before_history = TempochUtc {
             year: 1960,
             month: 12,
@@ -775,9 +776,28 @@ mod tests {
             second: 59,
             nanosecond: 0,
         };
-        let mut out = 0.0;
-        let status = unsafe { tempoch_jd_from_utc(before_history, &mut out) };
-        assert_eq!(status, TempochStatus::UtcConversionFailed);
+        let original = before_history.into_chrono().unwrap();
+        let mut jd = 0.0;
+        let from_status = unsafe { tempoch_jd_from_utc(before_history, &mut jd) };
+        assert_eq!(from_status, TempochStatus::Ok);
+
+        let mut roundtrip = TempochUtc {
+            year: 0,
+            month: 0,
+            day: 0,
+            hour: 0,
+            minute: 0,
+            second: 0,
+            nanosecond: 0,
+        };
+        let to_status = unsafe { tempoch_jd_to_utc(jd, &mut roundtrip) };
+        assert_eq!(to_status, TempochStatus::Ok);
+
+        let roundtrip = roundtrip.into_chrono().unwrap();
+        let drift =
+            (roundtrip.timestamp_nanos_opt().unwrap() - original.timestamp_nanos_opt().unwrap())
+                .abs();
+        assert!(drift < 50_000, "pre-1961 UTC round-trip drift = {drift} ns");
     }
 
     #[test]

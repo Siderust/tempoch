@@ -149,9 +149,9 @@ pub(crate) fn scale_value_to_jd(value: f64, scale: TempochScaleId) -> Result<f64
 /// Convert a UTC instant to a native scalar in the requested scale.
 pub(crate) fn time_from_utc_value(datetime: DateTime<Utc>, scale: TempochScaleId) -> Option<f64> {
     if matches!(scale, TempochScaleId::UnixTime) {
-        // Validate against UTC-history bounds via the civil API (rejects pre-1961
-        // dates), then return the POSIX timestamp directly.  A UTC→TT→UTC
-        // round-trip would silently accumulate ~10 µs of error because
+        // Validate via the civil API, then return the POSIX timestamp directly.
+        // Routing Unix values through UTC→TT→UTC would silently accumulate
+        // ~10 µs of error because
         // TT_MINUS_TAI (32.184 s) is not exactly representable in f64.
         Time::<UTC>::try_from_chrono(datetime).ok()?;
         let nanos = datetime.timestamp_subsec_nanos().min(999_999_999);

@@ -9,32 +9,27 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
-- Reintroduced an optional `serde` feature on `tempoch-core` and `tempoch`.
-  `Time<S, F>` now serializes as the underlying format scalar, while
-  `Interval<T>` / `Period<S, F>` serialize as `{start, end}` and preserve
-  existing validation on deserialize.
-- `runtime-data` Cargo features on `tempoch-core` and `tempoch`. When enabled,
-  the existing UT1 and UTC civil APIs automatically prefer a cached or
-  refreshed runtime bundle without adding feature-specific public methods or
-  context types.
-
-- The axis / representation time model is now the primary public API at the
-  crate root (`tempoch::*` / `tempoch_core::*`):
-  - `Time<A, R = Native>` with sealed `Axis` (`TAI`, `TT`, `TDB`, `TCG`,
-    `TCB`, `UTC`, `UT1`) and sealed `Representation` (`Native`,
-    `JulianDays`, `ModifiedJulianDays`, `SISeconds`, `UnixSeconds<POSIX>`,
-    `GpsSeconds`).
-  - Three disjoint witness traits (`InfallibleConvertible`,
-    `FallibleConvertible`, `ContextConvertible`) select conversion mode at
-    compile time.
-  - `TimeContext` carries the compiled-data context required for UT1
-    conversions.
-  - Civil layer: `Time<UTC>::{from_chrono, to_chrono}` preserves leap-second
-    labels; `Time<UTC, UnixSeconds<POSIX>>` exposes POSIX seconds;
-    `Time<TAI, GpsSeconds>` exposes GPS seconds with the fixed 19 s offset.
-  - Generic `Interval<T: Copy + PartialOrd>` with the same algorithmic set
-    (`complement_within`, `intersect_periods`, `normalize_periods`,
-    `validate_period_list`).
+- The new axis/representation time model now backs the public API:
+  `Time<A, R = Native>` with sealed axis markers (`TAI`, `TT`, `TDB`, `TCG`,
+  `TCB`, `UTC`, `UT1`), representation markers (`Native`, `JulianDays`,
+  `ModifiedJulianDays`, `SISeconds`, `UnixSeconds<POSIX>`, `GpsSeconds`),
+  unified conversion witness traits, explicit `TimeContext`, and generic
+  `Interval<T>` / `Period<S>` helpers.
+- Optional `serde` support on `tempoch-core` and `tempoch`, including
+  tagged wrappers `tempoch::tagged::{TaggedTime, TaggedPeriod}` for wire
+  formats that must carry the scale name in-band.
+- `runtime-data` Cargo features on `tempoch-core` and `tempoch`, backed by the
+  new internal `tempoch-time-data` support crate, runtime refresh/update
+  entrypoints, and the `tempoch-time-data-updater` CLI plus scheduled refresh
+  workflow.
+- Bundled daily IERS Earth Orientation Parameters under `tempoch::eop`,
+  `TimeContext::with_builtin_eop()`, and the public
+  `EOP_START_MJD` / `EOP_OBSERVED_END_MJD` / `EOP_END_MJD` coverage constants.
+- New numbered examples covering quickstart, scale conversions, coordinate
+  views, periods, `serde`, runtime tables, and mixed conversion workflows.
+- FFI additions for the new core model: `TEMPOCH_STATUS_T_UT1_HORIZON_EXCEEDED`,
+  leap-second round-tripping with `second = 60`, and Unix timestamp identity
+  helpers `tempoch_unix_from_seconds` / `tempoch_unix_to_seconds`.
 
 ### Removed
 
@@ -45,54 +40,46 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
-- **TDB−TT formula**: Removed a spurious Kepler equation correction (`sin(M + e·sin(M))` → `sin(M)`) from the dominant term of the Fairhead & Bretagnon (1990) expression. The `e·sin(M)` factor was converting mean anomaly to eccentric anomaly, which is not part of the standard TDB−TT Fourier series and introduced a ~28 μs systematic error.
+- Removed a spurious Kepler-equation correction from the dominant
+  Fairhead-Bretagnon TDB-TT term, eliminating an approximately 28 µs
+  systematic error.
+- `tempoch-ffi` now keeps its UTC civil-time behavior aligned with the Rust
+  crate's supported pre-1961 approximate continuation instead of documenting
+  those dates as rejected.
+- Post-horizon Delta T extrapolation now caches its quadratic tail-fit
+  coefficients with `OnceLock` instead of recomputing them for every call.
+- Removed dead `f64::EPSILON` exact-match checks from the modern Delta T
+  interpolator.
 
 ### Changed
 
-- `runtime-data` no longer exposes a parallel public API. `TimeContext`,
-  `Time::to_scale_with`, and the normal UTC chrono/Unix helpers now use a
-  lazily selected active bundle, while refresh/cache management stays internal.
-- `tempoch-time-data-updater` is now a thin wrapper over the same shared
-  fetch/parse/build support crate used by the runtime-data feature, so
-  compile-time regeneration and runtime refresh stay semantically aligned.
-
-- Replaced the remaining raw time-quantity public APIs in `tempoch` with
-  `qtty` types:
-  - `Time::<UTC, UnixSeconds<POSIX>>::from_unix_seconds` and
-    `.unix_seconds()` now use `qtty::Second`.
-  - `Time::<TAI, GpsSeconds>::from_gps_seconds` and `.gps_seconds()` now use
-    `qtty::Second`.
-  - `DELTA_T_PREDICTION_HORIZON_MJD` is now exported as a typed `qtty::Day`
-    constant.
-- **ΔT extrapolation performance**: The quadratic tail-fit coefficients for post-horizon ΔT extrapolation are now computed once and cached via `OnceLock`, instead of solving a 3×3 Gaussian elimination on every call.
-- **Deduplicated `TT_MINUS_TAI_SECS`**: The `32.184 s` constant is now defined once in `scales.rs` (`pub(crate)`) and imported by `instant.rs`, eliminating a duplicate definition that could drift.
-- **Removed dead `f64::EPSILON` comparisons** in the modern ΔT interpolator. The exact-match shortcuts against MJD-scale values could never trigger (1 ULP at MJD ~50 000 is ≈ 7×10⁻¹² ≫ `f64::EPSILON`); removed in favour of the unconditional linear interpolation that was already the effective code path.
+- The public façade now centers the scale-only `Time<S>` model, with
+  coordinate and transport encodings exposed as conversion targets (`JD`,
+  `MJD`, `J2000s`, `UnixSecs`, `GpsSecs`) instead of storage types.
+- UTC and UT1 behavior now comes from generated official UTC-TAI, Delta T,
+  and EOP tables. `TimeContext::new()` remains monthly-Delta-T by default,
+  `with_builtin_eop()` prefers the bundled daily DUT1 path in range, and
+  pre-1961 UTC civil labels continue through the documented approximate
+  extension.
+- `runtime-data` no longer exposes a parallel public API. The normal chrono,
+  Unix, and context-backed conversion entrypoints now consult the lazily
+  selected active bundle, while refresh/cache management stays internal.
+- Unix and GPS transport helpers now use typed `qtty::Second`, and
+  `DELTA_T_PREDICTION_HORIZON_MJD` is now exported as a typed `qtty::Day`.
+- `tai_minus_utc()` now uses the official pre-1972 UTC frequency-offset
+  history from 1961 onward while preserving the documented 10 s fallback for
+  earlier dates.
+- `TCB` conversions now compose the linear `TCB <-> TDB` relation with the
+  existing periodic `TDB <-> TT` correction, removing the previous
+  millisecond-scale `TDB <-> TCB` round-trip drift.
+- `tempoch-ffi` now maps UT1 horizon failures to a dedicated status code and
+  keeps its Unix and civil-time conversions aligned with the crate's leap-second
+  and pre-1961 UTC semantics.
 
 ### Deprecated
 
-- `Time::<JD>::julian_millennias()` is deprecated in favour of `julian_millennia()` (correct Latin plural). The old name remains available with a `#[deprecated]` attribute.
-
-### Added
-
-- Automated time-data refresh tooling via the `tempoch-time-data-updater` Rust CLI and a scheduled GitHub Actions workflow that pushes refreshed generated tables directly to `main`. CI also runs the updater in `--check` mode to catch drift on every PR/push.
-- Compiled daily IERS Earth Orientation Parameters from `finals2000A.all`
-  (polar motion, UT1−UTC, LOD, celestial pole offsets) in
-  `tempoch_core::eop` and public `EOP_START_MJD` / `EOP_OBSERVED_END_MJD` /
-  `EOP_END_MJD` coverage constants. Opt-in via
-  `TimeContext::with_builtin_eop()`: UT1↔TT conversions then consume the
-  daily DUT1 series inside the coverage window (≲ 10 ms accuracy against
-  Bulletin C04) and fall back to the monthly ΔT path outside it. The
-  default `TimeContext::new()` remains bit-compatible with the monthly ΔT
-  path. The updater now fetches and emits `generated/eop_data.rs` alongside
-  `time_data.rs`.
-
-### Changed
-
-- `tempoch-core` now compiles generated UTC-TAI history and modern Delta T tables from official upstream sources instead of relying on hand-maintained constants.
-- `tai_minus_utc()` now uses the official pre-1972 UTC frequency-offset history from 1961 onward, while preserving the legacy 10 s fallback for earlier dates.
-- `TCB` conversions now compose the linear `TCB ↔ TDB` relation with the existing periodic `TDB ↔ TT` correction, eliminating the previous millisecond-scale `TDB ↔ TCB` round-trip drift.
-- Clarified `UnixTime` as the standard Unix / POSIX timestamp contract mapped to physical instants through `UTC → TAI → TT`; docs and examples now explicitly note that equal Unix increments are not guaranteed to equal elapsed SI seconds across leap-second insertions.
-- Clarified the public scientific wording for `TCG`, `UT1`, `ΔT`, and `tai_minus_utc()`, and documented the existing modern ΔT horizon at MJD 63871 (`2033-10-01`) plus the pre-1961 `TAI−UTC = 10 s` fallback.
+- `Time::<JD>::julian_millennias()` is deprecated in favour of
+  `julian_millennia()`.
 
 ## [0.4.1 - 2026-03-31]
 

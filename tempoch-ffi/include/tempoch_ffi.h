@@ -257,7 +257,8 @@ tempoch_status_t tempoch_period_mjd_intersection(struct tempoch_period_mjd_t a,
 // Python `datetime.fromtimestamp()`, etc. Internally the conversion routes
 // through the compiled UTC-TAI history.
 //
-// Returns `NaN` if `jd` is out of the compiled UTC-TAI history range (before 1961).
+// Returns `NaN` if `jd` is non-finite or cannot be represented by the
+// compiled UTC civil-time model.
  double tempoch_jd_to_unix(double jd);
 
 // Convert Unix time in **seconds** since 1970-01-01T00:00:00 UTC back to Julian Date (TT).
@@ -265,7 +266,7 @@ tempoch_status_t tempoch_period_mjd_intersection(struct tempoch_period_mjd_t a,
 // Accepts a standard Unix timestamp (seconds, not days). The conversion
 // uses the compiled UTC-TAI history for leap-second handling.
 //
-// Returns `NaN` if `unix` is out of the compiled UTC-TAI history range.
+// Returns `NaN` if `unix` is non-finite or outside the supported UTC civil range.
  double tempoch_unix_to_jd(double unix);
 
 // Create a Unix timestamp from seconds since 1970-01-01T00:00:00 UTC.
