@@ -12,10 +12,13 @@ Typed astronomical time primitives for Rust.
   `TAI`, `UTC`, `UT1`, `TDB`, `TCG`, `TCB`).
 - Unified target-based conversions:
   - `.to::<TT>()`, `.to::<UTC>()`, `.to::<TDB>()` for infallible scale routes
-  - `.to_with::<UT1>(&ctx)` for context-backed routes
+  - `.try_to::<UT1>()` for the default monthly-ΔT UT1 route
+  - `.to_with::<UT1>(&ctx)` for context-backed UT1 routes
   - `.to::<JD>()`, `.to::<MJD>()`, `.to::<J2000s>()` for coordinate views
   - `.try_to::<UnixSecs>()` and `.to::<GpsSecs>()` for transport encodings
-- UTC conversion through `chrono`, covering 1961 onward and leap-second aware.
+- UTC conversion through `chrono`, leap-second aware over the official history,
+  with an approximate pre-1961 continuation of the first official UTC segment
+  for older civil labels.
 - Automatic `ΔT = TT - UT1` handling for `UT1` conversions via an explicit
   `TimeContext`. For the currently compiled bundle fetched 2026-04-18, the
   default monthly-ΔT path stays within 10 ms of the bundled daily IERS-derived
@@ -32,14 +35,17 @@ Typed astronomical time primitives for Rust.
   `constats::TDB_TT_MODEL_HIGH_ACCURACY_END_JD` interval (about 1600-01-01 to
   2200-01-01 TT).
 - Julian Day, Modified Julian Day, and SI-second views via `JD`, `MJD`, and
-  `J2000s` conversion targets.
+  `J2000s` conversion targets on every built-in scale, including UTC's stored
+  instant axis.
 - Unix/POSIX timestamps via `Time::<UTC>::from_unix_seconds` and
   `.try_to::<UnixSecs>()`.
 - GPS transport values via `Time::<TAI>::from_gps_seconds` and `.to::<GpsSecs>()`.
 - Compiled time-data tables generated from official UTC-TAI and Delta T
   sources.
 - Optional `serde` support for `Time<S>` as `{"hi","lo"}` and
-  `Period<S>` / `Interval<T>` as `{start, end}` objects.
+  `Period<S>` / `Interval<T>` as `{start, end}` objects, plus explicit
+  `tempoch::tagged::{TaggedTime, TaggedPeriod}` wrappers when the payload must
+  carry the scale name.
 - Optional automatic runtime freshness when the `runtime-data` feature is
   enabled, while keeping the same public API.
 - Public typed epoch/offset constants under `tempoch::constats`, such as
@@ -52,9 +58,10 @@ since J2000 TT on the target axis. Tags such as `JD`, `MJD`, `UnixSecs`, and
 `GpsSecs` are conversion targets, not storage types.
 
 The compiled modern ΔT series runs through MJD 63871 (`2033-10-01`). Beyond
-that date UT1 conversions fail with `ConversionError::Ut1HorizonExceeded`.
-Use the exported `DELTA_T_PREDICTION_HORIZON_MJD` typed `qtty::Day` constant
-to reference the compiled boundary programmatically.
+that date the built-in bundle stops and UT1 conversions fail with
+`ConversionError::Ut1HorizonExceeded` unless an active runtime bundle extends
+the horizon. Use the exported `DELTA_T_PREDICTION_HORIZON_MJD` typed
+`qtty::Day` constant to reference the compiled boundary programmatically.
 
 ## Installation
 
@@ -92,10 +99,15 @@ With the `serde` feature enabled:
 - `Time<S>` serializes as `{"hi": ..., "lo": ...}`.
 - `Period<S>` serializes as `{"start": ..., "end": ...}`.
 - The scale remains type-level and is not embedded in the payload.
+- `tagged::TaggedTime<S>` and `tagged::TaggedPeriod<S>` serialize with an
+  explicit `"scale"` field for interchange payloads.
 
 ```rust
 use qtty::Second;
-use tempoch::{Period, Time, TT};
+use tempoch::{
+    tagged::{TaggedPeriod, TaggedTime},
+    Period, Time, TT,
+};
 
 let tt = Time::<TT>::from_j2000_seconds(Second::new(42.5)).unwrap();
 let period = Period::<TT>::new(42.5, 43.5);
@@ -104,6 +116,14 @@ assert_eq!(serde_json::to_string(&tt).unwrap(), r#"{"hi":42.5,"lo":0.0}"#);
 assert_eq!(
     serde_json::to_string(&period).unwrap(),
     r#"{"start":{"hi":42.5,"lo":0.0},"end":{"hi":43.5,"lo":0.0}}"#
+);
+assert_eq!(
+    serde_json::to_string(&TaggedTime(tt)).unwrap(),
+    r#"{"scale":"TT","hi":42.5,"lo":0.0}"#
+);
+assert_eq!(
+    serde_json::to_string(&TaggedPeriod(period)).unwrap(),
+    r#"{"scale":"TT","start":{"scale":"TT","hi":42.5,"lo":0.0},"end":{"scale":"TT","hi":43.5,"lo":0.0}}"#
 );
 ```
 
@@ -174,9 +194,9 @@ assert_eq!(gaps.len(), 3);
 The default `tempoch` path remains compile-time and network-free. If you need
 fresher UTC-TAI history, modern Delta T, and daily IERS EOP at runtime, enable
 the `runtime-data` feature. The public API does not change: `TimeContext`,
-`Time::to_with`, and the normal UTC civil helpers automatically consult a
-cached bundle in `~/.tempoch/data`, refreshing it once on first use when the
-cache is missing, invalid, or older than 24 hours.
+`Time::try_to::<UT1>()`, `Time::to_with`, and the normal UTC civil helpers
+automatically consult a cached bundle in `~/.tempoch/data`, refreshing it once
+on first use when the cache is missing, invalid, or older than 24 hours.
 
 Set `TEMPOCH_DATA_DIR` to override the cache location.
 

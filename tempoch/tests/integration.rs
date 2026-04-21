@@ -5,7 +5,8 @@ use serde_json::json;
 use tempoch::{
     complement_within,
     constats::{J2000_JD_TT, TT_MINUS_TAI},
-    intersect_periods, J2000s, JD, MJD, Period, Time, TimeContext, TAI, TT, UT1, UTC,
+    intersect_periods, CoordinateScale, J2000s, Period, Time, TimeContext, JD, MJD, TAI, TT, UT1,
+    UTC,
 };
 
 #[test]
@@ -28,6 +29,14 @@ fn ut1_context_roundtrip_near_j2000() {
     let offset_s = tt.to::<J2000s>() - ut1.to::<J2000s>();
     assert!((offset_s - Second::new(63.83)).abs() < Second::new(1.0));
     assert!((tt - tt_back).abs() < Second::new(1e-9));
+}
+
+#[test]
+fn default_try_to_ut1_uses_default_context() {
+    let tt = Time::<TT>::from_j2000_seconds(Second::new(0.0)).unwrap();
+    let via_default: Time<UT1> = tt.try_to::<UT1>().unwrap();
+    let via_context: Time<UT1> = tt.to_with::<UT1>(&TimeContext::new()).unwrap();
+    assert!((via_default.to::<J2000s>() - via_context.to::<J2000s>()).abs() < Second::new(1e-12));
 }
 
 #[test]
@@ -59,6 +68,22 @@ fn utc_leap_second_roundtrip_is_preserved() {
             < 50_000
     );
     assert!(format!("{back:?}").starts_with("2016-12-31T23:59:60."));
+}
+
+#[test]
+fn utc_supports_coordinate_views_and_pre_1961_roundtrips() {
+    fn needs_coordinate_scale<S: CoordinateScale>(time: Time<S>) -> Day {
+        time.to::<MJD>()
+    }
+
+    let utc = Time::<UTC>::from_j2000_seconds(Second::new(0.0)).unwrap();
+    assert_eq!(needs_coordinate_scale(utc), utc.to::<MJD>());
+
+    let pre_1961 = DateTime::from_timestamp(-631_152_000, 500_000_000).unwrap();
+    let encoded = Time::<UTC>::try_from_chrono(pre_1961).unwrap();
+    let back = encoded.try_to_chrono().unwrap();
+    let delta_ns = back.timestamp_nanos_opt().unwrap() - pre_1961.timestamp_nanos_opt().unwrap();
+    assert!(delta_ns.abs() < 50_000);
 }
 
 #[test]
@@ -128,10 +153,18 @@ fn public_serde_roundtrips_time_and_periods() {
         jd
     );
     assert_eq!(
+        serde_json::to_value(mjd_period).unwrap(),
+        json!({
+            "start": {"hi": 816955200.0, "lo": 0.0},
+            "end": {"hi": 817041600.0, "lo": 0.0}
+        })
+    );
+    assert_eq!(
         serde_json::from_value::<Period<TT>>(json!({
-            "start": {"hi": 816091200.0, "lo": 0.0},
-            "end": {"hi": 816177600.0, "lo": 0.0}
-        })).unwrap(),
+            "start": {"hi": 816955200.0, "lo": 0.0},
+            "end": {"hi": 817041600.0, "lo": 0.0}
+        }))
+        .unwrap(),
         mjd_period
     );
 }
@@ -150,7 +183,30 @@ fn serde_still_works_with_current_shape() {
         serde_json::from_value::<Period<TT>>(json!({
             "start": {"hi": 1.25, "lo": 0.0},
             "end": {"hi": 2.5, "lo": 0.0}
-        })).unwrap(),
+        }))
+        .unwrap(),
         period
+    );
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn tagged_serde_preserves_scale_in_payload() {
+    use tempoch::tagged::{TaggedPeriod, TaggedTime};
+
+    let tt = Time::<TT>::from_j2000_seconds(Second::new(1.25)).unwrap();
+    let period = Period::<TT>::new(1.25, 2.5);
+
+    assert_eq!(
+        serde_json::to_value(TaggedTime(tt)).unwrap(),
+        json!({"scale": "TT", "hi": 1.25, "lo": 0.0})
+    );
+    assert_eq!(
+        serde_json::to_value(TaggedPeriod(period)).unwrap(),
+        json!({
+            "scale": "TT",
+            "start": {"scale": "TT", "hi": 1.25, "lo": 0.0},
+            "end": {"scale": "TT", "hi": 2.5, "lo": 0.0}
+        })
     );
 }

@@ -13,12 +13,14 @@
 
 pub use tempoch_core::{
     complement_within, constats, delta_t_seconds, delta_t_seconds_extrapolated, eop,
-    refresh_runtime_time_data,
-    intersect_periods, normalize_periods, validate_period_list, ContinuousScale,
-    ContextConversionTarget, ConversionError, ConversionTarget, GpsSecs, InfallibleConversionTarget,
-    Interval, InvalidIntervalError, InvalidPeriodError, J2000s, JD, MJD, Period,
-    PeriodListError, Scale, Time, TimeContext, TimeDataError, UnixSecs,
-    update_runtime_time_data, DELTA_T_PREDICTION_HORIZON_MJD, EOP_END_MJD,
-    EOP_OBSERVED_END_MJD, EOP_START_MJD, MODERN_DELTA_T_OBSERVED_END_MJD, TAI, TCB, TCG, TDB,
-    TT, UT1, UTC,
+    intersect_periods, normalize_periods, refresh_runtime_time_data, update_runtime_time_data,
+    validate_period_list, ContextConversionTarget, ContinuousScale, ConversionError,
+    ConversionTarget, CoordinateScale, GpsSecs, InfallibleConversionTarget, Interval,
+    InvalidIntervalError, InvalidPeriodError, J2000s, Period, PeriodListError, Scale, Time,
+    TimeContext, TimeDataError, UnixSecs, DELTA_T_PREDICTION_HORIZON_MJD, EOP_END_MJD,
+    EOP_OBSERVED_END_MJD, EOP_START_MJD, JD, MJD, MODERN_DELTA_T_OBSERVED_END_MJD, TAI, TCB, TCG,
+    TDB, TT, UT1, UTC,
 };
+
+#[cfg(feature = "serde")]
+pub use tempoch_core::tagged;

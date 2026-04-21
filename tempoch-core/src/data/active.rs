@@ -23,6 +23,8 @@ use tempoch_time_data::{
 use std::sync::Mutex;
 
 const NANOS_PER_SECOND: Nanoseconds = Nanoseconds::new(1_000_000_000.0);
+#[cfg(any(test, feature = "runtime-data"))]
+const RUNTIME_DATA_MAX_AGE_SECONDS: i64 = 24 * 60 * 60;
 
 #[derive(Clone, Copy)]
 enum UtcTaiRegion {
@@ -36,6 +38,8 @@ enum UtcTaiRegion {
 
 static COMPILED_TIME_DATA: OnceLock<Arc<TimeDataBundle>> = OnceLock::new();
 static ACTIVE_TIME_DATA: OnceLock<RwLock<Arc<TimeDataBundle>>> = OnceLock::new();
+#[cfg(feature = "runtime-data")]
+static AUTO_RUNTIME_DATA_INIT: OnceLock<()> = OnceLock::new();
 
 #[cfg(test)]
 static TEST_TIME_DATA_GUARD: Mutex<()> = Mutex::new(());
@@ -62,6 +66,9 @@ pub(crate) fn active_time_data() -> Arc<TimeDataBundle> {
     {
         return bundle;
     }
+
+    #[cfg(feature = "runtime-data")]
+    auto_activate_runtime_time_data();
 
     active_time_data_slot()
         .read()
@@ -106,6 +113,46 @@ fn select_time_data(
         Ok(bundle) => Ok(bundle),
         Err(_) => refresh(),
     }
+}
+
+#[cfg(any(test, feature = "runtime-data"))]
+fn bundle_is_stale(bundle: &TimeDataBundle, now: DateTime<Utc>) -> bool {
+    match bundle.provenance().fetched_at() {
+        Some(fetched_at) => {
+            now.signed_duration_since(fetched_at).num_seconds() > RUNTIME_DATA_MAX_AGE_SECONDS
+        }
+        None => true,
+    }
+}
+
+#[cfg(any(test, feature = "runtime-data"))]
+fn select_time_data_for_auto_refresh(
+    cached: Result<TimeDataBundle, TimeDataError>,
+    refresh: impl FnOnce() -> Result<TimeDataBundle, TimeDataError>,
+    now: DateTime<Utc>,
+) -> Result<TimeDataBundle, TimeDataError> {
+    match cached {
+        Ok(bundle) if !bundle_is_stale(&bundle, now) => Ok(bundle),
+        Ok(bundle) => refresh().or(Ok(bundle)),
+        Err(_) => refresh(),
+    }
+}
+
+#[cfg(feature = "runtime-data")]
+fn auto_activate_runtime_time_data() {
+    AUTO_RUNTIME_DATA_INIT.get_or_init(|| {
+        let Ok(manager) = TimeDataManager::new() else {
+            return;
+        };
+        let Ok(bundle) = select_time_data_for_auto_refresh(
+            manager.load_cached(),
+            || manager.refresh_and_load(),
+            Utc::now(),
+        ) else {
+            return;
+        };
+        set_active_time_data(bundle);
+    });
 }
 
 pub(crate) fn time_data_delta_t(
@@ -180,8 +227,9 @@ pub(crate) fn time_data_try_tai_minus_utc_mjd(
     mjd_utc: Days,
 ) -> Option<Seconds> {
     let segments = data.utc_tai_segments();
-    if mjd_utc < DayQuantity::new(segments[0].start_mjd as f64) {
-        return None;
+    let first = segments[0];
+    if mjd_utc < DayQuantity::new(first.start_mjd as f64) {
+        return Some(utc_offset_seconds_in_segment(mjd_utc, first));
     }
     let idx =
         segments.partition_point(|segment| DayQuantity::new(segment.start_mjd as f64) <= mjd_utc);
@@ -338,11 +386,6 @@ fn locate_utc_region_from_tt_mjd(
     segments: &[UtcTaiSegment],
     mjd_tt: Days,
 ) -> Result<UtcTaiRegion, ConversionError> {
-    let first = segments[0];
-    if mjd_tt < segment_start_tt(first) - UTC_INTERVAL_EPS {
-        return Err(ConversionError::UtcHistoryUnsupported);
-    }
-
     let idx =
         segments.partition_point(|segment| segment_start_tt(*segment) <= mjd_tt + UTC_INTERVAL_EPS);
     let segment = segments[idx.saturating_sub(1)];
@@ -414,7 +457,11 @@ mod tests {
         let cached = bundle_with_timestamp("cached");
         let selected = select_time_data(
             Ok(cached.clone()),
-            || Err(TimeDataError::Integrity("refresh should not be called".into())),
+            || {
+                Err(TimeDataError::Integrity(
+                    "refresh should not be called".into(),
+                ))
+            },
             false,
         )
         .unwrap();
@@ -456,6 +503,42 @@ mod tests {
     }
 
     #[test]
+    fn stale_cache_prefers_refresh_but_falls_back_if_refresh_fails() {
+        let stale = bundle_with_timestamp("2026-04-15T00:00:00");
+        let now = DateTime::from_timestamp(1_776_134_400, 0).unwrap();
+        let selected = select_time_data_for_auto_refresh(
+            Ok(stale.clone()),
+            || Err(TimeDataError::Download("network unreachable".into())),
+            now,
+        )
+        .unwrap();
+        assert_eq!(
+            selected.provenance().fetched_utc(),
+            stale.provenance().fetched_utc()
+        );
+    }
+
+    #[test]
+    fn fresh_cache_skips_refresh_in_auto_mode() {
+        let fresh = bundle_with_timestamp("2026-04-20T00:00:00");
+        let now = DateTime::from_timestamp(1_776_139_200, 0).unwrap();
+        let selected = select_time_data_for_auto_refresh(
+            Ok(fresh.clone()),
+            || {
+                Err(TimeDataError::Integrity(
+                    "refresh should not be called".into(),
+                ))
+            },
+            now,
+        )
+        .unwrap();
+        assert_eq!(
+            selected.provenance().fetched_utc(),
+            fresh.provenance().fetched_utc()
+        );
+    }
+
+    #[test]
     fn ordinary_ut1_api_uses_override_bundle() {
         let bundle = compiled_bundle_owned();
         let mut eop_points = bundle.eop_points().to_vec();
@@ -471,7 +554,8 @@ mod tests {
 
         with_test_time_data(bundle, || {
             let ctx = TimeContext::with_builtin_eop();
-            let tt = Time::<TT>::from_julian_days(DayQuantity::new(2_400_000.5 + 57_000.0)).unwrap();
+            let tt =
+                Time::<TT>::from_julian_days(DayQuantity::new(2_400_000.5 + 57_000.0)).unwrap();
             let compiled = {
                 let data = compiled_time_data();
                 let dut1 = time_data_eop_at(data.as_ref(), DayQuantity::new(57_000.0))
@@ -504,22 +588,46 @@ mod tests {
             bundle.provenance().clone(),
         );
         let unix = Second::new(1_680_000_000.25);
-        let compiled_value = Time::<UTC>::from_unix_seconds(unix).unwrap().raw_seconds_pair().0.value()
-            + Time::<UTC>::from_unix_seconds(unix).unwrap().raw_seconds_pair().1.value();
+        let compiled_value = Time::<UTC>::from_unix_seconds(unix)
+            .unwrap()
+            .raw_seconds_pair()
+            .0
+            .value()
+            + Time::<UTC>::from_unix_seconds(unix)
+                .unwrap()
+                .raw_seconds_pair()
+                .1
+                .value();
 
         with_test_time_data(bundle, || {
             let overridden = Time::<UTC>::from_unix_seconds(unix).unwrap();
-            let overridden_value = overridden.raw_seconds_pair().0.value() + overridden.raw_seconds_pair().1.value();
+            let overridden_value =
+                overridden.raw_seconds_pair().0.value() + overridden.raw_seconds_pair().1.value();
             assert!((overridden_value - compiled_value).abs() > 0.1);
             let roundtrip = overridden.unix_seconds().unwrap();
             assert!((roundtrip - unix).abs() < Second::new(1e-3));
             let chrono = overridden.try_to_chrono().unwrap();
             let from_chrono = Time::<UTC>::try_from_chrono(chrono).unwrap();
-            let drift = ((from_chrono.raw_seconds_pair().0.value() + from_chrono.raw_seconds_pair().1.value())
+            let drift = ((from_chrono.raw_seconds_pair().0.value()
+                + from_chrono.raw_seconds_pair().1.value())
                 - overridden_value)
                 .abs();
             assert!(drift < 1e-4, "chrono round-trip drift = {drift}");
         });
+    }
+
+    #[test]
+    fn pre_1961_utc_roundtrips_with_approximate_segment_extension() {
+        let dt = DateTime::from_timestamp(-631_152_000, 250_000_000).unwrap();
+        let utc = Time::<UTC>::try_from_chrono(dt).unwrap();
+        let back = utc.try_to_chrono().unwrap();
+        let drift = (back.timestamp_nanos_opt().unwrap() - dt.timestamp_nanos_opt().unwrap()).abs();
+        assert!(drift < 50_000, "pre-1961 UTC round-trip drift = {drift} ns");
+
+        let unix = Second::new(-631_152_000.75);
+        let utc_from_unix = Time::<UTC>::from_unix_seconds(unix).unwrap();
+        let unix_back = utc_from_unix.unix_seconds().unwrap();
+        assert!((unix_back - unix).abs() < Second::new(1e-3));
     }
 
     #[test]

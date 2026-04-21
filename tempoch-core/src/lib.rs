@@ -9,18 +9,20 @@
 //! The old format-generic storage model has been replaced with explicit
 //! constructors and accessors:
 //!
-//! - continuous scales expose J2000-second, JD, and MJD constructors/accessors
-//! - `UTC` exposes civil/transport APIs (`chrono`, POSIX)
+//! - built-in coordinate scales expose J2000-second, JD, and MJD
+//!   constructors/accessors
+//! - `UTC` exposes both raw instant-axis helpers and civil/transport APIs
+//!   (`chrono`, POSIX)
 //! - `TAI` exposes GPS transport helpers
 //! - unified conversion targets are available through `time.to::<Target>()`,
 //!   `time.try_to::<Target>()`, and `time.to_with::<Target>(&ctx)`
 //!
 //! See [`constats`] for typed epoch and offset constants.
 
-mod data;
 mod civil;
 pub mod constats;
 mod context;
+mod data;
 mod delta_t;
 pub(crate) mod encoding;
 pub mod eop;
@@ -35,10 +37,12 @@ mod time;
 #[cfg(feature = "serde")]
 #[path = "serde.rs"]
 mod serde_impl;
+#[cfg(feature = "serde")]
+pub mod tagged;
 
 pub use context::TimeContext;
-pub use delta_t::{delta_t_seconds, delta_t_seconds_extrapolated, DELTA_T_PREDICTION_HORIZON_MJD};
 pub use data::active::{refresh_runtime_time_data, update_runtime_time_data};
+pub use delta_t::{delta_t_seconds, delta_t_seconds_extrapolated, DELTA_T_PREDICTION_HORIZON_MJD};
 pub use error::ConversionError;
 pub use generated::{
     EOP_END_MJD, EOP_OBSERVED_END_MJD, EOP_START_MJD, MODERN_DELTA_T_OBSERVED_END_MJD,
@@ -47,10 +51,13 @@ pub use interval::{
     complement_within, intersect_periods, normalize_periods, validate_period_list, Interval,
     InvalidIntervalError, InvalidPeriodError, Period, PeriodListError,
 };
-pub use scale::{ContinuousScale, Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
-pub use target::{ConversionTarget, ContextConversionTarget, GpsSecs, InfallibleConversionTarget, J2000s, JD, MJD, UnixSecs};
-pub use time::Time;
+pub use scale::{ContinuousScale, CoordinateScale, Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
+pub use target::{
+    ContextConversionTarget, ConversionTarget, GpsSecs, InfallibleConversionTarget, J2000s,
+    UnixSecs, JD, MJD,
+};
 pub use tempoch_time_data::TimeDataError;
+pub use time::Time;
 
 #[cfg(test)]
 mod size_tests {

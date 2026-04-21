@@ -7,10 +7,12 @@ use crate::constats::{IAU_TIME_EPOCH_T0_JD, L_B, L_G, TDB0, TT_MINUS_TAI};
 use crate::context::TimeContext;
 use crate::data::active::{active_time_data, time_data_delta_t, time_data_try_tai_minus_utc_mjd};
 use crate::delta_t::delta_t_seconds;
-use crate::encoding::{j2000_seconds_to_jd, jd_to_j2000_seconds, jd_to_julian_centuries, jd_to_mjd};
+use crate::encoding::{
+    j2000_seconds_to_jd, jd_to_j2000_seconds, jd_to_julian_centuries, jd_to_mjd,
+};
 use crate::error::ConversionError;
-use crate::sealed::Sealed;
 use crate::scale::{Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
+use crate::sealed::Sealed;
 use qtty::time::{Days, Seconds};
 use qtty::unit::Day;
 use qtty::Second;
@@ -220,7 +222,8 @@ macro_rules! utc_through_tai {
         impl InfallibleScaleConvert<$scale> for UTC {
             #[inline]
             fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
-                let (tai_hi, tai_lo) = <UTC as InfallibleScaleConvert<TAI>>::convert(src_hi, src_lo);
+                let (tai_hi, tai_lo) =
+                    <UTC as InfallibleScaleConvert<TAI>>::convert(src_hi, src_lo);
                 <TAI as InfallibleScaleConvert<$scale>>::convert(tai_hi, tai_lo)
             }
         }
@@ -228,7 +231,8 @@ macro_rules! utc_through_tai {
         impl InfallibleScaleConvert<UTC> for $scale {
             #[inline]
             fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
-                let (tai_hi, tai_lo) = <$scale as InfallibleScaleConvert<TAI>>::convert(src_hi, src_lo);
+                let (tai_hi, tai_lo) =
+                    <$scale as InfallibleScaleConvert<TAI>>::convert(src_hi, src_lo);
                 <TAI as InfallibleScaleConvert<UTC>>::convert(tai_hi, tai_lo)
             }
         }
@@ -305,8 +309,11 @@ macro_rules! ut1_through_tt {
                 src_lo: Second,
                 ctx: &TimeContext,
             ) -> Result<(Second, Second), ConversionError> {
-                let (tt_hi, tt_lo) = <UT1 as ContextScaleConvert<TT>>::convert_with(src_hi, src_lo, ctx)?;
-                Ok(<TT as InfallibleScaleConvert<$scale>>::convert(tt_hi, tt_lo))
+                let (tt_hi, tt_lo) =
+                    <UT1 as ContextScaleConvert<TT>>::convert_with(src_hi, src_lo, ctx)?;
+                Ok(<TT as InfallibleScaleConvert<$scale>>::convert(
+                    tt_hi, tt_lo,
+                ))
             }
         }
 
@@ -317,7 +324,8 @@ macro_rules! ut1_through_tt {
                 src_lo: Second,
                 ctx: &TimeContext,
             ) -> Result<(Second, Second), ConversionError> {
-                let (tt_hi, tt_lo) = <$scale as InfallibleScaleConvert<TT>>::convert(src_hi, src_lo);
+                let (tt_hi, tt_lo) =
+                    <$scale as InfallibleScaleConvert<TT>>::convert(src_hi, src_lo);
                 <TT as ContextScaleConvert<UT1>>::convert_with(tt_hi, tt_lo, ctx)
             }
         }
@@ -352,8 +360,7 @@ mod tests {
     ];
 
     fn tai_minus_utc_seconds_at_mjd(mjd_utc: f64) -> f64 {
-        let idx =
-            UTC_TAI_SEGMENTS.partition_point(|segment| segment.start_mjd as f64 <= mjd_utc);
+        let idx = UTC_TAI_SEGMENTS.partition_point(|segment| segment.start_mjd as f64 <= mjd_utc);
         let segment = UTC_TAI_SEGMENTS[idx - 1];
         segment.base_seconds + segment.slope_seconds_per_day * (mjd_utc - segment.reference_mjd)
     }
@@ -387,8 +394,7 @@ mod tests {
             else {
                 continue;
             };
-            let daily_delta_t = TT_MINUS_TAI.value()
-                + tai_minus_utc_seconds_at_mjd(mjd)
+            let daily_delta_t = TT_MINUS_TAI.value() + tai_minus_utc_seconds_at_mjd(mjd)
                 - point.ut1_minus_utc_seconds;
             let signed_diff = monthly_delta_t.value() - daily_delta_t;
             let candidate = (signed_diff.abs(), point.mjd, signed_diff);

@@ -243,9 +243,9 @@ mod tests {
     use crate::{Time, TT};
     use qtty::Day;
     #[cfg(feature = "serde")]
-    use serde::Deserialize;
-    #[cfg(feature = "serde")]
     use serde::de::{value, IntoDeserializer};
+    #[cfg(feature = "serde")]
+    use serde::Deserialize;
     #[cfg(feature = "serde")]
     use serde_json::json;
 
@@ -421,7 +421,7 @@ mod tests {
                 "start": {"hi": 0.0, "lo": 0.0},
                 "end": {"hi": 64800.0, "lo": 0.0}
             }))
-                .unwrap(),
+            .unwrap(),
             mjd
         );
         assert_eq!(
@@ -433,7 +433,11 @@ mod tests {
             jd
         );
         assert_eq!(
-            serde_json::from_value::<Period<TT>>(json!({"start": 100.0, "end": 200.0})).unwrap(),
+            serde_json::from_value::<Period<TT>>(json!({
+                "start": {"hi": 100.0, "lo": 0.0},
+                "end": {"hi": 200.0, "lo": 0.0}
+            }))
+            .unwrap(),
             native
         );
     }
@@ -444,16 +448,31 @@ mod tests {
         let err = serde_json::from_value::<Period<TT>>(json!({
             "start": {"hi": 10.0, "lo": 0.0},
             "end": {"hi": 9.0, "lo": 0.0}
-        })).unwrap_err();
+        }))
+        .unwrap_err();
         assert!(err.to_string().contains("start"));
     }
 
     #[cfg(feature = "serde")]
     #[test]
     fn serde_rejects_nonfinite_nested_time_values() {
+        let start = value::MapDeserializer::<_, value::Error>::new(
+            vec![
+                ("hi".into_deserializer(), f64::NAN.into_deserializer()),
+                ("lo".into_deserializer(), 0.0_f64.into_deserializer()),
+            ]
+            .into_iter(),
+        );
+        let end = value::MapDeserializer::<_, value::Error>::new(
+            vec![
+                ("hi".into_deserializer(), 5.0_f64.into_deserializer()),
+                ("lo".into_deserializer(), 0.0_f64.into_deserializer()),
+            ]
+            .into_iter(),
+        );
         let entries = vec![
-            ("start".into_deserializer(), json!({"hi": f64::NAN, "lo": 0.0}).into_deserializer()),
-            ("end".into_deserializer(), json!({"hi": 5.0, "lo": 0.0}).into_deserializer()),
+            ("start".into_deserializer(), start),
+            ("end".into_deserializer(), end),
         ];
         let deserializer = value::MapDeserializer::<_, value::Error>::new(entries.into_iter());
         let err = Period::<TT>::deserialize(deserializer).unwrap_err();

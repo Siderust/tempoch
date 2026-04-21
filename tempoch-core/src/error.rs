@@ -7,8 +7,7 @@
 /// context in later phases if a concrete call-site demands it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConversionError {
-    /// The UTC instant is before the start of the compiled UTC–TAI history
-    /// (1961-01-01).
+    /// The active UTC history or policy cannot represent the requested date.
     UtcHistoryUnsupported,
     /// A leap-second label does not correspond to a leap second in the
     /// compiled UTC history.
@@ -26,7 +25,7 @@ impl core::fmt::Display for ConversionError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::UtcHistoryUnsupported => {
-                f.write_str("exact UTC conversions are only supported from 1961-01-01 onward")
+                f.write_str("UTC history is unavailable for the requested date")
             }
             Self::InvalidLeapSecond => {
                 f.write_str("leap-second label is not present in the compiled UTC history")
@@ -49,7 +48,7 @@ mod tests {
     #[test]
     fn display_all_variants() {
         let cases: &[(ConversionError, &str)] = &[
-            (ConversionError::UtcHistoryUnsupported, "1961"),
+            (ConversionError::UtcHistoryUnsupported, "history"),
             (ConversionError::InvalidLeapSecond, "leap-second"),
             (ConversionError::OutOfRange, "range"),
             (ConversionError::Ut1HorizonExceeded, "horizon"),

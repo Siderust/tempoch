@@ -7,10 +7,12 @@
 //! distinct time axis. The [`Scale`] trait is sealed — downstream crates
 //! cannot add new scales.
 //!
-//! * Continuous scales (`TAI`, `TT`, `TDB`, `TCG`, `TCB`, `UT1`) implement
-//!   [`ContinuousScale`] and support direct arithmetic on `Time<S>`.
-//! * The civil scale `UTC` does **not** implement `ContinuousScale`;
-//!   arithmetic is intentionally absent (RFC §9).
+//! * Coordinate scales (`TAI`, `TT`, `TDB`, `TCG`, `TCB`, `UT1`, `UTC`)
+//!   implement [`CoordinateScale`] and support raw-axis constructors,
+//!   accessors, and instant arithmetic on `Time<S>`.
+//! * The civil scale `UTC` still does **not** implement [`ContinuousScale`]:
+//!   it shares the internal instant axis used by `TAI`, but civil labels and
+//!   leap-second interpretation remain table-driven.
 
 use super::sealed::Sealed;
 
@@ -59,7 +61,7 @@ define_civil_scale!(
     ///
     /// Leap-second-aware civil scale. `Time<UTC>` stores a continuous instant;
     /// leap-second interpretation is computed on demand from the UTC-TAI
-    /// segment table. Direct arithmetic is intentionally absent.
+    /// segment table. Raw-axis arithmetic acts on that stored instant.
     ///
     /// # Storage invariant
     ///
@@ -67,8 +69,15 @@ define_civil_scale!(
     /// the same physical event. Scale conversion between them is therefore a
     /// numeric no-op at the storage layer.
     ///
-    /// UTC does **not** expose raw J2000/JD/MJD accessors. Use the civil API
-    /// for UTC-facing coordinate work so leap-second handling stays explicit.
+    /// UTC participates in [`CoordinateScale`], so `Time<UTC>` exposes the
+    /// same raw J2000/JD/MJD instant-axis helpers and second-based arithmetic
+    /// as the other built-in scales. Those operations act on the stored
+    /// continuous instant, not on a leap-second-labelled civil clock.
+    ///
+    /// UTC still does **not** implement [`ContinuousScale`]. Generic code that
+    /// wants a scale with no civil semantics should keep using that stricter
+    /// bound; generic code that merely needs a raw coordinate axis can use
+    /// [`CoordinateScale`].
     ///
     /// # Authoritative UTC API
     ///
@@ -162,11 +171,26 @@ define_continuous_scale!(
 // ── ContinuousScale witness ──────────────────────────────────────────────
 
 /// Witness that a scale is continuous and supports direct arithmetic.
-/// `UTC` deliberately does not implement this (see RFC §9).
+/// `UTC` deliberately does not implement this: it has raw-axis accessors
+/// through [`CoordinateScale`], but its civil interpretation remains
+/// leap-second-aware and table-driven.
 ///
 /// Sealed — downstream cannot implement it.
 #[allow(private_bounds)]
-pub trait ContinuousScale: Scale + Sealed {}
+pub trait CoordinateScale: Scale + Sealed {}
+
+macro_rules! coordinate {
+    ($($scale:ty),+ $(,)?) => {
+        $(impl CoordinateScale for $scale {})+
+    };
+}
+coordinate!(TAI, TT, TDB, TCG, TCB, UT1, UTC);
+
+/// Witness that a scale is both coordinate-bearing and physically continuous.
+///
+/// Sealed — downstream cannot implement it.
+#[allow(private_bounds)]
+pub trait ContinuousScale: CoordinateScale + Sealed {}
 
 macro_rules! continuous {
     ($($scale:ty),+ $(,)?) => {

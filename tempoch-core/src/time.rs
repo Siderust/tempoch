@@ -6,10 +6,12 @@
 use core::marker::PhantomData;
 
 use super::context::TimeContext;
-use super::encoding::{j2000_seconds_to_jd, j2000_seconds_to_mjd, jd_to_j2000_seconds, mjd_to_j2000_seconds};
+use super::encoding::{
+    j2000_seconds_to_jd, j2000_seconds_to_mjd, jd_to_j2000_seconds, mjd_to_j2000_seconds,
+};
 use super::error::ConversionError;
-use super::scale::{ContinuousScale, Scale};
 use super::scale::conversion::{ContextScaleConvert, InfallibleScaleConvert};
+use super::scale::{CoordinateScale, Scale};
 use super::target::{ContextConversionTarget, ConversionTarget, InfallibleConversionTarget};
 use qtty::time::Seconds;
 use qtty::{Day, Second};
@@ -42,8 +44,10 @@ fn is_finite_pair(hi: f64, lo: f64) -> bool {
 /// enough to retain much better precision than a single `f64`.
 ///
 /// `UTC` remains special: it stores a continuous instant on the same internal
-/// axis used by `TAI`, and therefore does not expose raw JD/MJD/J2000-second
-/// constructors or accessors. Use the civil API on `Time<UTC>` instead.
+/// axis used by `TAI`, but its civil interpretation still comes from the
+/// active UTC-TAI table. Raw JD/MJD/J2000-second helpers and second-based
+/// arithmetic operate on that stored instant axis; use the civil API when you
+/// need leap-second-labelled UTC values.
 pub struct Time<S: Scale> {
     hi: Second,
     lo: Second,
@@ -130,7 +134,7 @@ impl<S: Scale> Time<S> {
     }
 }
 
-impl<S: ContinuousScale> Time<S> {
+impl<S: CoordinateScale> Time<S> {
     /// Build from J2000 TT seconds on the scale's coordinate axis.
     #[inline]
     pub fn from_j2000_seconds(seconds: Seconds) -> Result<Self, ConversionError> {
@@ -180,14 +184,14 @@ impl<S: ContinuousScale> Time<S> {
     }
 }
 
-impl<S: ContinuousScale> From<Second> for Time<S> {
+impl<S: CoordinateScale> From<Second> for Time<S> {
     #[inline]
     fn from(value: Second) -> Self {
         Self::new_unchecked(value, Second::new(0.0))
     }
 }
 
-impl<S: ContinuousScale> From<f64> for Time<S> {
+impl<S: CoordinateScale> From<f64> for Time<S> {
     #[inline]
     fn from(value: f64) -> Self {
         Self::new_unchecked(Second::new(value), Second::new(0.0))
@@ -251,7 +255,7 @@ impl<S: Scale> Time<S> {
     }
 }
 
-impl<S: ContinuousScale> core::ops::Sub for Time<S> {
+impl<S: CoordinateScale> core::ops::Sub for Time<S> {
     type Output = Second;
 
     #[inline]
@@ -260,7 +264,7 @@ impl<S: ContinuousScale> core::ops::Sub for Time<S> {
     }
 }
 
-impl<S: ContinuousScale> core::ops::Add<Second> for Time<S> {
+impl<S: CoordinateScale> core::ops::Add<Second> for Time<S> {
     type Output = Self;
 
     #[inline]
@@ -269,7 +273,7 @@ impl<S: ContinuousScale> core::ops::Add<Second> for Time<S> {
     }
 }
 
-impl<S: ContinuousScale> core::ops::Sub<Second> for Time<S> {
+impl<S: CoordinateScale> core::ops::Sub<Second> for Time<S> {
     type Output = Self;
 
     #[inline]
@@ -278,14 +282,14 @@ impl<S: ContinuousScale> core::ops::Sub<Second> for Time<S> {
     }
 }
 
-impl<S: ContinuousScale> core::ops::AddAssign<Second> for Time<S> {
+impl<S: CoordinateScale> core::ops::AddAssign<Second> for Time<S> {
     #[inline]
     fn add_assign(&mut self, rhs: Second) {
         *self = *self + rhs;
     }
 }
 
-impl<S: ContinuousScale> core::ops::SubAssign<Second> for Time<S> {
+impl<S: CoordinateScale> core::ops::SubAssign<Second> for Time<S> {
     #[inline]
     fn sub_assign(&mut self, rhs: Second) {
         *self = *self - rhs;
@@ -294,12 +298,13 @@ impl<S: ContinuousScale> core::ops::SubAssign<Second> for Time<S> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::scale::{TAI, TCG, TDB, TT};
+    use super::super::scale::{TAI, TCG, TDB, TT, UTC};
     use super::*;
 
     #[test]
     fn normalized_constructor_keeps_sum() {
-        let time = Time::<TT>::from_j2000_seconds_split(Second::new(1.0e9), Second::new(0.25)).unwrap();
+        let time =
+            Time::<TT>::from_j2000_seconds_split(Second::new(1.0e9), Second::new(0.25)).unwrap();
         assert!((time.j2000_seconds() - Second::new(1.0e9 + 0.25)).abs() < Second::new(1e-6));
     }
 
@@ -325,5 +330,13 @@ mod tests {
         let tt = Time::<TT>::from_j2000_seconds(Second::new(86_400.0)).unwrap();
         let tcg = tt.to_scale::<TCG>();
         assert!(tcg.j2000_seconds().is_finite());
+    }
+
+    #[test]
+    fn utc_exposes_raw_axis_helpers_and_arithmetic() {
+        let utc = Time::<UTC>::from_modified_julian_days(Day::new(51_544.5)).unwrap();
+        let shifted = utc + Second::new(10.0);
+        assert_eq!(utc.modified_julian_days(), Day::new(51_544.5));
+        assert!((shifted - utc - Second::new(10.0)).abs() < Second::new(1e-12));
     }
 }

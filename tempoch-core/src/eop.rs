@@ -63,9 +63,9 @@ pub fn builtin_eop_covers(mjd_utc: Day) -> bool {
 /// Linearly interpolate compiled EOP at a UTC MJD.
 ///
 /// Returns `None` when `mjd_utc` is outside the compiled `[EOP_START_MJD,
-/// EOP_END_MJD]` range.  Within range the function always succeeds, falling
-/// back to the nearest-bracketing row's value for LOD when either
-/// neighbour is missing.
+/// EOP_END_MJD]` range. Within range the function always succeeds; optional
+/// quantities remain `None` whenever either bracketing row leaves the source
+/// field blank.
 pub fn builtin_eop_at(mjd_utc: Day) -> Option<EopValues> {
     let data = active_time_data();
     time_data_eop_at(data.as_ref(), mjd_utc)

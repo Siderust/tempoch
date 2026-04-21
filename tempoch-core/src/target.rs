@@ -9,7 +9,7 @@
 use crate::context::TimeContext;
 use crate::error::ConversionError;
 use crate::scale::conversion::{ContextScaleConvert, InfallibleScaleConvert};
-use crate::scale::{ContinuousScale, Scale, TAI, UTC};
+use crate::scale::{CoordinateScale, Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
 use crate::sealed::Sealed;
 use crate::time::Time;
 use qtty::{Day, Second};
@@ -99,7 +99,7 @@ where
     }
 }
 
-impl<S: ContinuousScale> ConversionTarget<S> for J2000s {
+impl<S: CoordinateScale> ConversionTarget<S> for J2000s {
     type Output = Second;
 
     #[inline]
@@ -108,14 +108,14 @@ impl<S: ContinuousScale> ConversionTarget<S> for J2000s {
     }
 }
 
-impl<S: ContinuousScale> InfallibleConversionTarget<S> for J2000s {
+impl<S: CoordinateScale> InfallibleConversionTarget<S> for J2000s {
     #[inline]
     fn convert(src: Time<S>) -> Self::Output {
         src.j2000_seconds()
     }
 }
 
-impl<S: ContinuousScale> ConversionTarget<S> for JD {
+impl<S: CoordinateScale> ConversionTarget<S> for JD {
     type Output = Day;
 
     #[inline]
@@ -124,14 +124,14 @@ impl<S: ContinuousScale> ConversionTarget<S> for JD {
     }
 }
 
-impl<S: ContinuousScale> InfallibleConversionTarget<S> for JD {
+impl<S: CoordinateScale> InfallibleConversionTarget<S> for JD {
     #[inline]
     fn convert(src: Time<S>) -> Self::Output {
         src.julian_days()
     }
 }
 
-impl<S: ContinuousScale> ConversionTarget<S> for MJD {
+impl<S: CoordinateScale> ConversionTarget<S> for MJD {
     type Output = Day;
 
     #[inline]
@@ -140,7 +140,7 @@ impl<S: ContinuousScale> ConversionTarget<S> for MJD {
     }
 }
 
-impl<S: ContinuousScale> InfallibleConversionTarget<S> for MJD {
+impl<S: CoordinateScale> InfallibleConversionTarget<S> for MJD {
     #[inline]
     fn convert(src: Time<S>) -> Self::Output {
         src.modified_julian_days()
@@ -204,3 +204,29 @@ where
         Ok(src.to_scale_with::<TAI>(ctx)?.gps_seconds())
     }
 }
+
+macro_rules! default_context_scale_target {
+    ($src:ty => $dst:ty) => {
+        impl ConversionTarget<$src> for $dst {
+            type Output = Time<$dst>;
+
+            #[inline]
+            fn try_convert(src: Time<$src>) -> Result<Self::Output, ConversionError> {
+                src.to_scale_with::<$dst>(&TimeContext::new())
+            }
+        }
+    };
+}
+
+default_context_scale_target!(TT => UT1);
+default_context_scale_target!(TAI => UT1);
+default_context_scale_target!(TDB => UT1);
+default_context_scale_target!(TCG => UT1);
+default_context_scale_target!(TCB => UT1);
+default_context_scale_target!(UTC => UT1);
+default_context_scale_target!(UT1 => TT);
+default_context_scale_target!(UT1 => TAI);
+default_context_scale_target!(UT1 => TDB);
+default_context_scale_target!(UT1 => TCG);
+default_context_scale_target!(UT1 => TCB);
+default_context_scale_target!(UT1 => UTC);

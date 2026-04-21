@@ -1,10 +1,7 @@
 use qtty::Day;
-use tempoch::{refresh_runtime_time_data, update_runtime_time_data, JD, UnixSecs, Time, TimeContext, TT, UT1, UTC};
+use tempoch::{Time, TimeContext, UnixSecs, JD, TT, UT1, UTC};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let _ = update_runtime_time_data();
-    let _ = refresh_runtime_time_data();
-
     let ctx = TimeContext::with_builtin_eop();
     let probe_tt = Time::<TT>::from_julian_days(Day::new(2_460_000.25))?;
     let probe_ut1: Time<UT1> = probe_tt.to_with::<UT1>(&ctx)?;
