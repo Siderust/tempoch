@@ -7,10 +7,9 @@ linear formula. The result is physically dubious — UTC was only defined from
 1960 — but no API-level warning, `None`, or error is returned.
 
 ## Status
-Pending. The behavior is intentional (confirmed by a dedicated test) but the
-API documentation does not communicate the extrapolation, and an error variant
-(`UtcHistoryUnsupported`) exists that could express the limitation but is
-never used from this code path.
+Resolved. `time_data_try_tai_minus_utc_mjd` now documents the pre-history
+extrapolation behavior. `UTC_DEFINED_FROM_MJD` (MJD 37 300, 1961-01-01) is
+exported from `tempoch_core` and `tempoch` as a guard boundary for callers.
 
 ## What is the issue
 The UTC-TAI history table begins at 1960-01-01. The function

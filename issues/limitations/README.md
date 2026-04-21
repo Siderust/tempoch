@@ -14,6 +14,10 @@ Resolved items were removed from this directory after implementation:
 - `012` runtime data support is no longer feature-gated
 - `013` FFI layer duplicates conversion policy (centralized in `tempoch-core::scalar`)
 - `014` public crates depend on a non-published internal crate (`TimeDataError` moved to `tempoch-core::error`)
+- `015` TDB-TT accuracy documented inconsistently (`constats.rs` updated to ~10 µs end-to-end)
+- `016` TCB↔TDB drops compensated pair (`add_constant` used, consistent with TT↔TCG)
+- `017` UTC pre-history silent extrapolation (`UTC_DEFINED_FROM_MJD` exported; `time_data_try_tai_minus_utc_mjd` documented)
+- `018` `ScaleKind::Gps` encodes days not seconds (renamed to `ScaleKind::GpsDays`)
 
 Still pending:
 
@@ -22,7 +26,3 @@ Still pending:
 - [Built-in EOP coverage is finite and optional fields may be absent](./007-eop-coverage-and-missing-fields.md)
 - [Bundled UT1 accuracy claims are date-qualified, not timeless](./008-ut1-bundle-qualified-accuracy.md)
 - [The scale set is sealed](./009-scale-set-is-sealed.md)
-- [TDB-TT accuracy is documented inconsistently across files](./015-tdb-tt-accuracy-docs-inconsistent.md)
-- [TCB↔TDB conversions drop the compensated pair](./016-tcb-tdb-drops-compensated-pair.md)
-- [UTC pre-history is silently extrapolated rather than documented or bounded](./017-utc-pre-history-silent-extrapolation.md)
-- [ScaleKind::Gps encodes days, not conventional GPS seconds](./018-scale-kind-gps-uses-days-not-seconds.md)

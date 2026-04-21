@@ -52,7 +52,13 @@ pub enum ScaleKind {
     /// Barycentric Coordinate Time, Julian days on the TCB axis.
     Tcb,
     /// GPS days since [`GPS_EPOCH_JD_TAI`] on the TAI axis.
-    Gps,
+    ///
+    /// The unit is **Julian days** (not GPS seconds). A value of `1.0`
+    /// represents one Julian day (86 400 s) elapsed since the GPS epoch.
+    /// This is distinct from conventional GPS time which is expressed in
+    /// integer seconds or (week, seconds-of-week). Divide by 86 400 to
+    /// convert from GPS seconds to this representation.
+    GpsDays,
     /// Universal Time UT1, Julian days on the UT1 axis.
     Ut1,
     /// Unix / POSIX time in seconds since 1970-01-01T00:00:00 UTC.
@@ -86,7 +92,7 @@ pub fn time_tt_from_scalar(
         ScaleKind::Tcb => {
             Time::<TCB>::from_julian_days(Day::new(value)).map(|t| t.to_scale::<TT>())
         }
-        ScaleKind::Gps => {
+        ScaleKind::GpsDays => {
             Time::<TAI>::from_julian_days(Day::new(value + GPS_EPOCH_JD_TAI))
                 .map(|t| t.to_scale::<TT>())
         }
@@ -117,7 +123,7 @@ pub fn time_tt_to_scalar(
         ScaleKind::Tai => Ok(tt.to_scale::<TAI>().julian_days() / Day::new(1.0)),
         ScaleKind::Tcg => Ok(tt.to_scale::<TCG>().julian_days() / Day::new(1.0)),
         ScaleKind::Tcb => Ok(tt.to_scale::<TCB>().julian_days() / Day::new(1.0)),
-        ScaleKind::Gps => {
+        ScaleKind::GpsDays => {
             Ok(tt.to_scale::<TAI>().julian_days() / Day::new(1.0) - GPS_EPOCH_JD_TAI)
         }
         ScaleKind::Ut1 => Ok(tt.to_scale_with::<UT1>(ctx)?.julian_days() / Day::new(1.0)),

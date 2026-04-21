@@ -82,7 +82,7 @@ impl From<TempochScaleId> for ScaleKind {
             TempochScaleId::TAI => ScaleKind::Tai,
             TempochScaleId::TCG => ScaleKind::Tcg,
             TempochScaleId::TCB => ScaleKind::Tcb,
-            TempochScaleId::GPS => ScaleKind::Gps,
+            TempochScaleId::GPS => ScaleKind::GpsDays,
             TempochScaleId::UT => ScaleKind::Ut1,
             TempochScaleId::UnixTime => ScaleKind::Unix,
         }

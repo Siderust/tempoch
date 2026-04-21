@@ -217,6 +217,20 @@ pub(crate) fn time_data_eop_at(data: &TimeDataBundle, mjd_utc: DayQuantity) -> O
     })
 }
 
+/// Return TAI − UTC in seconds at the given UTC date as a Modified Julian Day.
+///
+/// # Pre-history extrapolation
+///
+/// The UTC-TAI segment table starts at MJD 37 300 (1961-01-01). For any query
+/// date **before** that boundary, this function extrapolates the first table
+/// segment backwards and returns `Some(offset)`. The extrapolated value is
+/// internally consistent — a UTC↔TAI round-trip will close — but it does not
+/// represent a historically defined UTC-TAI value. UTC as an international
+/// standard was not defined before 1961.
+///
+/// Callers that require historically accurate UTC values should compare the
+/// query MJD against [`crate::constats::UTC_DEFINED_FROM_MJD`] and reject
+/// or warn on pre-history dates themselves.
 pub(crate) fn time_data_try_tai_minus_utc_mjd(
     data: &TimeDataBundle,
     mjd_utc: Days,

@@ -7,8 +7,8 @@ Standard GPS time is expressed as GPS seconds (or GPS week + seconds-of-week).
 The mismatch is not signaled by the name or the first-encountered API surface.
 
 ## Status
-Pending. The current encoding works internally but may surprise integrators
-who expect conventional GPS seconds.
+Resolved. `ScaleKind::Gps` renamed to `ScaleKind::GpsDays` with an expanded
+doc comment explaining the Julian-day unit and how to convert from GPS seconds.
 
 ## What is the issue
 In `tempoch-core/src/scalar.rs`, `ScaleKind::Gps` is documented and

@@ -145,22 +145,28 @@ impl InfallibleScaleConvert<TT> for TCG {
 impl InfallibleScaleConvert<TCB> for TDB {
     #[inline]
     fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
+        // TCB = T0 + (TDB - T0 - TDB0) / (1 - L_B)
+        // Rearranged as an additive correction to preserve the compensated pair:
+        //   TCB - TDB = (TDB - T0) * L_B / (1 - L_B) - TDB0 / (1 - L_B)
         let src = total_seconds(src_hi, src_lo);
         let t0 = jd_to_j2000_seconds(IAU_TIME_EPOCH_T0_JD);
-        let delta = src - t0 - TDB0;
-        let target = t0 + delta / (1.0 - L_B);
-        normalize_pair(target.value(), 0.0)
+        let delta = Second::new(
+            (src - t0).value() * L_B / (1.0 - L_B) - TDB0.value() / (1.0 - L_B),
+        );
+        add_constant(src_hi, src_lo, delta)
     }
 }
 
 impl InfallibleScaleConvert<TDB> for TCB {
     #[inline]
     fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
+        // TDB = T0 + (1 - L_B) * (TCB - T0) + TDB0
+        // Rearranged as an additive correction to preserve the compensated pair:
+        //   TDB - TCB = -(TCB - T0) * L_B + TDB0
         let src = total_seconds(src_hi, src_lo);
         let t0 = jd_to_j2000_seconds(IAU_TIME_EPOCH_T0_JD);
-        let delta = src - t0;
-        let target = t0 + (1.0 - L_B) * delta + TDB0;
-        normalize_pair(target.value(), 0.0)
+        let delta = Second::new(-(src - t0).value() * L_B + TDB0.value());
+        add_constant(src_hi, src_lo, delta)
     }
 }
 

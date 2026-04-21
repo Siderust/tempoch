@@ -30,16 +30,27 @@ pub const UNIX_EPOCH_MJD: Day = Day::new(40_587.0);
 /// IAU 2000 B1.9 reference epoch `T0` as JD(TT).
 pub const IAU_TIME_EPOCH_T0_JD: Day = Day::new(2_443_144.500_372_5);
 
-/// Start of the interval where the built-in TT↔TDB truncated series is
-/// documented to stay below about 2 microseconds.
+/// Start of the interval where the built-in TT↔TDB truncated series achieves
+/// about 10 microseconds accuracy relative to numerical integration.
 ///
-/// This corresponds approximately to 1600-01-01 TT.
+/// The seven-term Fairhead-Bretagnon truncation (USNO Circular 179, Eq. 2.27)
+/// has two distinct error budgets:
+///
+/// - **~2 µs** relative to the full Fairhead-Bretagnon (1990) series (series
+///   truncation error only).
+/// - **~10 µs** relative to JPL numerical integration (full series + modeling
+///   error combined).
+///
+/// The **end-to-end** accuracy ceiling is therefore **~10 µs**. These bounds
+/// apply within the 1600-01-01 to 2200-01-01 TT interval. This constant marks
+/// the start of that interval, corresponding approximately to 1600-01-01 TT.
 pub const TDB_TT_MODEL_HIGH_ACCURACY_START_JD: Day = Day::new(2_305_447.5);
 
-/// End of the interval where the built-in TT↔TDB truncated series is
-/// documented to stay below about 2 microseconds.
+/// End of the interval where the built-in TT↔TDB truncated series achieves
+/// about 10 microseconds accuracy relative to numerical integration.
 ///
-/// This corresponds approximately to 2200-01-01 TT.
+/// See [`TDB_TT_MODEL_HIGH_ACCURACY_START_JD`] for the full accuracy breakdown.
+/// This constant corresponds approximately to 2200-01-01 TT.
 pub const TDB_TT_MODEL_HIGH_ACCURACY_END_JD: Day = Day::new(2_524_598.5);
 
 /// GPS epoch expressed as TAI seconds since J2000 TT on the TAI axis.
@@ -49,6 +60,22 @@ pub const TDB_TT_MODEL_HIGH_ACCURACY_END_JD: Day = Day::new(2_524_598.5);
 ///
 ///   `(44_244.0 − 51_544.5) × 86400 + 19 = −630_763_181`.
 pub const GPS_EPOCH_TAI: Second = Second::new(-630_763_181.0);
+
+/// First MJD covered by the compiled UTC-TAI segment table.
+///
+/// This corresponds to 1961-01-01. UTC was defined starting from this date.
+/// For queries before this boundary, `Time<UTC>` conversions silently
+/// extrapolate the first table segment backwards. The extrapolated offset is
+/// internally consistent (round-trips close) but is not a historically defined
+/// UTC-TAI value; no standard UTC existed before 1961.
+///
+/// Call sites that require historically accurate UTC values should guard
+/// against this boundary:
+/// ```no_run
+/// use tempoch_core::constats::UTC_DEFINED_FROM_MJD;
+/// // reject MJDs below UTC_DEFINED_FROM_MJD
+/// ```
+pub const UTC_DEFINED_FROM_MJD: Day = Day::new(37_300.0);
 
 /// One Julian century in days (36 525 d), used for the Fairhead–Bretagnon
 /// parameter.

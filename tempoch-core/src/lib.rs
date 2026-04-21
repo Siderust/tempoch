@@ -41,6 +41,7 @@ mod serde_impl;
 #[cfg(feature = "serde")]
 pub mod tagged;
 
+pub use constats::UTC_DEFINED_FROM_MJD;
 pub use context::TimeContext;
 pub use data::active::{refresh_runtime_time_data, update_runtime_time_data};
 pub use delta_t::{delta_t_seconds, delta_t_seconds_extrapolated, DELTA_T_PREDICTION_HORIZON_MJD};

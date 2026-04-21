@@ -7,7 +7,8 @@ state "about 10 microseconds". Both numbers are real but refer to different
 reference comparators. This creates ambiguous accuracy expectations for users.
 
 ## Status
-Pending documentation cleanup. No algorithmic change is needed.
+Resolved. `constats.rs` updated to clarify the two-level error budget and
+align the documented accuracy with the ~10 µs end-to-end figure used elsewhere.
 
 ## What is the issue
 The library uses the 7-term truncated Fairhead-Bretagnon series (USNO Circular

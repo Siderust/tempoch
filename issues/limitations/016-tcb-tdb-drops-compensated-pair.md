@@ -7,8 +7,8 @@ is architecturally inconsistent with the rest of the library and causes a
 precision loss of roughly **0.7 µs per 100 years** from T0.
 
 ## Status
-Pending. The precision loss is currently below the ~10 µs TDB accuracy floor
-and is not user-visible, but it violates the library's own design contract.
+Resolved. Both `TDB→TCB` and `TCB→TDB` now use `add_constant` to preserve the
+compensated pair, consistent with the `TT↔TCG` implementation.
 
 ## What is the issue
 `Time<S>` stores epochs as a compensated `(hi, lo)` pair of J2000 seconds.
