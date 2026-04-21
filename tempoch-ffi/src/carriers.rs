@@ -162,6 +162,7 @@ pub(crate) fn time_add_days_value(value: f64, days: Day, scale: TempochScaleId) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::time::UNIX_ROUNDTRIP_TOLERANCE_SECONDS;
 
     #[test]
     fn layout_scale_id() {
@@ -195,7 +196,7 @@ mod tests {
         let unix = 946_728_000.0;
         let jd = scale_value_to_jd(unix, TempochScaleId::UnixTime).unwrap();
         let back = jd_to_scale_value(jd, TempochScaleId::UnixTime).unwrap();
-        assert!((back - unix).abs() < 1e-3);
+        assert!((back - unix).abs() <= UNIX_ROUNDTRIP_TOLERANCE_SECONDS);
     }
 
     #[test]
@@ -208,4 +209,3 @@ mod tests {
         assert!(gps.abs() < 1e-9);
     }
 }
-

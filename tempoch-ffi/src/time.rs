@@ -20,6 +20,8 @@ use tempoch::{delta_t_seconds_extrapolated, ConversionError};
 
 const J2000_JD_TT: f64 = 2_451_545.0;
 const JULIAN_CENTURY_DAYS: f64 = 36_525.0;
+#[cfg(test)]
+pub(crate) const UNIX_ROUNDTRIP_TOLERANCE_SECONDS: f64 = 1e-5;
 
 /// UTC date-time breakdown for C interop.
 #[repr(C)]
@@ -404,6 +406,10 @@ pub extern "C" fn tempoch_jde_to_jd(jde: f64) -> f64 {
 /// Python `datetime.fromtimestamp()`, etc. Internally the conversion routes
 /// through the compiled UTC-TAI history.
 ///
+/// Round-tripping `Unix -> JD -> Unix` is expected to stay within a few
+/// microseconds. Callers should not assume nanosecond-exact reversibility
+/// through the JD(TT) axis.
+///
 /// Returns `NaN` if `jd` is non-finite or cannot be represented by the
 /// compiled UTC civil-time model.
 #[no_mangle]
@@ -415,6 +421,10 @@ pub extern "C" fn tempoch_jd_to_unix(jd: f64) -> f64 {
 ///
 /// Accepts a standard Unix timestamp (seconds, not days). The conversion
 /// uses the compiled UTC-TAI history for leap-second handling.
+///
+/// Round-tripping `Unix -> JD -> Unix` is expected to stay within a few
+/// microseconds. Callers should not assume nanosecond-exact reversibility
+/// through the JD(TT) axis.
 ///
 /// Returns `NaN` if `unix` is non-finite or outside the supported UTC civil range.
 #[no_mangle]
@@ -794,9 +804,9 @@ mod tests {
         assert_eq!(to_status, TempochStatus::Ok);
 
         let roundtrip = roundtrip.into_chrono().unwrap();
-        let drift =
-            (roundtrip.timestamp_nanos_opt().unwrap() - original.timestamp_nanos_opt().unwrap())
-                .abs();
+        let drift = (roundtrip.timestamp_nanos_opt().unwrap()
+            - original.timestamp_nanos_opt().unwrap())
+        .abs();
         assert!(drift < 50_000, "pre-1961 UTC round-trip drift = {drift} ns");
     }
 
@@ -1001,6 +1011,18 @@ mod tests {
         let unix = tempoch_jd_to_unix(jd);
         let back = tempoch_unix_to_jd(unix);
         assert!((back - jd).abs() < 1e-10);
+    }
+
+    #[test]
+    fn unix_roundtrip_through_jd_stays_within_documented_tolerance() {
+        let unix = 946_728_000.0;
+        let jd = tempoch_unix_to_jd(unix);
+        let back = tempoch_jd_to_unix(jd);
+        assert!(
+            (back - unix).abs() <= UNIX_ROUNDTRIP_TOLERANCE_SECONDS,
+            "unix roundtrip drift = {} s",
+            (back - unix).abs()
+        );
     }
 
     #[test]

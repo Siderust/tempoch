@@ -1,5 +1,5 @@
 use chrono::Utc;
-use tempoch::{J2000s, JD, MJD, Time, TT, UTC};
+use tempoch::{J2000s, Time, JD, MJD, TT, UTC};
 
 fn main() {
     let utc_now = Time::<UTC>::from_chrono(Utc::now());

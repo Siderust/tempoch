@@ -52,6 +52,43 @@ enum tempoch_status_t
 typedef int32_t tempoch_status_t;
 #endif // __cplusplus
 
+// Time scale identifier for generic dispatch functions.
+//
+// In the C ABI, callers pass raw `int32_t` values and must validate them
+// before dispatch.
+//
+enum tempoch_scale_id_t
+#ifdef __cplusplus
+  : int32_t
+#endif // __cplusplus
+ {
+  // Julian Date (TT), expressed in days.
+  TEMPOCH_SCALE_ID_T_JD = 0,
+  // Modified Julian Date (TT), expressed in days.
+  TEMPOCH_SCALE_ID_T_MJD = 1,
+  // Barycentric Dynamical Time, expressed as Julian days on the TDB axis.
+  TEMPOCH_SCALE_ID_T_TDB = 2,
+  // Terrestrial Time, expressed as Julian days on the TT axis.
+  TEMPOCH_SCALE_ID_T_TT = 3,
+  // International Atomic Time, expressed as Julian days on the TAI axis.
+  TEMPOCH_SCALE_ID_T_TAI = 4,
+  // Geocentric Coordinate Time, expressed as Julian days on the TCG axis.
+  TEMPOCH_SCALE_ID_T_TCG = 5,
+  // Barycentric Coordinate Time, expressed as Julian days on the TCB axis.
+  TEMPOCH_SCALE_ID_T_TCB = 6,
+  // GPS time, expressed in days since the GPS epoch.
+  TEMPOCH_SCALE_ID_T_GPS = 7,
+  // Universal Time UT1, expressed as Julian days on the UT1 axis.
+  TEMPOCH_SCALE_ID_T_UT = 8,
+  // Julian Ephemeris Date, numerically equal to JD(TT) in this ABI.
+  TEMPOCH_SCALE_ID_T_JDE = 9,
+  // Unix / POSIX time in seconds since 1970-01-01T00:00:00 UTC.
+  TEMPOCH_SCALE_ID_T_UNIX_TIME = 10,
+};
+#ifndef __cplusplus
+typedef int32_t tempoch_scale_id_t;
+#endif // __cplusplus
+
 // A time period expressed in Modified Julian Date, suitable for C interop.
 typedef struct tempoch_period_mjd_t {
   // Start of the period (MJD).
@@ -84,7 +121,7 @@ extern "C" {
 
 // Returns the tempoch-ffi ABI version (major*10000 + minor*100 + patch).
 //
-// Current version: 0.4.0 → 400
+// Current ABI line: 0.4.x -> 400
  uint32_t tempoch_ffi_version(void);
 
 // Create a new MJD period. Returns `InvalidPeriod` if the endpoints are
@@ -257,6 +294,10 @@ tempoch_status_t tempoch_period_mjd_intersection(struct tempoch_period_mjd_t a,
 // Python `datetime.fromtimestamp()`, etc. Internally the conversion routes
 // through the compiled UTC-TAI history.
 //
+// Round-tripping `Unix -> JD -> Unix` is expected to stay within a few
+// microseconds. Callers should not assume nanosecond-exact reversibility
+// through the JD(TT) axis.
+//
 // Returns `NaN` if `jd` is non-finite or cannot be represented by the
 // compiled UTC civil-time model.
  double tempoch_jd_to_unix(double jd);
@@ -265,6 +306,10 @@ tempoch_status_t tempoch_period_mjd_intersection(struct tempoch_period_mjd_t a,
 //
 // Accepts a standard Unix timestamp (seconds, not days). The conversion
 // uses the compiled UTC-TAI history for leap-second handling.
+//
+// Round-tripping `Unix -> JD -> Unix` is expected to stay within a few
+// microseconds. Callers should not assume nanosecond-exact reversibility
+// through the JD(TT) axis.
 //
 // Returns `NaN` if `unix` is non-finite or outside the supported UTC civil range.
  double tempoch_unix_to_jd(double unix);

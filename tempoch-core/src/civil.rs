@@ -40,7 +40,8 @@ impl Time<UTC> {
     #[track_caller]
     #[inline]
     pub fn from_chrono_with(dt: DateTime<Utc>, ctx: &TimeContext) -> Self {
-        Self::try_from_chrono_with(dt, ctx).expect("UTC conversion failed; use try_from_chrono_with")
+        Self::try_from_chrono_with(dt, ctx)
+            .expect("UTC conversion failed; use try_from_chrono_with")
     }
 
     /// Convenience panicking wrapper over [`try_from_chrono`](Self::try_from_chrono).

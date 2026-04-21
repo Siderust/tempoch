@@ -92,12 +92,11 @@ pub fn time_tt_from_scalar(
         ScaleKind::Tcb => {
             Time::<TCB>::from_julian_days(Day::new(value)).map(|t| t.to_scale::<TT>())
         }
-        ScaleKind::GpsDays => {
-            Time::<TAI>::from_julian_days(Day::new(value + GPS_EPOCH_JD_TAI))
-                .map(|t| t.to_scale::<TT>())
+        ScaleKind::GpsDays => Time::<TAI>::from_julian_days(Day::new(value + GPS_EPOCH_JD_TAI))
+            .map(|t| t.to_scale::<TT>()),
+        ScaleKind::Ut1 => {
+            Time::<UT1>::from_julian_days(Day::new(value)).and_then(|t| t.to_scale_with::<TT>(ctx))
         }
-        ScaleKind::Ut1 => Time::<UT1>::from_julian_days(Day::new(value))
-            .and_then(|t| t.to_scale_with::<TT>(ctx)),
         ScaleKind::Unix => {
             Time::<UTC>::from_unix_seconds(Seconds::new(value)).map(|t| t.to_scale::<TT>())
         }

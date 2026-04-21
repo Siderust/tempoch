@@ -1,5 +1,7 @@
 use qtty::Second;
-use tempoch::{constats::J2000_JD_TT, JD, J2000s, Time, TimeContext, TAI, TCB, TCG, TDB, TT, UT1, UTC};
+use tempoch::{
+    constats::J2000_JD_TT, J2000s, Time, TimeContext, JD, TAI, TCB, TCG, TDB, TT, UT1, UTC,
+};
 
 fn main() {
     let ctx = TimeContext::new();
@@ -19,7 +21,15 @@ fn main() {
     println!("TCG JD  : {:.9}", tcg.to::<JD>().value());
     println!("TCB JD  : {:.9}", tcb.to::<JD>().value());
     println!("UTC     : {}", utc.to_chrono().unwrap());
-    println!("TT-TAI  : {:.6} s", (tt.to::<J2000s>() - tai.to::<J2000s>()).value());
-    println!("TT-UT1  : {:.6} s", (tt.to::<J2000s>() - ut1.to::<J2000s>()).value());
-    assert!((tt.to::<J2000s>() - tai.to::<J2000s>() - Second::new(32.184)).abs() < Second::new(1e-9));
+    println!(
+        "TT-TAI  : {:.6} s",
+        (tt.to::<J2000s>() - tai.to::<J2000s>()).value()
+    );
+    println!(
+        "TT-UT1  : {:.6} s",
+        (tt.to::<J2000s>() - ut1.to::<J2000s>()).value()
+    );
+    assert!(
+        (tt.to::<J2000s>() - tai.to::<J2000s>() - Second::new(32.184)).abs() < Second::new(1e-9)
+    );
 }

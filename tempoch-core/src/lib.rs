@@ -53,11 +53,11 @@ pub use interval::{
     complement_within, intersect_periods, normalize_periods, validate_period_list, Interval,
     InvalidIntervalError, InvalidPeriodError, Period, PeriodListError,
 };
-pub use scale::{ContinuousScale, CoordinateScale, Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
 pub use scalar::{
-    scalar_add_days, scalar_difference_in_days, time_tt_from_scalar, time_tt_to_scalar,
-    GPS_EPOCH_JD_TAI, ScaleKind,
+    scalar_add_days, scalar_difference_in_days, time_tt_from_scalar, time_tt_to_scalar, ScaleKind,
+    GPS_EPOCH_JD_TAI,
 };
+pub use scale::{ContinuousScale, CoordinateScale, Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
 pub use target::{
     ContextConversionTarget, ConversionTarget, GpsSecs, InfallibleConversionTarget, J2000s,
     UnixSecs, JD, MJD,

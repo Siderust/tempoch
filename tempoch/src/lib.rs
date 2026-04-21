@@ -11,6 +11,10 @@
 //!   `to_with`
 //! - [`constats`] for typed epoch and offset constants
 
+pub use tempoch_core::scalar;
+pub use tempoch_core::scalar::{
+    scalar_add_days, scalar_difference_in_days, time_tt_from_scalar, time_tt_to_scalar,
+};
 pub use tempoch_core::{
     complement_within, constats, delta_t_seconds, delta_t_seconds_extrapolated, eop,
     intersect_periods, normalize_periods, refresh_runtime_time_data, update_runtime_time_data,
@@ -21,8 +25,6 @@ pub use tempoch_core::{
     EOP_OBSERVED_END_MJD, EOP_START_MJD, GPS_EPOCH_JD_TAI, JD, MJD,
     MODERN_DELTA_T_OBSERVED_END_MJD, TAI, TCB, TCG, TDB, TT, UT1, UTC, UTC_DEFINED_FROM_MJD,
 };
-pub use tempoch_core::scalar::{scalar_add_days, scalar_difference_in_days, time_tt_from_scalar, time_tt_to_scalar};
-pub use tempoch_core::scalar;
 
 #[cfg(feature = "serde")]
 pub use tempoch_core::tagged;

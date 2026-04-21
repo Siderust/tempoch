@@ -1,4 +1,6 @@
-use tempoch::{complement_within, intersect_periods, normalize_periods, validate_period_list, Period, Time, TT};
+use tempoch::{
+    complement_within, intersect_periods, normalize_periods, validate_period_list, Period, Time, TT,
+};
 
 fn mjd(value: f64) -> Time<TT> {
     Time::<TT>::from_modified_julian_days(value.into()).unwrap()

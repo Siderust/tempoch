@@ -603,7 +603,9 @@ mod tests {
         set_active_time_data(overridden);
         let ctx_after = TimeContext::with_builtin_eop();
 
-        let before = ctx_before.ut1_minus_utc(DayQuantity::new(57_000.0)).unwrap();
+        let before = ctx_before
+            .ut1_minus_utc(DayQuantity::new(57_000.0))
+            .unwrap();
         let after = ctx_after.ut1_minus_utc(DayQuantity::new(57_000.0)).unwrap();
         set_active_time_data((*previous).clone());
 
@@ -684,7 +686,8 @@ mod tests {
         let unix = Second::new(1_680_000_000.25);
         let before = Time::<UTC>::from_unix_seconds_with(unix, &ctx_before).unwrap();
         let after = Time::<UTC>::from_unix_seconds_with(unix, &ctx_after).unwrap();
-        let before_value = before.raw_seconds_pair().0.value() + before.raw_seconds_pair().1.value();
+        let before_value =
+            before.raw_seconds_pair().0.value() + before.raw_seconds_pair().1.value();
         let after_value = after.raw_seconds_pair().0.value() + after.raw_seconds_pair().1.value();
         set_active_time_data((*previous).clone());
 

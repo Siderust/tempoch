@@ -150,9 +150,8 @@ impl InfallibleScaleConvert<TCB> for TDB {
         //   TCB - TDB = (TDB - T0) * L_B / (1 - L_B) - TDB0 / (1 - L_B)
         let src = total_seconds(src_hi, src_lo);
         let t0 = jd_to_j2000_seconds(IAU_TIME_EPOCH_T0_JD);
-        let delta = Second::new(
-            (src - t0).value() * L_B / (1.0 - L_B) - TDB0.value() / (1.0 - L_B),
-        );
+        let delta =
+            Second::new((src - t0).value() * L_B / (1.0 - L_B) - TDB0.value() / (1.0 - L_B));
         add_constant(src_hi, src_lo, delta)
     }
 }

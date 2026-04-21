@@ -3,7 +3,7 @@
 use qtty::{Day, Second};
 use tempoch::{
     constats::{J2000_JD_TT, UNIX_EPOCH_JD, UNIX_EPOCH_MJD},
-    J2000s, JD, MJD, Time, UnixSecs, TT, UTC,
+    J2000s, Time, UnixSecs, JD, MJD, TT, UTC,
 };
 
 fn main() {
@@ -20,9 +20,21 @@ fn main() {
     println!("J2000 TT seconds  : {:.9}", j2000_tt.to::<J2000s>().value());
     println!("Sample TT JD      : {:.9}", sample_tt.to::<JD>().value());
     println!("Sample TT MJD     : {:.9}", sample_tt.to::<MJD>().value());
-    println!("J2000 from JD     : {:.9}", j2000_from_jd.to::<J2000s>().value());
-    println!("Unix epoch JD(TT) : {:.9}", unix_epoch_jd.to::<JD>().value());
+    println!(
+        "J2000 from JD     : {:.9}",
+        j2000_from_jd.to::<J2000s>().value()
+    );
+    println!(
+        "Unix epoch JD(TT) : {:.9}",
+        unix_epoch_jd.to::<JD>().value()
+    );
     println!("Half-day JD(TT)   : {:.9}", half_day_jd.to::<JD>().value());
-    println!("Unix epoch MJD(TT): {:.9}", unix_epoch_mjd.to::<MJD>().value());
-    println!("UTC POSIX         : {:.3}", utc.try_to::<UnixSecs>().unwrap().value());
+    println!(
+        "Unix epoch MJD(TT): {:.9}",
+        unix_epoch_mjd.to::<MJD>().value()
+    );
+    println!(
+        "UTC POSIX         : {:.3}",
+        utc.try_to::<UnixSecs>().unwrap().value()
+    );
 }
