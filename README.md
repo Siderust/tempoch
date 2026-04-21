@@ -221,7 +221,9 @@ The compile-time path still uses checked-in generated tables in `tempoch-core`.
 The dedicated Rust CLI `tempoch-time-data-updater` regenerates those committed
 files from the official UTC-TAI, Delta T, and IERS finals2000A.all sources.
 Its fetch/parse/build pipeline now reuses the same shared support crate that
-powers runtime refresh. To refresh locally:
+powers runtime refresh. The updater intentionally keeps only render/write
+orchestration; parser and bundle-building logic is centralized in
+`tempoch-time-data` to avoid runtime/compile-time drift. To refresh locally:
 
 ```bash
 cargo run -p tempoch-time-data-updater

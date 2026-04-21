@@ -41,6 +41,16 @@ jobs:
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         run: |
           set -euo pipefail
+          for path in \
+            tempoch-core/src/generated/eop_data.rs \
+            tempoch-core/src/generated/time_data.rs \
+            tempoch-core/src/generated/time_data.provenance.json
+          do
+            if [ ! -f "$path" ]; then
+              echo "Missing generated file: $path"
+              exit 1
+            fi
+          done
           git add \
             tempoch-core/src/generated/eop_data.rs \
             tempoch-core/src/generated/time_data.rs \

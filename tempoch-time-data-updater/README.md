@@ -8,7 +8,8 @@ crate's internal representation, and rewrites the generated modules under
 [`tempoch-core/src/generated`](/home/valles/workspace/siderust/rust/tempoch/tempoch-core/src/generated).
 The updater is now a thin wrapper over the shared `tempoch-time-data`
 support crate, so compile-time regeneration and runtime refresh use the same
-fetch/parse/build pipeline.
+fetch/parse/build pipeline. In particular, parsing is centralized in
+`tempoch-time-data`; this crate owns generation orchestration and file output.
 
 ## What It Does
 
@@ -58,7 +59,7 @@ possible to prove which exact upstream inputs produced the checked-in tables.
 At a high level, the tool does the following:
 
 1. Fetches the four upstream text files over HTTP.
-2. Parses each file into structured Rust values.
+2. Parses each file into structured Rust values via `tempoch-time-data`.
 3. Builds the modern `Delta T` series by concatenating observed USNO values
    with future prediction values.
 4. Applies a C0 continuity offset at the observed/predicted `Delta T`

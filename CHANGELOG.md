@@ -36,6 +36,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   `tempoch::legacy` / `tempoch_core::legacy` namespaces.
 - Dropped the legacy-only `serde` feature from `tempoch-core`, `tempoch`, and
   `tempoch-ffi`.
+- Removed obsolete updater-local parser modules
+  (`tempoch-time-data-updater/src/parse.rs` and
+  `tempoch-time-data-updater/src/eop.rs`); parsing now lives only in
+  `tempoch-time-data`.
 
 ### Fixed
 
@@ -74,11 +78,6 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - `tempoch-ffi` now maps UT1 horizon failures to a dedicated status code and
   keeps its Unix and civil-time conversions aligned with the crate's leap-second
   and pre-1961 UTC semantics.
-
-### Deprecated
-
-- `Time::<JD>::julian_millennias()` is deprecated in favour of
-  `julian_millennia()`.
 
 ## [0.4.1 - 2026-03-31]
 
