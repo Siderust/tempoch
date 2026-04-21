@@ -41,6 +41,60 @@ impl core::fmt::Display for ConversionError {
 
 impl std::error::Error for ConversionError {}
 
+/// Error surface for runtime time-data operations.
+///
+/// Returned by [`crate::update_runtime_time_data`] and
+/// [`crate::refresh_runtime_time_data`] when the runtime data bundle cannot be
+/// loaded or refreshed.
+#[derive(Debug)]
+pub enum TimeDataError {
+    /// An I/O error occurred while reading or writing the data bundle.
+    Io(std::io::Error),
+    /// A network download failed.
+    Download(String),
+    /// The data could not be parsed.
+    Parse(String),
+    /// The data bundle failed an integrity check.
+    Integrity(String),
+}
+
+impl core::fmt::Display for TimeDataError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Io(err) => write!(f, "I/O error: {err}"),
+            Self::Download(msg) => write!(f, "download error: {msg}"),
+            Self::Parse(msg) => write!(f, "parse error: {msg}"),
+            Self::Integrity(msg) => write!(f, "integrity error: {msg}"),
+        }
+    }
+}
+
+impl std::error::Error for TimeDataError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Io(err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl From<std::io::Error> for TimeDataError {
+    fn from(err: std::io::Error) -> Self {
+        Self::Io(err)
+    }
+}
+
+impl From<tempoch_time_data::TimeDataError> for TimeDataError {
+    fn from(err: tempoch_time_data::TimeDataError) -> Self {
+        match err {
+            tempoch_time_data::TimeDataError::Io(e) => Self::Io(e),
+            tempoch_time_data::TimeDataError::Download(msg) => Self::Download(msg),
+            tempoch_time_data::TimeDataError::Parse(msg) => Self::Parse(msg),
+            tempoch_time_data::TimeDataError::Integrity(msg) => Self::Integrity(msg),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

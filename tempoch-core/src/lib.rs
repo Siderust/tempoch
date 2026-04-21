@@ -44,7 +44,7 @@ pub mod tagged;
 pub use context::TimeContext;
 pub use data::active::{refresh_runtime_time_data, update_runtime_time_data};
 pub use delta_t::{delta_t_seconds, delta_t_seconds_extrapolated, DELTA_T_PREDICTION_HORIZON_MJD};
-pub use error::ConversionError;
+pub use error::{ConversionError, TimeDataError};
 pub use generated::{
     EOP_END_MJD, EOP_OBSERVED_END_MJD, EOP_START_MJD, MODERN_DELTA_T_OBSERVED_END_MJD,
 };
@@ -61,7 +61,6 @@ pub use target::{
     ContextConversionTarget, ConversionTarget, GpsSecs, InfallibleConversionTarget, J2000s,
     UnixSecs, JD, MJD,
 };
-pub use tempoch_time_data::TimeDataError;
 pub use time::Time;
 
 #[cfg(test)]

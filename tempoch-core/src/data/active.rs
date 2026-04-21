@@ -16,7 +16,8 @@ use qtty::unit::{Day, Nanosecond, Second as SecondUnit};
 use qtty::{Day as DayQuantity, Second};
 use std::sync::{Arc, OnceLock, RwLock};
 use tempoch_time_data::{
-    EopPoint, TimeDataBundle, TimeDataError, TimeDataManager, TimeDataProvenance, UtcTaiSegment,
+    EopPoint, TimeDataBundle, TimeDataError as InternalDataError, TimeDataManager,
+    TimeDataProvenance, UtcTaiSegment,
 };
 
 #[cfg(test)]
@@ -77,16 +78,16 @@ pub(crate) fn active_time_data() -> Arc<TimeDataBundle> {
 ///
 /// This is cache-first: it uses the current cached bundle if present,
 /// falling back to a refresh when no valid cache is available.
-pub fn update_runtime_time_data() -> Result<(), TimeDataError> {
-    load_and_activate_runtime_time_data(false)
+pub fn update_runtime_time_data() -> Result<(), crate::error::TimeDataError> {
+    load_and_activate_runtime_time_data(false).map_err(Into::into)
 }
 
 /// Force-refresh runtime time data and load it into the active bundle.
-pub fn refresh_runtime_time_data() -> Result<(), TimeDataError> {
-    load_and_activate_runtime_time_data(true)
+pub fn refresh_runtime_time_data() -> Result<(), crate::error::TimeDataError> {
+    load_and_activate_runtime_time_data(true).map_err(Into::into)
 }
 
-fn load_and_activate_runtime_time_data(force_refresh: bool) -> Result<(), TimeDataError> {
+fn load_and_activate_runtime_time_data(force_refresh: bool) -> Result<(), InternalDataError> {
     let manager = TimeDataManager::new()?;
     let bundle = select_time_data(
         manager.load_cached(),
@@ -98,10 +99,10 @@ fn load_and_activate_runtime_time_data(force_refresh: bool) -> Result<(), TimeDa
 }
 
 fn select_time_data(
-    cached: Result<TimeDataBundle, TimeDataError>,
-    refresh: impl FnOnce() -> Result<TimeDataBundle, TimeDataError>,
+    cached: Result<TimeDataBundle, InternalDataError>,
+    refresh: impl FnOnce() -> Result<TimeDataBundle, InternalDataError>,
     force_refresh: bool,
-) -> Result<TimeDataBundle, TimeDataError> {
+) -> Result<TimeDataBundle, InternalDataError> {
     if force_refresh {
         return refresh();
     }
@@ -122,10 +123,10 @@ fn bundle_is_stale(bundle: &TimeDataBundle, now: DateTime<Utc>) -> bool {
 }
 
 fn select_time_data_for_auto_refresh(
-    cached: Result<TimeDataBundle, TimeDataError>,
-    refresh: impl FnOnce() -> Result<TimeDataBundle, TimeDataError>,
+    cached: Result<TimeDataBundle, InternalDataError>,
+    refresh: impl FnOnce() -> Result<TimeDataBundle, InternalDataError>,
     now: DateTime<Utc>,
-) -> Result<TimeDataBundle, TimeDataError> {
+) -> Result<TimeDataBundle, InternalDataError> {
     match cached {
         Ok(bundle) if !bundle_is_stale(&bundle, now) => Ok(bundle),
         Ok(bundle) => refresh().or(Ok(bundle)),
@@ -452,7 +453,7 @@ mod tests {
         let selected = select_time_data(
             Ok(cached.clone()),
             || {
-                Err(TimeDataError::Integrity(
+                Err(InternalDataError::Integrity(
                     "refresh should not be called".into(),
                 ))
             },
@@ -466,7 +467,7 @@ mod tests {
     fn missing_cache_triggers_refresh() {
         let refreshed = bundle_with_timestamp("refreshed");
         let selected = select_time_data(
-            Err(TimeDataError::Integrity("missing cache".into())),
+            Err(InternalDataError::Integrity("missing cache".into())),
             || Ok(refreshed.clone()),
             false,
         )
@@ -486,7 +487,7 @@ mod tests {
     fn force_refresh_propagates_refresh_error() {
         let err = select_time_data(
             Ok(bundle_with_timestamp("cached")),
-            || Err(TimeDataError::Download("network unreachable".into())),
+            || Err(InternalDataError::Download("network unreachable".into())),
             true,
         )
         .unwrap_err();
@@ -502,7 +503,7 @@ mod tests {
         let now = DateTime::from_timestamp(1_776_134_400, 0).unwrap();
         let selected = select_time_data_for_auto_refresh(
             Ok(stale.clone()),
-            || Err(TimeDataError::Download("network unreachable".into())),
+            || Err(InternalDataError::Download("network unreachable".into())),
             now,
         )
         .unwrap();
@@ -519,7 +520,7 @@ mod tests {
         let selected = select_time_data_for_auto_refresh(
             Ok(fresh.clone()),
             || {
-                Err(TimeDataError::Integrity(
+                Err(InternalDataError::Integrity(
                     "refresh should not be called".into(),
                 ))
             },
