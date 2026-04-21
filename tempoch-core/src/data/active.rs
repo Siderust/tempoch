@@ -572,6 +572,36 @@ mod tests {
     }
 
     #[test]
+    fn time_context_snapshots_ut1_data_across_active_bundle_updates() {
+        let _guard = TEST_TIME_DATA_GUARD
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        let previous = active_time_data();
+        let baseline = compiled_bundle_owned();
+        set_active_time_data(baseline.clone());
+        let ctx_before = TimeContext::with_builtin_eop();
+
+        let mut eop_points = baseline.eop_points().to_vec();
+        let point = eop_points.iter().position(|p| p.mjd == 57_000).unwrap();
+        eop_points[point].ut1_minus_utc_seconds += 0.5;
+        let overridden = TimeDataBundle::new(
+            baseline.utc_tai_segments().to_vec(),
+            baseline.modern_delta_t_points().to_vec(),
+            baseline.modern_delta_t_observed_end_mjd(),
+            eop_points,
+            baseline.provenance().clone(),
+        );
+        set_active_time_data(overridden);
+        let ctx_after = TimeContext::with_builtin_eop();
+
+        let before = ctx_before.ut1_minus_utc(DayQuantity::new(57_000.0)).unwrap();
+        let after = ctx_after.ut1_minus_utc(DayQuantity::new(57_000.0)).unwrap();
+        set_active_time_data((*previous).clone());
+
+        assert!((after - before).abs() > Second::new(0.1));
+    }
+
+    #[test]
     fn ordinary_utc_api_uses_override_bundle() {
         let bundle = compiled_bundle_owned();
         let mut segments = bundle.utc_tai_segments().to_vec();
@@ -614,6 +644,42 @@ mod tests {
                 .abs();
             assert!(drift < 1e-4, "chrono round-trip drift = {drift}");
         });
+    }
+
+    #[test]
+    fn time_context_snapshots_utc_civil_data_across_active_bundle_updates() {
+        let _guard = TEST_TIME_DATA_GUARD
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        let previous = active_time_data();
+        let baseline = compiled_bundle_owned();
+        set_active_time_data(baseline.clone());
+        let ctx_before = TimeContext::new();
+
+        let mut segments = baseline.utc_tai_segments().to_vec();
+        let segment = segments
+            .iter()
+            .position(|segment| segment.start_mjd <= 60_000 && segment.end_mjd.is_none())
+            .unwrap();
+        segments[segment].base_seconds += 1.0;
+        let overridden = TimeDataBundle::new(
+            segments,
+            baseline.modern_delta_t_points().to_vec(),
+            baseline.modern_delta_t_observed_end_mjd(),
+            baseline.eop_points().to_vec(),
+            baseline.provenance().clone(),
+        );
+        set_active_time_data(overridden);
+        let ctx_after = TimeContext::new();
+
+        let unix = Second::new(1_680_000_000.25);
+        let before = Time::<UTC>::from_unix_seconds_with(unix, &ctx_before).unwrap();
+        let after = Time::<UTC>::from_unix_seconds_with(unix, &ctx_after).unwrap();
+        let before_value = before.raw_seconds_pair().0.value() + before.raw_seconds_pair().1.value();
+        let after_value = after.raw_seconds_pair().0.value() + after.raw_seconds_pair().1.value();
+        set_active_time_data((*previous).clone());
+
+        assert!((after_value - before_value).abs() > 0.1);
     }
 
     #[test]

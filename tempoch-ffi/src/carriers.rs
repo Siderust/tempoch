@@ -129,7 +129,7 @@ fn tt_to_scale_value(
         }
         TempochScaleId::UnixTime => tt
             .to_scale::<UTC>()
-            .unix_seconds()
+            .unix_seconds_with(ctx)
             .map(|s| s / Seconds::new(1.0)),
     }
 }
@@ -148,18 +148,18 @@ pub(crate) fn scale_value_to_jd(value: f64, scale: TempochScaleId) -> Result<f64
 
 /// Convert a UTC instant to a native scalar in the requested scale.
 pub(crate) fn time_from_utc_value(datetime: DateTime<Utc>, scale: TempochScaleId) -> Option<f64> {
+    let ctx = default_context();
     if matches!(scale, TempochScaleId::UnixTime) {
         // Validate via the civil API, then return the POSIX timestamp directly.
         // Routing Unix values through UTC→TT→UTC would silently accumulate
         // ~10 µs of error because
         // TT_MINUS_TAI (32.184 s) is not exactly representable in f64.
-        Time::<UTC>::try_from_chrono(datetime).ok()?;
+        Time::<UTC>::try_from_chrono_with(datetime, &ctx).ok()?;
         let nanos = datetime.timestamp_subsec_nanos().min(999_999_999);
         return Some(datetime.timestamp() as f64 + nanos as f64 / 1e9);
     }
 
-    let ctx = default_context();
-    let tt = Time::<UTC>::try_from_chrono(datetime)
+    let tt = Time::<UTC>::try_from_chrono_with(datetime, &ctx)
         .ok()?
         .to_scale::<TT>();
     tt_to_scale_value(tt, scale, &ctx).ok()
@@ -167,21 +167,21 @@ pub(crate) fn time_from_utc_value(datetime: DateTime<Utc>, scale: TempochScaleId
 
 /// Convert a native scalar in the requested scale to UTC.
 pub(crate) fn time_to_utc_value(value: f64, scale: TempochScaleId) -> Option<DateTime<Utc>> {
+    let ctx = default_context();
     if matches!(scale, TempochScaleId::UnixTime) {
         // Route through the civil API so that out-of-history-range Unix
         // timestamps and non-finite values are rejected consistently with
         // all other scales.
-        return Time::<UTC>::from_unix_seconds(Seconds::new(value))
+        return Time::<UTC>::from_unix_seconds_with(Seconds::new(value), &ctx)
             .ok()?
-            .try_to_chrono()
+            .try_to_chrono_with(&ctx)
             .ok();
     }
 
-    let ctx = default_context();
     scale_value_to_tt(value, scale, &ctx)
         .ok()?
         .to_scale::<UTC>()
-        .try_to_chrono()
+        .try_to_chrono_with(&ctx)
         .ok()
 }
 

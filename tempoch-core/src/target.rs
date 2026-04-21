@@ -167,7 +167,7 @@ where
 
     #[inline]
     fn convert_with(src: Time<S>, ctx: &TimeContext) -> Result<Self::Output, ConversionError> {
-        src.to_scale_with::<UTC>(ctx)?.unix_seconds()
+        src.to_scale_with::<UTC>(ctx)?.unix_seconds_with(ctx)
     }
 }
 

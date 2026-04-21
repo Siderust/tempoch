@@ -5,11 +5,12 @@
 //! representations.
 
 use super::constats::GPS_EPOCH_TAI;
+use super::context::TimeContext;
 use super::error::ConversionError;
 use super::scale::{TAI, UTC};
 use super::time::Time;
 use crate::data::active::{
-    active_time_data, time_data_tai_seconds_from_utc, time_data_tai_seconds_is_in_leap_window,
+    time_data_tai_seconds_from_utc, time_data_tai_seconds_is_in_leap_window,
     time_data_try_tai_minus_utc_mjd, time_data_utc_from_tai_seconds,
 };
 use crate::encoding::{mjd_to_j2000_seconds, unix_seconds_to_mjd};
@@ -17,12 +18,29 @@ use chrono::{DateTime, Utc};
 use qtty::Second;
 
 impl Time<UTC> {
+    /// Build a UTC instant from a `chrono::DateTime<Utc>` using the context's
+    /// captured time-data bundle.
+    #[inline]
+    pub fn try_from_chrono_with(
+        dt: DateTime<Utc>,
+        ctx: &TimeContext,
+    ) -> Result<Self, ConversionError> {
+        let tai_secs = time_data_tai_seconds_from_utc(ctx.time_data(), dt)?;
+        Self::try_new(tai_secs, Second::new(0.0))
+    }
+
     /// Build a UTC instant from a `chrono::DateTime<Utc>`.
     #[inline]
     pub fn try_from_chrono(dt: DateTime<Utc>) -> Result<Self, ConversionError> {
-        let data = active_time_data();
-        let tai_secs = time_data_tai_seconds_from_utc(data.as_ref(), dt)?;
-        Self::try_new(tai_secs, Second::new(0.0))
+        Self::try_from_chrono_with(dt, &TimeContext::new())
+    }
+
+    /// Convenience panicking wrapper over
+    /// [`try_from_chrono_with`](Self::try_from_chrono_with).
+    #[track_caller]
+    #[inline]
+    pub fn from_chrono_with(dt: DateTime<Utc>, ctx: &TimeContext) -> Self {
+        Self::try_from_chrono_with(dt, ctx).expect("UTC conversion failed; use try_from_chrono_with")
     }
 
     /// Convenience panicking wrapper over [`try_from_chrono`](Self::try_from_chrono).
@@ -32,11 +50,24 @@ impl Time<UTC> {
         Self::try_from_chrono(dt).expect("UTC conversion failed; use try_from_chrono")
     }
 
+    /// Convert to a `chrono::DateTime<Utc>`, preserving leap-second labels,
+    /// using the context's captured time-data bundle.
+    #[inline]
+    pub fn try_to_chrono_with(self, ctx: &TimeContext) -> Result<DateTime<Utc>, ConversionError> {
+        time_data_utc_from_tai_seconds(ctx.time_data(), self.total_seconds())
+    }
+
     /// Convert to a `chrono::DateTime<Utc>`, preserving leap-second labels.
     #[inline]
     pub fn try_to_chrono(self) -> Result<DateTime<Utc>, ConversionError> {
-        let data = active_time_data();
-        time_data_utc_from_tai_seconds(data.as_ref(), self.total_seconds())
+        self.try_to_chrono_with(&TimeContext::new())
+    }
+
+    /// Convenience non-fallible wrapper (returns `None` on error) using the
+    /// context's captured time-data bundle.
+    #[inline]
+    pub fn to_chrono_with(self, ctx: &TimeContext) -> Option<DateTime<Utc>> {
+        self.try_to_chrono_with(ctx).ok()
     }
 
     /// Convenience non-fallible wrapper (returns `None` on error).
@@ -45,34 +76,56 @@ impl Time<UTC> {
         self.try_to_chrono().ok()
     }
 
-    /// Build a UTC instant from a POSIX timestamp in seconds.
+    /// Build a UTC instant from a POSIX timestamp in seconds using the
+    /// context's captured time-data bundle.
     #[inline]
-    pub fn from_unix_seconds(seconds: Second) -> Result<Self, ConversionError> {
+    pub fn from_unix_seconds_with(
+        seconds: Second,
+        ctx: &TimeContext,
+    ) -> Result<Self, ConversionError> {
         if !seconds.is_finite() {
             return Err(ConversionError::NonFinite);
         }
         let mjd_utc = unix_seconds_to_mjd(seconds);
-        let data = active_time_data();
-        let tai_minus_utc = time_data_try_tai_minus_utc_mjd(data.as_ref(), mjd_utc)
+        let tai_minus_utc = time_data_try_tai_minus_utc_mjd(ctx.time_data(), mjd_utc)
             .ok_or(ConversionError::UtcHistoryUnsupported)?;
         let tai_secs = mjd_to_j2000_seconds(mjd_utc) + tai_minus_utc;
         Self::try_new(tai_secs, Second::new(0.0))
     }
 
+    /// Build a UTC instant from a POSIX timestamp in seconds.
+    #[inline]
+    pub fn from_unix_seconds(seconds: Second) -> Result<Self, ConversionError> {
+        Self::from_unix_seconds_with(seconds, &TimeContext::new())
+    }
+
+    /// Return the POSIX timestamp in seconds for this UTC instant using the
+    /// context's captured time-data bundle.
+    #[inline]
+    pub fn unix_seconds_with(self, ctx: &TimeContext) -> Result<Second, ConversionError> {
+        let dt = self.try_to_chrono_with(ctx)?;
+        let nanos = dt.timestamp_subsec_nanos().min(999_999_999);
+        Ok(Second::new(dt.timestamp() as f64 + nanos as f64 / 1e9))
+    }
+
     /// Return the POSIX timestamp in seconds for this UTC instant.
     #[inline]
     pub fn unix_seconds(self) -> Result<Second, ConversionError> {
-        let dt = self.try_to_chrono()?;
-        let nanos = dt.timestamp_subsec_nanos().min(999_999_999);
-        Ok(Second::new(dt.timestamp() as f64 + nanos as f64 / 1e9))
+        self.unix_seconds_with(&TimeContext::new())
+    }
+
+    /// Returns `true` if this instant falls inside a positive leap second in
+    /// UTC (e.g. 23:59:60) using the context's captured time-data bundle.
+    #[inline]
+    pub fn is_leap_second_with(self, ctx: &TimeContext) -> bool {
+        time_data_tai_seconds_is_in_leap_window(ctx.time_data(), self.total_seconds())
     }
 
     /// Returns `true` if this instant falls inside a positive leap second
     /// in UTC (e.g. 23:59:60).
     #[inline]
     pub fn is_leap_second(self) -> bool {
-        let data = active_time_data();
-        time_data_tai_seconds_is_in_leap_window(data.as_ref(), self.total_seconds())
+        self.is_leap_second_with(&TimeContext::new())
     }
 }
 

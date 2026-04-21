@@ -5,15 +5,19 @@
 
 use crate::data::active::{active_time_data, time_data_eop_at};
 use crate::eop::EopValues;
+use std::sync::Arc;
+use tempoch_time_data::TimeDataBundle;
 use qtty::{Day, Second};
 
 /// Explicit, immutable context for conversions that need one.
 ///
-/// A `TimeContext` selects which active data tables back UT1 conversions.
-/// The default constructor [`TimeContext::new`] uses the monthly ΔT series,
-/// matching the behaviour of previous versions; [`TimeContext::with_builtin_eop`]
-/// selects the daily IERS `finals2000A.all` series for the highest-fidelity
-/// bundled UT1 path inside its coverage window.
+/// A `TimeContext` snapshots the active time-data bundle at construction time
+/// and selects which parts of that snapshot back context-required conversions.
+/// The default constructor [`TimeContext::new`] uses the monthly ΔT series from
+/// the captured bundle, matching the behaviour of previous versions;
+/// [`TimeContext::with_builtin_eop`] selects the daily IERS `finals2000A.all`
+/// series from that same snapshot for the highest-fidelity bundled UT1 path
+/// inside its coverage window.
 ///
 /// # ΔT / UT1 accuracy
 ///
@@ -27,12 +31,14 @@ use qtty::{Day, Second};
 /// | EOP prediction range | For the compiled bundle fetched 2026-04-18, < 0.2 s from the bundled short-range daily prediction through 2027-04-24 | preferred highest-fidelity bundled UT1 path |
 /// | Beyond EOP | monthly ΔT only; prediction uncertainty grows | falls back to monthly ΔT |
 ///
-/// The builtin EOP is only consulted inside the active bundle's coverage;
-/// outside of that range the monthly ΔT path applies unchanged. Call
-/// [`crate::update_runtime_time_data`] (or [`crate::refresh_runtime_time_data`])
-/// to replace the compiled baseline with a cached/refreshed runtime bundle.
-#[derive(Debug, Clone, Copy, Default)]
+/// The builtin EOP is only consulted inside the captured bundle's coverage;
+/// outside of that range the monthly ΔT path applies unchanged. Construct a
+/// fresh context after calling [`crate::update_runtime_time_data`] (or
+/// [`crate::refresh_runtime_time_data`]) if you want to use the newly active
+/// runtime bundle.
+#[derive(Debug, Clone)]
 pub struct TimeContext {
+    data: Arc<TimeDataBundle>,
     eop: EopSource,
 }
 
@@ -48,23 +54,39 @@ enum EopSource {
     Builtin,
 }
 
+impl Default for TimeContext {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TimeContext {
+    #[inline]
+    fn snapshot(eop: EopSource) -> Self {
+        Self {
+            data: active_time_data(),
+            eop,
+        }
+    }
+
     /// Construct a default context backed by the monthly ΔT table.
     #[inline]
-    pub const fn new() -> Self {
-        Self {
-            eop: EopSource::None,
-        }
+    pub fn new() -> Self {
+        Self::snapshot(EopSource::None)
     }
 
     /// Construct a context that prefers the compiled daily IERS
     /// `finals2000A.all` series for UT1 conversions when the epoch is
     /// within its coverage window.
     #[inline]
-    pub const fn with_builtin_eop() -> Self {
-        Self {
-            eop: EopSource::Builtin,
-        }
+    pub fn with_builtin_eop() -> Self {
+        Self::snapshot(EopSource::Builtin)
+    }
+
+    #[inline]
+    pub(crate) fn time_data(&self) -> &TimeDataBundle {
+        self.data.as_ref()
     }
 
     /// Interpolated EOP at `mjd_utc`, if this context has an EOP source and
@@ -74,10 +96,7 @@ impl TimeContext {
     pub fn eop_at(&self, mjd_utc: Day) -> Option<EopValues> {
         match self.eop {
             EopSource::None => None,
-            EopSource::Builtin => {
-                let data = active_time_data();
-                time_data_eop_at(data.as_ref(), mjd_utc)
-            }
+            EopSource::Builtin => time_data_eop_at(self.time_data(), mjd_utc),
         }
     }
 
