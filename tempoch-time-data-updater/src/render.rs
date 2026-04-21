@@ -249,3 +249,214 @@ pub(crate) static EOP_POINTS: [EopPoint; {n_points}] = [
         points = render_eop_points(eop_points),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_sources() -> Sources<'static> {
+        Sources {
+            utc_tai_history_url: "https://example.test/utc-tai-history",
+            delta_t_observed_url: "https://example.test/delta-t-observed",
+            delta_t_predictions_url: "https://example.test/delta-t-predictions",
+            eop_finals_url: "https://example.test/finals2000A.all",
+            pre_1961_tai_minus_utc_approx: 10.0,
+        }
+    }
+
+    fn sample_provenance() -> Provenance<'static> {
+        Provenance {
+            utc_tai_sha: "utc-sha",
+            delta_t_observed_sha: "obs-sha",
+            delta_t_predictions_sha: "pred-sha",
+            eop_finals_sha: "eop-sha",
+        }
+    }
+
+    #[test]
+    fn format_url_const_keeps_short_urls_single_line() {
+        let rendered = format_url_const("EXAMPLE_URL", "https://example.test/s");
+        assert_eq!(
+            rendered,
+            "pub(crate) const EXAMPLE_URL: &str = \"https://example.test/s\";"
+        );
+    }
+
+    #[test]
+    fn format_url_const_wraps_long_urls() {
+        let long_url = "https://example.test/this/url/is/intentionally/long/to/trigger/rustfmt/wrapping/in/the/emitted/module";
+        let rendered = format_url_const("LONG_URL", long_url);
+        assert!(rendered.contains("pub(crate) const LONG_URL: &str =\n"));
+        assert!(rendered.contains(long_url));
+    }
+
+    #[test]
+    fn render_segments_formats_open_and_closed_ranges() {
+        let segments = [
+            UtcTaiSegment {
+                start_mjd: 37_300,
+                end_mjd: Some(37_512),
+                base_seconds: 1.422_818,
+                reference_mjd: 37_300.0,
+                slope_seconds_per_day: 0.001_296,
+            },
+            UtcTaiSegment {
+                start_mjd: 37_512,
+                end_mjd: None,
+                base_seconds: 10.0,
+                reference_mjd: 37_512.0,
+                slope_seconds_per_day: 0.0,
+            },
+        ];
+        let rendered = render_segments(&segments);
+        assert!(rendered.contains("end_mjd: Some(37512)"));
+        assert!(rendered.contains("end_mjd: None"));
+        assert!(rendered.contains("slope_seconds_per_day: 0.0012960"));
+        assert!(rendered.contains("slope_seconds_per_day: 0.0000000"));
+    }
+
+    #[test]
+    fn render_points_uses_fixed_precision() {
+        let rendered = render_points(&[(60_000.123_4, 69.876_54), (60_001.5, 70.0)]);
+        assert!(rendered.contains("(60000.123, 69.8765),"));
+        assert!(rendered.contains("(60001.500, 70.0000),"));
+    }
+
+    #[test]
+    fn render_eop_points_preserves_optional_fields() {
+        let points = [
+            EopPoint {
+                mjd: 60_000,
+                pm_observed: true,
+                ut1_observed: true,
+                nutation_observed: false,
+                pm_xp_arcsec: Some(0.123_456),
+                pm_yp_arcsec: None,
+                ut1_minus_utc_seconds: -0.123_456_7,
+                lod_milliseconds: Some(1.2345),
+                dx_milliarcsec: Some(0.321),
+                dy_milliarcsec: None,
+            },
+            EopPoint {
+                mjd: 60_001,
+                pm_observed: false,
+                ut1_observed: false,
+                nutation_observed: false,
+                pm_xp_arcsec: None,
+                pm_yp_arcsec: Some(-0.654_321),
+                ut1_minus_utc_seconds: -0.2,
+                lod_milliseconds: None,
+                dx_milliarcsec: None,
+                dy_milliarcsec: Some(-0.111),
+            },
+        ];
+        let rendered = render_eop_points(&points);
+        assert!(rendered.contains("pm_xp_arcsec: Some(0.123456)"));
+        assert!(rendered.contains("pm_yp_arcsec: None"));
+        assert!(rendered.contains("lod_milliseconds: Some(1.2345)"));
+        assert!(rendered.contains("dx_milliarcsec: Some(0.321)"));
+        assert!(rendered.contains("dy_milliarcsec: Some(-0.111)"));
+    }
+
+    #[test]
+    fn render_generated_module_embeds_series_and_metadata() {
+        let segments = [
+            UtcTaiSegment {
+                start_mjd: 37_300,
+                end_mjd: Some(37_512),
+                base_seconds: 1.422_818,
+                reference_mjd: 37_300.0,
+                slope_seconds_per_day: 0.001_296,
+            },
+            UtcTaiSegment {
+                start_mjd: 37_512,
+                end_mjd: None,
+                base_seconds: 10.0,
+                reference_mjd: 37_512.0,
+                slope_seconds_per_day: 0.0,
+            },
+        ];
+        let points = [(60_000.0, 69.5), (60_001.0, 69.6), (60_002.0, 69.7)];
+        let rendered = render_generated_module(
+            &segments,
+            &points,
+            60_001.0,
+            &sample_sources(),
+            &sample_provenance(),
+        );
+
+        assert!(rendered.contains("UTC-TAI history  SHA-256: utc-sha"));
+        assert!(rendered.contains("DELTA_T_OBSERVED_URL"));
+        assert!(rendered.contains("MODERN_DELTA_T_OBSERVED_END_MJD: f64 = 60001.000"));
+        assert!(rendered.contains("pub(crate) const MODERN_DELTA_T_END_MJD: f64 = 60002.000"));
+        assert!(rendered.contains("pub(crate) const UTC_TAI_SEGMENTS: [UtcTaiSegment; 2]"));
+        assert!(rendered.contains("pub(crate) const MODERN_DELTA_T_POINTS: [(f64, f64); 3]"));
+    }
+
+    #[test]
+    fn render_eop_module_uses_last_observed_mjd() {
+        let points = [
+            EopPoint {
+                mjd: 60_000,
+                pm_observed: true,
+                ut1_observed: true,
+                nutation_observed: true,
+                pm_xp_arcsec: Some(0.1),
+                pm_yp_arcsec: Some(0.2),
+                ut1_minus_utc_seconds: -0.1,
+                lod_milliseconds: Some(1.0),
+                dx_milliarcsec: Some(0.0),
+                dy_milliarcsec: Some(0.0),
+            },
+            EopPoint {
+                mjd: 60_001,
+                pm_observed: true,
+                ut1_observed: false,
+                nutation_observed: false,
+                pm_xp_arcsec: Some(0.1),
+                pm_yp_arcsec: Some(0.2),
+                ut1_minus_utc_seconds: -0.2,
+                lod_milliseconds: None,
+                dx_milliarcsec: None,
+                dy_milliarcsec: None,
+            },
+        ];
+        let rendered = render_eop_module(&points, &sample_sources(), &sample_provenance());
+        assert!(rendered.contains("finals2000A.all  SHA-256: eop-sha"));
+        assert!(rendered.contains("pub(crate) const EOP_START_MJD: i32 = 60000;"));
+        assert!(rendered.contains("pub(crate) const EOP_OBSERVED_END_MJD: i32 = 60000;"));
+        assert!(rendered.contains("pub(crate) const EOP_END_MJD: i32 = 60001;"));
+    }
+
+    #[test]
+    fn render_eop_module_falls_back_to_start_when_no_observations_exist() {
+        let points = [
+            EopPoint {
+                mjd: 61_000,
+                pm_observed: false,
+                ut1_observed: false,
+                nutation_observed: false,
+                pm_xp_arcsec: None,
+                pm_yp_arcsec: None,
+                ut1_minus_utc_seconds: 0.0,
+                lod_milliseconds: None,
+                dx_milliarcsec: None,
+                dy_milliarcsec: None,
+            },
+            EopPoint {
+                mjd: 61_001,
+                pm_observed: false,
+                ut1_observed: false,
+                nutation_observed: false,
+                pm_xp_arcsec: None,
+                pm_yp_arcsec: None,
+                ut1_minus_utc_seconds: 0.1,
+                lod_milliseconds: None,
+                dx_milliarcsec: None,
+                dy_milliarcsec: None,
+            },
+        ];
+        let rendered = render_eop_module(&points, &sample_sources(), &sample_provenance());
+        assert!(rendered.contains("pub(crate) const EOP_OBSERVED_END_MJD: i32 = 61000;"));
+    }
+}

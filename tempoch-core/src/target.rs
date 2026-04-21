@@ -230,3 +230,61 @@ default_context_scale_target!(UT1 => TDB);
 default_context_scale_target!(UT1 => TCG);
 default_context_scale_target!(UT1 => TCB);
 default_context_scale_target!(UT1 => UTC);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::scale::{TAI, TT, UT1, UTC};
+    use qtty::Second;
+
+    #[test]
+    fn scalar_targets_match_coordinate_helpers() {
+        let tt = crate::time::Time::<TT>::from_j2000_seconds(Second::new(12_345.678)).unwrap();
+
+        assert!((tt.to::<J2000s>() - tt.j2000_seconds()).abs() < Second::new(1e-12));
+        assert!((tt.to::<JD>() - tt.julian_days()).abs() < qtty::Day::new(1e-15));
+        assert!((tt.to::<MJD>() - tt.modified_julian_days()).abs() < qtty::Day::new(1e-15));
+    }
+
+    #[test]
+    fn unix_and_gps_targets_use_expected_axes() {
+        let utc = crate::time::Time::<UTC>::from_unix_seconds(Second::new(946_728_000.0)).unwrap();
+        let unix = utc.try_to::<UnixSecs>().unwrap();
+        assert!((unix - utc.unix_seconds().unwrap()).abs() < Second::new(1e-12));
+
+        let tai = utc.to::<TAI>();
+        let gps = tai.to::<GpsSecs>();
+        assert!((gps - tai.gps_seconds()).abs() < Second::new(1e-12));
+
+        let gps_from_tt = crate::time::Time::<TT>::from_j2000_seconds(Second::new(0.0))
+            .unwrap()
+            .try_to::<GpsSecs>()
+            .unwrap();
+        assert!(gps_from_tt.is_finite());
+    }
+
+    #[test]
+    fn default_context_ut1_routes_are_reachable() {
+        let tt = crate::time::Time::<TT>::from_j2000_seconds(Second::new(0.0)).unwrap();
+        let ut1 = tt.try_to::<UT1>().unwrap();
+        let tt_back = ut1.try_to::<TT>().unwrap();
+        let utc_back = ut1.try_to::<UTC>().unwrap();
+
+        assert!(tt_back.j2000_seconds().is_finite());
+        assert!(utc_back.j2000_seconds().is_finite());
+    }
+
+    #[test]
+    fn context_targets_support_ut1_sources() {
+        let tt = crate::time::Time::<TT>::from_j2000_seconds(Second::new(0.0)).unwrap();
+        let ctx = crate::context::TimeContext::new();
+        let ut1 = tt.to_with::<UT1>(&ctx).unwrap();
+
+        let unix = ut1.to_with::<UnixSecs>(&ctx).unwrap();
+        let gps = ut1.to_with::<GpsSecs>(&ctx).unwrap();
+
+        assert!(unix.is_finite());
+        assert!(gps.is_finite());
+    }
+}

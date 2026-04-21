@@ -85,3 +85,27 @@ pub(crate) const UTC_INTERVAL_EPS: Day = Day::new(1e-15);
 pub(crate) const L_G: f64 = 6.969_290_134e-10;
 pub(crate) const L_B: f64 = 1.550_519_768e-8;
 pub(crate) const TDB0: Second = Second::new(-6.55e-5);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unix_epoch_jd_and_mjd_constants_are_consistent() {
+        assert!((UNIX_EPOCH_JD - JD_MINUS_MJD - UNIX_EPOCH_MJD).abs() < Day::new(1e-15));
+    }
+
+    #[test]
+    fn j2000_reference_values_match_known_offsets() {
+        assert!((J2000_JD_TT - JD_MINUS_MJD - Day::new(51_544.5)).abs() < Day::new(1e-12));
+        assert!((TT_MINUS_TAI - Second::new(32.184)).abs() < Second::new(1e-12));
+        assert!((UTC_DEFINED_FROM_MJD - Day::new(37_300.0)).abs() < Day::new(1e-12));
+    }
+
+    #[test]
+    fn high_accuracy_model_interval_is_ordered() {
+        assert!(TDB_TT_MODEL_HIGH_ACCURACY_END_JD > TDB_TT_MODEL_HIGH_ACCURACY_START_JD);
+        assert!(GPS_EPOCH_TAI.is_finite());
+        assert!(DELTA_T_PREDICTION_HORIZON_MJD.is_finite());
+    }
+}

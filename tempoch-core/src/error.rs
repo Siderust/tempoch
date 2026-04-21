@@ -98,6 +98,11 @@ impl From<tempoch_time_data::TimeDataError> for TimeDataError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::error::Error;
+
+    fn io_error(msg: &str) -> std::io::Error {
+        std::io::Error::other(msg.to_string())
+    }
 
     #[test]
     fn display_all_variants() {
@@ -112,5 +117,49 @@ mod tests {
             let s = variant.to_string();
             assert!(s.contains(fragment), "{variant:?}: got {s:?}");
         }
+    }
+
+    #[test]
+    fn time_data_error_display_and_source() {
+        let io = TimeDataError::Io(io_error("disk full"));
+        assert!(io.to_string().contains("I/O error: disk full"));
+        assert!(io.source().is_some());
+
+        let download = TimeDataError::Download("network timeout".to_string());
+        assert!(download
+            .to_string()
+            .contains("download error: network timeout"));
+        assert!(download.source().is_none());
+
+        let parse = TimeDataError::Parse("bad row".to_string());
+        assert!(parse.to_string().contains("parse error: bad row"));
+        assert!(parse.source().is_none());
+
+        let integrity = TimeDataError::Integrity("checksum mismatch".to_string());
+        assert!(integrity
+            .to_string()
+            .contains("integrity error: checksum mismatch"));
+        assert!(integrity.source().is_none());
+    }
+
+    #[test]
+    fn time_data_error_from_mappings_cover_all_variants() {
+        let io_mapped: TimeDataError = io_error("io map").into();
+        assert!(matches!(io_mapped, TimeDataError::Io(_)));
+
+        let mapped_download: TimeDataError =
+            tempoch_time_data::TimeDataError::Download("d".to_string()).into();
+        assert!(matches!(mapped_download, TimeDataError::Download(msg) if msg == "d"));
+
+        let mapped_parse: TimeDataError =
+            tempoch_time_data::TimeDataError::Parse("p".to_string()).into();
+        assert!(matches!(mapped_parse, TimeDataError::Parse(msg) if msg == "p"));
+
+        let mapped_integrity: TimeDataError =
+            tempoch_time_data::TimeDataError::Integrity("i".to_string()).into();
+        assert!(matches!(mapped_integrity, TimeDataError::Integrity(msg) if msg == "i"));
+
+        let mapped_io: TimeDataError = tempoch_time_data::TimeDataError::Io(io_error("x")).into();
+        assert!(matches!(mapped_io, TimeDataError::Io(_)));
     }
 }
