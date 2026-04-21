@@ -9,7 +9,6 @@ repository = "https://github.com/Siderust/tempoch"
 
 [features]
 default = []
-runtime-data = []
 serde = ["dep:serde", "qtty/serde"]
 
 [lib]

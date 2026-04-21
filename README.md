@@ -46,8 +46,8 @@ Typed astronomical time primitives for Rust.
   `Period<S>` / `Interval<T>` as `{start, end}` objects, plus explicit
   `tempoch::tagged::{TaggedTime, TaggedPeriod}` wrappers when the payload must
   carry the scale name.
-- Optional automatic runtime freshness when the `runtime-data` feature is
-  enabled, while keeping the same public API.
+- Automatic runtime freshness backed by a cached time-data bundle, while
+  keeping the same public API.
 - Public typed epoch/offset constants under `tempoch::constats`, such as
   `J2000_JD_TT`, `TT_MINUS_TAI`, and `DELTA_T_PREDICTION_HORIZON_MJD`.
 - A utility `Interval<T>` type for half-open time ranges over `Time<A>`,
@@ -70,14 +70,6 @@ the horizon. Use the exported `DELTA_T_PREDICTION_HORIZON_MJD` typed
 tempoch = "0.4"
 ```
 
-Enable runtime freshness explicitly if you want `tempoch` to prefer a cached
-or auto-refreshed time-data bundle at runtime while keeping the ordinary API:
-
-```toml
-[dependencies]
-tempoch = { version = "0.4", features = ["runtime-data"] }
-```
-
 Enable `serde` if you want to serialize typed times and periods:
 
 ```toml
@@ -85,11 +77,11 @@ Enable `serde` if you want to serialize typed times and periods:
 tempoch = { version = "0.4", features = ["serde"] }
 ```
 
-Features compose normally:
+The `serde` feature composes with the ordinary runtime refresh behavior:
 
 ```toml
 [dependencies]
-tempoch = { version = "0.4", features = ["serde", "runtime-data"] }
+tempoch = { version = "0.4", features = ["serde"] }
 ```
 
 ## Serde
@@ -186,24 +178,24 @@ assert_eq!(gaps.len(), 3);
 - `cargo run --example 03_formats`
 - `cargo run --example 04_periods`
 - `cargo run --example 05_serde --features serde`
-- `cargo run -p tempoch --example 06_runtime_tables --features runtime-data`
+- `cargo run -p tempoch --example 06_runtime_tables`
 - `cargo run --example 07_conversions`
 
 ## Runtime Time Data
 
-The default `tempoch` path remains compile-time and network-free. If you need
-fresher UTC-TAI history, modern Delta T, and daily IERS EOP at runtime, enable
-the `runtime-data` feature. The public API does not change: `TimeContext`,
-`Time::try_to::<UT1>()`, `Time::to_with`, and the normal UTC civil helpers
-automatically consult a cached bundle in `~/.tempoch/data`, refreshing it once
-on first use when the cache is missing, invalid, or older than 24 hours.
+`tempoch` automatically prefers a cached runtime bundle for fresher UTC-TAI
+history, modern Delta T, and daily IERS EOP while keeping the public API
+unchanged. `TimeContext`, `Time::try_to::<UT1>()`, `Time::to_with`, and the
+normal UTC civil helpers consult a cached bundle in `~/.tempoch/data`,
+refreshing it once on first use when the cache is missing, invalid, or older
+than 24 hours.
 
 Set `TEMPOCH_DATA_DIR` to override the cache location.
 
-For a runnable example that uses the ordinary API under `runtime-data`, run:
+For a runnable example that uses the ordinary API with runtime refresh, run:
 
 ```bash
-cargo run -p tempoch --example 06_runtime_tables --features runtime-data
+cargo run -p tempoch --example 06_runtime_tables
 ```
 
 ```rust,no_run
@@ -229,7 +221,7 @@ The compile-time path still uses checked-in generated tables in `tempoch-core`.
 The dedicated Rust CLI `tempoch-time-data-updater` regenerates those committed
 files from the official UTC-TAI, Delta T, and IERS finals2000A.all sources.
 Its fetch/parse/build pipeline now reuses the same shared support crate that
-powers the optional `runtime-data` feature. To refresh locally:
+powers runtime refresh. To refresh locally:
 
 ```bash
 cargo run -p tempoch-time-data-updater

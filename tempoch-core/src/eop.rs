@@ -9,9 +9,8 @@
 //! boundary between the two sub-ranges is [`EOP_OBSERVED_END_MJD`].
 //!
 //! The baseline series is loaded at compile time from
-//! [`crate::generated::eop_data`]. After
-//! [`crate::update_runtime_time_data`] or [`crate::refresh_runtime_time_data`],
-//! these helpers transparently use the active runtime bundle.
+//! [`crate::generated::eop_data`]. Runtime refresh can replace the active
+//! bundle used by these helpers.
 
 use crate::data::active::{active_time_data, time_data_eop_at};
 use qtty::{Day, Second};

@@ -7,8 +7,8 @@ It fetches authoritative upstream timekeeping data, parses it into the Rust
 crate's internal representation, and rewrites the generated modules under
 [`tempoch-core/src/generated`](/home/valles/workspace/siderust/rust/tempoch/tempoch-core/src/generated).
 The updater is now a thin wrapper over the shared `tempoch-time-data`
-support crate, so compile-time regeneration and the optional `runtime-data`
-feature use the same fetch/parse/build pipeline.
+support crate, so compile-time regeneration and runtime refresh use the same
+fetch/parse/build pipeline.
 
 ## What It Does
 
@@ -44,9 +44,9 @@ That design has a few concrete benefits:
 - CI can verify whether committed generated data is stale with a simple
   reproducible check.
 
-Separately, `tempoch` now also offers opt-in runtime freshness behind the
-`runtime-data` feature. The updater exists to refresh the checked-in,
-network-free defaults that ship with the crate.
+Separately, `tempoch` also offers runtime freshness through its ordinary UTC,
+UT1, and context-backed conversion APIs. The updater exists to refresh the
+checked-in, network-free defaults that ship with the crate.
 
 The updater also records source provenance. It computes SHA-256 hashes for each
 downloaded upstream file and stores them in
@@ -124,9 +124,9 @@ that should be enforced.
 - The tool is a maintenance utility for repository authors, not a runtime
   dependency for downstream `tempoch` users.
 - If you want runtime freshness inside an application instead of regenerating
-  checked-in files, enable the `runtime-data` feature. The ordinary UT1 and
-  UTC civil APIs will then prefer the cached/refreshed bundle automatically,
-  using `TEMPOCH_DATA_DIR` for cache placement.
+  checked-in files, use the ordinary UT1 and UTC civil APIs. They will prefer
+  the cached/refreshed bundle automatically, using `TEMPOCH_DATA_DIR` for
+  cache placement.
 - Network access is required when running the updater because it pulls current
   upstream datasets.
 - If upstream formats change, parsing will fail rather than silently generating

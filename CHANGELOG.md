@@ -18,10 +18,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Optional `serde` support on `tempoch-core` and `tempoch`, including
   tagged wrappers `tempoch::tagged::{TaggedTime, TaggedPeriod}` for wire
   formats that must carry the scale name in-band.
-- `runtime-data` Cargo features on `tempoch-core` and `tempoch`, backed by the
-  new internal `tempoch-time-data` support crate, runtime refresh/update
-  entrypoints, and the `tempoch-time-data-updater` CLI plus scheduled refresh
-  workflow.
+- Runtime refresh/update support, backed by the new internal
+  `tempoch-time-data` support crate, the public refresh/update entrypoints,
+  and the `tempoch-time-data-updater` CLI plus scheduled refresh workflow.
 - Bundled daily IERS Earth Orientation Parameters under `tempoch::eop`,
   `TimeContext::with_builtin_eop()`, and the public
   `EOP_START_MJD` / `EOP_OBSERVED_END_MJD` / `EOP_END_MJD` coverage constants.
@@ -61,7 +60,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   `with_builtin_eop()` prefers the bundled daily DUT1 path in range, and
   pre-1961 UTC civil labels continue through the documented approximate
   extension.
-- `runtime-data` no longer exposes a parallel public API. The normal chrono,
+- Runtime data no longer exposes a parallel public API. The normal chrono,
   Unix, and context-backed conversion entrypoints now consult the lazily
   selected active bundle, while refresh/cache management stays internal.
 - Unix and GPS transport helpers now use typed `qtty::Second`, and

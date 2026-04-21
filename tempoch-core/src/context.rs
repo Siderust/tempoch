@@ -33,9 +33,8 @@ use qtty::{Day, Second};
 ///
 /// The builtin EOP is only consulted inside the captured bundle's coverage;
 /// outside of that range the monthly ΔT path applies unchanged. Construct a
-/// fresh context after calling [`crate::update_runtime_time_data`] (or
-/// [`crate::refresh_runtime_time_data`]) if you want to use the newly active
-/// runtime bundle.
+/// fresh context after refreshing the active bundle if you want to use the
+/// updated runtime data.
 #[derive(Debug, Clone)]
 pub struct TimeContext {
     data: Arc<TimeDataBundle>,

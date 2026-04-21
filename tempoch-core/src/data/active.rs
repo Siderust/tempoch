@@ -23,7 +23,6 @@ use tempoch_time_data::{
 use std::sync::Mutex;
 
 const NANOS_PER_SECOND: Nanoseconds = Nanoseconds::new(1_000_000_000.0);
-#[cfg(any(test, feature = "runtime-data"))]
 const RUNTIME_DATA_MAX_AGE_SECONDS: i64 = 24 * 60 * 60;
 
 #[derive(Clone, Copy)]
@@ -38,7 +37,6 @@ enum UtcTaiRegion {
 
 static COMPILED_TIME_DATA: OnceLock<Arc<TimeDataBundle>> = OnceLock::new();
 static ACTIVE_TIME_DATA: OnceLock<RwLock<Arc<TimeDataBundle>>> = OnceLock::new();
-#[cfg(feature = "runtime-data")]
 static AUTO_RUNTIME_DATA_INIT: OnceLock<()> = OnceLock::new();
 
 #[cfg(test)]
@@ -67,7 +65,6 @@ pub(crate) fn active_time_data() -> Arc<TimeDataBundle> {
         return bundle;
     }
 
-    #[cfg(feature = "runtime-data")]
     auto_activate_runtime_time_data();
 
     active_time_data_slot()
@@ -115,7 +112,6 @@ fn select_time_data(
     }
 }
 
-#[cfg(any(test, feature = "runtime-data"))]
 fn bundle_is_stale(bundle: &TimeDataBundle, now: DateTime<Utc>) -> bool {
     match bundle.provenance().fetched_at() {
         Some(fetched_at) => {
@@ -125,7 +121,6 @@ fn bundle_is_stale(bundle: &TimeDataBundle, now: DateTime<Utc>) -> bool {
     }
 }
 
-#[cfg(any(test, feature = "runtime-data"))]
 fn select_time_data_for_auto_refresh(
     cached: Result<TimeDataBundle, TimeDataError>,
     refresh: impl FnOnce() -> Result<TimeDataBundle, TimeDataError>,
@@ -138,7 +133,6 @@ fn select_time_data_for_auto_refresh(
     }
 }
 
-#[cfg(feature = "runtime-data")]
 fn auto_activate_runtime_time_data() {
     AUTO_RUNTIME_DATA_INIT.get_or_init(|| {
         let Ok(manager) = TimeDataManager::new() else {
