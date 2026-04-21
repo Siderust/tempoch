@@ -46,7 +46,7 @@ pub(crate) use catch_panic;
 
 /// Returns the tempoch-ffi ABI version (major*10000 + minor*100 + patch).
 ///
-/// Current version: 0.4.0 → 400
+/// Current ABI line: 0.4.x -> 400
 #[allow(clippy::erasing_op, clippy::identity_op)]
 #[no_mangle]
 pub extern "C" fn tempoch_ffi_version() -> u32 {
@@ -103,6 +103,7 @@ mod tests {
         assert_eq!(TempochStatus::InvalidScaleId as i32, 5);
         assert_eq!(TempochStatus::InvalidDurationUnit as i32, 6);
         assert_eq!(TempochStatus::InternalPanic as i32, 7);
+        assert_eq!(TempochStatus::Ut1HorizonExceeded as i32, 8);
     }
 
     // ── ScaleId discriminants are stable ──────────────────────────────────

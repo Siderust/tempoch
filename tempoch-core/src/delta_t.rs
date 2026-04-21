@@ -1,67 +1,56 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Vallés Puig, Ramon
 
-//! # ΔT (Delta T) — UT↔TT Correction Layer
+//! ΔT (TT − UT1) model.
 //!
-//! This module implements a piecewise model for **ΔT = TT − UT** combining:
+//! Piecewise model combining:
 //!
-//! * **Pre-1620**: Stephenson & Houlden (1986) quadratic approximations.
-//! * **1620–1992**: Biennial interpolation table (Meeus ch. 9).
-//! * **1992–2025**: Annual observed ΔT values from IERS/USNO (Bulletin A).
-//! * **Post-2025**: Linear extrapolation at the current observed rate
-//!   (~+0.1 s/yr), far more accurate than the Meeus quadratic formula
-//!   which diverges to ~120 s by 2020. The IERS-observed value for 2025
-//!   is ~69.36 s.
+//! * **Pre-948 CE**: Stephenson & Houlden (1986) quadratic with epoch 948.
+//! * **948–1619**: Stephenson & Houlden (1986) quadratic with epoch 1850.
+//! * **1620–1973**: Biennial interpolation table (Meeus ch. 9).
+//! * **1973 onward**: Generated modern data (USNO monthly determinations).
+//! * **Beyond the last published prediction**: Quadratic continuation of the
+//!   last 12 prediction points.
 //!
-//! ## Integration with Time Scales
+//! ## C0 continuity corrections
 //!
-//! The correction is applied **automatically** by the [`UT`](super::UT) time
-//! scale marker.  When you convert from `Time<UT>` to any TT-based scale
-//! (`.to::<JD>()`, `.to::<MJD>()`, etc.), `UT::to_jd_tt` adds ΔT.
-//! The inverse (`UT::from_jd_tt`) uses a three-iteration fixed-point solver.
+//! The three pre-modern sub-models are independent historical approximations
+//! (Stephenson & Houlden 1986; Meeus *Astronomical Algorithms* 2nd ed.) and do
+//! not agree exactly at their boundary epochs.  To avoid non-physical
+//! discontinuities, constant additive offsets are applied to each formula:
 //!
-//! [`Time::from_utc`](super::Time::from_utc) creates a `Time<UT>` internally
-//! and then converts to the target scale, so external callers get the ΔT
-//! correction without calling any function from this module.
+//! | Offset | Value | Matched boundary |
+//! |---|---|---|
+//! | `MEDIEVAL_OFFSET` | +4.979 251 s | medieval formula → `DELTA_T[0]` at 1620 CE |
+//! | `ANCIENT_OFFSET`  | +5.460 454 s | ancient formula → corrected medieval at 948 CE |
 //!
-//! ## Quick Example
-//! ```rust
-//! # use tempoch_core as tempoch;
-//! use tempoch::{UT, JD, Time};
-//!
-//! // UT-based Julian Day -> JD(TT) with ΔT applied
-//! let ut = Time::<UT>::new(2_451_545.0);
-//! let jd_tt = ut.to::<JD>();
-//! println!("JD(TT) = {jd_tt}");
-//!
-//! // Query the raw ΔT value
-//! let dt = ut.delta_t();
-//! println!("ΔT = {dt}");
-//! ```
-//!
-//! ## Scientific References
-//! * Stephenson & Houlden (1986): *Atlas of Historical Eclipse Maps*.
-//! * Morrison & Stephenson (2004): "Historical values of the Earth's clock error".
-//! * IERS Conventions (2020): official ΔT data tables.
-//! * IERS Bulletin A (2025): observed ΔT values.
-//!
-//! ## Valid Time Range
-//! The algorithm is valid from ancient times through approximately 2035, with
-//! typical uncertainties ≤ ±2 s before 1800 CE, ≤ ±0.5 s since 1900, and
-//! ≤ ±0.1 s for 2000–2025 (observed data).
+//! Both corrections are well within the stated accuracy of their respective
+//! sub-models (±15 s for 948–1620; ±hundreds of seconds before 948).
 
-use super::instant::Time;
-use super::scales::UT;
-use super::JulianDate;
-use qtty::{Days, Seconds, Simplify};
+use crate::constats::DAYS_PER_JC;
+use crate::encoding::jd_to_mjd;
+use crate::error::ConversionError;
+use crate::generated::time_data::MODERN_DELTA_T_POINTS;
+use crate::generated::{MODERN_DELTA_T_END_MJD, MODERN_DELTA_T_START_MJD};
+use qtty::{Day, Second};
+use std::sync::OnceLock;
 
-/// Total number of tabulated terms (biennial 1620–1992).
+const JD_EPOCH_948_UT: Day = Day::new(2_067_314.5);
+const JD_EPOCH_1850_UT: Day = Day::new(2_396_758.5);
+const JD_TABLE_START_1620: Day = Day::new(2_312_752.5);
+const BIENNIAL_STEP_D: Day = Day::new(730.5);
+
+// C0 continuity offsets (see module doc).
+// MEDIEVAL_OFFSET = DELTA_T[0] − medieval(JD_TABLE_START_1620) = 124.0 − 119.020750
+const MEDIEVAL_OFFSET: f64 = 4.979_250_475_399_4;
+// ANCIENT_OFFSET = (medieval(JD_EPOCH_948_UT) + MEDIEVAL_OFFSET) − ancient(JD_EPOCH_948_UT)
+//               = 1835.460454 − 1830.0
+const ANCIENT_OFFSET: f64 = 5.460_453_937_909_5;
+
 const TERMS: usize = 187;
 
-/// Biennial ΔT table from 1620 to 1992 (in seconds), compiled by J. Meeus.
 #[rustfmt::skip]
-const DELTA_T: [Seconds; TERMS] = qtty::qtty_vec!(
-    Seconds;
+const DELTA_T: [f64; TERMS] = [
     124.0,115.0,106.0, 98.0, 91.0, 85.0, 79.0, 74.0, 70.0, 65.0,
      62.0, 58.0, 55.0, 53.0, 50.0, 48.0, 46.0, 44.0, 42.0, 40.0,
      37.0, 35.0, 33.0, 31.0, 28.0, 26.0, 24.0, 22.0, 20.0, 18.0,
@@ -81,265 +70,456 @@ const DELTA_T: [Seconds; TERMS] = qtty::qtty_vec!(
      24.3, 25.3, 26.2, 27.3, 28.2, 29.1, 30.0, 30.7, 31.4, 32.2,
      33.1, 34.0, 35.0, 36.5, 38.3, 40.2, 42.2, 44.5, 46.5, 48.5,
      50.5, 52.2, 53.8, 54.9, 55.8, 56.9, 58.3,
-);
+];
 
-// ------------------------------------------------------------------------------------
-// Annual observed ΔT table 1992–2025 (IERS/USNO Bulletin A)
-// ------------------------------------------------------------------------------------
-
-/// Annual ΔT values (seconds) from IERS/USNO observations, 1992.0–2025.0.
-/// Index 0 = year 1992, index 33 = year 2025.
-/// Source: IERS Bulletin A, USNO finals2000A data.
-const OBSERVED_TERMS: usize = 34;
-const OBSERVED_START_YEAR: f64 = 1992.0;
-
-#[rustfmt::skip]
-const OBSERVED_DT: [Seconds; OBSERVED_TERMS] = qtty::qtty_vec!(
-    Seconds;
-    // 1992  1993   1994   1995   1996   1997   1998   1999
-    58.31, 59.12, 59.98, 60.78, 61.63, 62.30, 62.97, 63.47,
-    // 2000  2001   2002   2003   2004   2005   2006   2007
-    63.83, 64.09, 64.30, 64.47, 64.57, 64.69, 64.85, 65.15,
-    // 2008  2009   2010   2011   2012   2013   2014   2015
-    65.46, 65.78, 66.07, 66.32, 66.60, 66.91, 67.28, 67.64,
-    // 2016  2017   2018   2019   2020   2021   2022   2023
-    68.10, 68.59, 68.97, 69.22, 69.36, 69.36, 69.29, 69.18,
-    // 2024  2025
-    69.09, 69.36,
-);
-
-/// The year after the last observed data point. Beyond this we extrapolate.
-const OBSERVED_END_YEAR: f64 = OBSERVED_START_YEAR + OBSERVED_TERMS as f64;
-
-/// Last observed ΔT rate (seconds/year). Computed from the last 5 years of
-/// observed data. The rate has been nearly flat 2019–2025 (~+0.02 s/yr).
-const EXTRAPOLATION_RATE: f64 = 0.02;
-
-// ------------------------------------------------------------------------------------
-// ΔT Approximation Sections by Time Interval
-// ------------------------------------------------------------------------------------
-
-/// **Years < 948 CE**
-/// Quadratic formula from Stephenson & Houlden (1986).
 #[inline]
-fn delta_t_ancient(jd: JulianDate) -> Seconds {
-    const DT_A0_S: Seconds = Seconds::new(1_830.0);
-    const DT_A1_S: Seconds = Seconds::new(-405.0);
-    const DT_A2_S: Seconds = Seconds::new(46.5);
-    const JD_EPOCH_948_UT: JulianDate = JulianDate::new(2_067_314.5);
-    let c = days_ratio(jd - JD_EPOCH_948_UT, JulianDate::JULIAN_CENTURY);
-    DT_A0_S + DT_A1_S * c + DT_A2_S * c * c
+fn delta_t_ancient(jd_ut: Day) -> Second {
+    const DT_A0: f64 = 1_830.0;
+    const DT_A1: f64 = -405.0;
+    const DT_A2: f64 = 46.5;
+    let c = (jd_ut - JD_EPOCH_948_UT) / DAYS_PER_JC;
+    Second::new(DT_A0 + ANCIENT_OFFSET + DT_A1 * c + DT_A2 * c * c)
 }
 
-/// **Years 948–1600 CE**
-/// Second polynomial from Stephenson & Houlden (1986).
 #[inline]
-fn delta_t_medieval(jd: JulianDate) -> Seconds {
-    const JD_EPOCH_1850_UT: JulianDate = JulianDate::new(2_396_758.5);
-    const DT_A2_S: Seconds = Seconds::new(22.5);
-
-    let c = days_ratio(jd - JD_EPOCH_1850_UT, JulianDate::JULIAN_CENTURY);
-    DT_A2_S * c * c
+fn delta_t_medieval(jd_ut: Day) -> Second {
+    const DT_A2: f64 = 22.5;
+    let c = (jd_ut - JD_EPOCH_1850_UT) / DAYS_PER_JC;
+    Second::new(DT_A2 * c * c + MEDIEVAL_OFFSET)
 }
 
-/// **Years 1600–1992**
-/// Bicubic interpolation from the biennial `DELTA_T` table.
 #[inline]
-fn delta_t_table(jd: JulianDate) -> Seconds {
-    const JD_TABLE_START_1620: JulianDate = JulianDate::new(2_312_752.5);
-    const BIENNIAL_STEP_D: Days = Days::new(730.5);
-
-    let mut i = days_ratio(jd - JD_TABLE_START_1620, BIENNIAL_STEP_D) as usize;
+fn delta_t_table(jd_ut: Day) -> Second {
+    let mut i = ((jd_ut - JD_TABLE_START_1620) / BIENNIAL_STEP_D) as usize;
     if i > TERMS - 3 {
         i = TERMS - 3;
     }
-    let a: Seconds = DELTA_T[i + 1] - DELTA_T[i];
-    let b: Seconds = DELTA_T[i + 2] - DELTA_T[i + 1];
-    let c: Seconds = a - b;
-    let n = days_ratio(
-        jd - (JD_TABLE_START_1620 + BIENNIAL_STEP_D * i as f64),
-        BIENNIAL_STEP_D,
-    );
-    DELTA_T[i + 1] + n / 2.0 * (a + b + n * c)
+    // Three-point Lagrange interpolation anchored at DELTA_T[i]:
+    //
+    //   a = Δy_i     = DELTA_T[i+1] − DELTA_T[i]    (first forward difference)
+    //   b = Δy_{i+1} = DELTA_T[i+2] − DELTA_T[i+1]  (first forward difference at i+1)
+    //   c = Δ²y_i    = b − a                          (second difference)
+    //
+    //   P(n) = DELTA_T[i] + n·a + n(n−1)/2 · c
+    //
+    // n ∈ [0, 1) is the fractional position within the interval starting at
+    // knot i. Boundary invariants: P(0) = DELTA_T[i], P(1) = DELTA_T[i+1].
+    // When i is clamped to TERMS−3, n may exceed 1, giving a smooth quadratic
+    // extension through the last two knots.
+    let a = DELTA_T[i + 1] - DELTA_T[i];
+    let b = DELTA_T[i + 2] - DELTA_T[i + 1];
+    let c = b - a; // second difference (sign intentional: b−a, not a−b)
+    let step_start = JD_TABLE_START_1620 + BIENNIAL_STEP_D * i as f64;
+    let n = (jd_ut - step_start) / BIENNIAL_STEP_D;
+    Second::new(DELTA_T[i] + n * a + n * (n - 1.0) * c / 2.0)
 }
 
-/// **Years 1992–2026**
-/// Linear interpolation from annual IERS/USNO observed ΔT values.
 #[inline]
-fn delta_t_observed(jd: JulianDate) -> Seconds {
-    // Convert JD to fractional year
-    let year = 2000.0 + (jd - JulianDate::J2000).value() / 365.25;
-    let idx_f = year - OBSERVED_START_YEAR;
-    let idx = idx_f as usize;
-
-    if idx + 1 >= OBSERVED_TERMS {
-        // At the very end of the table, return the last value
-        return OBSERVED_DT[OBSERVED_TERMS - 1];
-    }
-
-    // Linear interpolation between annual values
-    let frac = idx_f - idx as f64;
-    OBSERVED_DT[idx] + frac * (OBSERVED_DT[idx + 1] - OBSERVED_DT[idx])
+fn modern_delta_t_point(index: usize) -> (Day, Second) {
+    let (mjd, dt) = MODERN_DELTA_T_POINTS[index];
+    (Day::new(mjd), Second::new(dt))
 }
 
-/// **Years > 2026**
-/// Linear extrapolation from the last observed value at the current rate.
+#[inline]
+fn interpolate_modern_delta_t(mjd: Day) -> Option<Second> {
+    if !(MODERN_DELTA_T_START_MJD..=MODERN_DELTA_T_END_MJD).contains(&mjd) {
+        return None;
+    }
+    let mut lo = 0usize;
+    let mut hi = MODERN_DELTA_T_POINTS.len() - 1;
+    while lo + 1 < hi {
+        let mid = lo + (hi - lo) / 2;
+        if modern_delta_t_point(mid).0 <= mjd {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    let (mjd0, dt0) = modern_delta_t_point(lo);
+    let (mjd1, dt1) = modern_delta_t_point(hi);
+    // Linear interpolation: dt0 + (mjd − mjd0) / (mjd1 − mjd0) * (dt1 − dt0)
+    // Days / Days = f64 (ratio), Second * f64 = Second.
+    let frac = (mjd - mjd0) / (mjd1 - mjd0);
+    Some(dt0 + (dt1 - dt0) * frac)
+}
+
+#[inline]
+pub(crate) fn interpolate_modern_delta_t_points(points: &[(f64, f64)], mjd: Day) -> Option<Second> {
+    if points.is_empty() {
+        return None;
+    }
+    let start = Day::new(points[0].0);
+    let end = Day::new(points[points.len() - 1].0);
+    if !(start..=end).contains(&mjd) {
+        return None;
+    }
+    let mut lo = 0usize;
+    let mut hi = points.len() - 1;
+    while lo + 1 < hi {
+        let mid = lo + (hi - lo) / 2;
+        if Day::new(points[mid].0) <= mjd {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    let (mjd0, dt0) = points[lo];
+    let (mjd1, dt1) = points[hi];
+    let mjd0 = Day::new(mjd0);
+    let mjd1 = Day::new(mjd1);
+    let frac = (mjd - mjd0) / (mjd1 - mjd0);
+    Some(Second::new(dt0) + (Second::new(dt1) - Second::new(dt0)) * frac)
+}
+
+#[inline]
+fn delta_t_modern_series(jd_ut: Day) -> Second {
+    // Source: USNO monthly determinations (MODERN_DELTA_T_POINTS).
+    // Points up to MODERN_DELTA_T_OBSERVED_END_MJD are confirmed observations;
+    // later points are C0-adjusted USNO predictions (see tempoch-time-data-updater).
+    let mjd = jd_to_mjd(jd_ut);
+    interpolate_modern_delta_t(mjd).expect("modern Delta T interpolation requires in-range MJD")
+}
+
+const DELTA_T_EXTRAPOLATION_TAIL_POINTS: usize = 12;
+// Coefficients: (a: constant term in seconds, b: s/day, c: s/day², origin: MJD Day).
+static TAIL_FIT: OnceLock<(Second, f64, f64, Day)> = OnceLock::new();
+
+fn compute_tail_fit_coefficients() -> (Second, f64, f64, Day) {
+    let tail_len = MODERN_DELTA_T_POINTS
+        .len()
+        .clamp(3, DELTA_T_EXTRAPOLATION_TAIL_POINTS);
+    let tail = &MODERN_DELTA_T_POINTS[MODERN_DELTA_T_POINTS.len() - tail_len..];
+    let origin = Day::new(tail[tail.len() - 1].0);
+
+    let (mut s0, mut s1, mut s2, mut s3, mut s4) = (0.0_f64, 0.0, 0.0, 0.0, 0.0);
+    let (mut t0, mut t1, mut t2) = (0.0_f64, 0.0, 0.0);
+    for &(sample_mjd, delta_t) in tail {
+        // x: number of days from origin (Day / Day = f64).
+        let x = (Day::new(sample_mjd) - origin) / Day::new(1.0);
+        let x2 = x * x;
+        s0 += 1.0;
+        s1 += x;
+        s2 += x2;
+        s3 += x2 * x;
+        s4 += x2 * x2;
+        t0 += delta_t;
+        t1 += x * delta_t;
+        t2 += x2 * delta_t;
+    }
+    let mut system = [[s0, s1, s2, t0], [s1, s2, s3, t1], [s2, s3, s4, t2]];
+    for pivot in 0..3 {
+        let mut pivot_row = pivot;
+        for row in (pivot + 1)..3 {
+            if system[row][pivot].abs() > system[pivot_row][pivot].abs() {
+                pivot_row = row;
+            }
+        }
+        if pivot_row != pivot {
+            system.swap(pivot, pivot_row);
+        }
+        let pivot_value = system[pivot][pivot];
+        for value in system[pivot].iter_mut().skip(pivot) {
+            *value /= pivot_value;
+        }
+        let pivot_row_values = system[pivot];
+        for (row, row_values) in system.iter_mut().enumerate() {
+            if row == pivot {
+                continue;
+            }
+            let factor = row_values[pivot];
+            for (column, value) in row_values.iter_mut().enumerate().skip(pivot) {
+                *value -= factor * pivot_row_values[column];
+            }
+        }
+    }
+    (
+        Second::new(system[0][3]),
+        system[1][3],
+        system[2][3],
+        origin,
+    )
+}
+
+fn quadratic_tail_fit_delta_t_seconds(mjd: Day) -> Second {
+    let &(a, b, c, origin) = TAIL_FIT.get_or_init(compute_tail_fit_coefficients);
+    // x: number of days from origin (Day / Day = f64).
+    let x = (mjd - origin) / Day::new(1.0);
+    a + Second::new(b * x + c * x * x)
+}
+
+#[inline]
+fn delta_t_extrapolated(jd_ut: Day) -> Second {
+    let mjd = jd_to_mjd(jd_ut);
+    quadratic_tail_fit_delta_t_seconds(mjd)
+}
+
+/// ΔT = TT − UT1, in seconds, for a Julian Day on the UT1 axis.
 ///
-/// The observed ΔT trend 2019–2025 is nearly flat (~+0.02 s/yr), which is
-/// far more accurate than the Meeus quadratic that predicted ~121 s for 2020
-/// vs the observed ~69.36 s.
+/// Returns `Err(ConversionError::Ut1HorizonExceeded)` for any date beyond
+/// [`DELTA_T_PREDICTION_HORIZON_MJD`], consistent with the behaviour of
+/// [`Time::to_scale_with::<UT1>`] scale conversions.
+///
+/// For dates that require an unconstrained extrapolation beyond the horizon,
+/// use [`delta_t_seconds_extrapolated`] instead — but note that those values
+/// are scientifically unsupported.
+///
+/// Piecewise dispatch within the supported range:
+/// * **Before 948 CE** — Stephenson & Houlden (1986) quadratic with epoch 948.
+/// * **948 CE – 1619** — Stephenson & Houlden (1986) quadratic with epoch 1850
+///   (`22.5 c²`). Extends to the start of the biennial table rather than
+///   terminating at 1461, since the biennial table begins at 1620.
+/// * **1620 – modern table end** — biennial interpolation (Meeus ch. 9) then
+///   USNO monthly data.
 #[inline]
-fn delta_t_extrapolated(jd: JulianDate) -> Seconds {
-    let year = 2000.0 + (jd - JulianDate::J2000).value() / 365.25;
-    let dt_last = OBSERVED_DT[OBSERVED_TERMS - 1];
-    let years_past = year - OBSERVED_END_YEAR;
-    dt_last + Seconds::new(EXTRAPOLATION_RATE * years_past)
+pub fn delta_t_seconds(jd_ut: Day) -> Result<Second, ConversionError> {
+    let mjd = jd_to_mjd(jd_ut);
+    if mjd > DELTA_T_PREDICTION_HORIZON_MJD {
+        return Err(ConversionError::Ut1HorizonExceeded);
+    }
+    Ok(delta_t_seconds_unconstrained(jd_ut))
+}
+
+/// ΔT = TT − UT1, in seconds, with quadratic tail-fit extrapolation beyond
+/// the last published prediction point.
+///
+/// Unlike [`delta_t_seconds`], this function never returns an error: for
+/// dates beyond [`DELTA_T_PREDICTION_HORIZON_MJD`] it applies a quadratic
+/// continuation fit to the last 12 compiled prediction points.
+///
+/// # ⚠ Accuracy warning
+///
+/// The extrapolated values are **not from any official source**. Accuracy
+/// degrades rapidly past the compiled horizon and is not bounded. Do **not**
+/// use these values where scientific validity is required.
+#[inline]
+pub fn delta_t_seconds_extrapolated(jd_ut: Day) -> Second {
+    delta_t_seconds_unconstrained(jd_ut)
 }
 
 #[inline]
-fn days_ratio(num: Days, den: Days) -> f64 {
-    (num / den).simplify().value()
+pub(crate) fn delta_t_seconds_from_modern_points(
+    jd_ut: Day,
+    modern_points: &[(f64, f64)],
+) -> Result<Second, ConversionError> {
+    if modern_points.is_empty() {
+        return Err(ConversionError::Ut1HorizonExceeded);
+    }
+    let mjd = jd_to_mjd(jd_ut);
+    let modern_start = Day::new(modern_points[0].0);
+    let modern_end = Day::new(modern_points[modern_points.len() - 1].0);
+    if mjd > modern_end {
+        return Err(ConversionError::Ut1HorizonExceeded);
+    }
+    Ok(if jd_ut < JD_EPOCH_948_UT {
+        delta_t_ancient(jd_ut)
+    } else if jd_ut < JD_TABLE_START_1620 {
+        delta_t_medieval(jd_ut)
+    } else if mjd < modern_start {
+        delta_t_table(jd_ut)
+    } else {
+        interpolate_modern_delta_t_points(modern_points, mjd)
+            .expect("runtime modern Delta T interpolation requires in-range MJD")
+    })
 }
 
-/// JD boundary: start of year 1992.0
-const JD_1992: JulianDate = JulianDate::new(2_448_622.5);
-
-/// JD boundary: start of year 2026.0
-const JD_2026: JulianDate = JulianDate::new(2_461_041.5);
-
-/// Returns **ΔT** in seconds for a Julian Day on the **UT** axis.
+/// Unconstrained dispatch — shared by the fallible and extrapolated APIs.
 #[inline]
-pub(crate) fn delta_t_seconds_from_ut(jd_ut: JulianDate) -> Seconds {
-    match jd_ut {
-        jd if jd < JulianDate::new(2_067_314.5) => delta_t_ancient(jd),
-        jd if jd < JulianDate::new(2_305_447.5) => delta_t_medieval(jd),
-        jd if jd < JD_1992 => delta_t_table(jd),
-        jd if jd < JD_2026 => delta_t_observed(jd),
-        _ => delta_t_extrapolated(jd_ut),
+fn delta_t_seconds_unconstrained(jd_ut: Day) -> Second {
+    let mjd = jd_to_mjd(jd_ut);
+    if jd_ut < JD_EPOCH_948_UT {
+        delta_t_ancient(jd_ut)
+    } else if jd_ut < JD_TABLE_START_1620 {
+        // Medieval model covers 948–1619; JD_TABLE_START_1620 is the first
+        // valid biennial-table entry, so backward-extrapolating the table
+        // into this range is wrong.
+        delta_t_medieval(jd_ut)
+    } else if mjd < MODERN_DELTA_T_START_MJD {
+        delta_t_table(jd_ut)
+    } else if mjd <= MODERN_DELTA_T_END_MJD {
+        delta_t_modern_series(jd_ut)
+    } else {
+        delta_t_extrapolated(jd_ut)
     }
 }
 
-// ── Time<UT> convenience method ───────────────────────────────────────────
-
-impl Time<UT> {
-    /// Returns **ΔT = TT − UT** in seconds for this UT epoch.
-    ///
-    /// This is a convenience accessor; the same correction is applied
-    /// automatically when converting to any TT-based scale (`.to::<JD>()`).
-    #[inline]
-    pub fn delta_t(&self) -> Seconds {
-        delta_t_seconds_from_ut(JulianDate::from_days(self.quantity()))
-    }
-}
+/// MJD of the last compiled ΔT prediction point.
+pub const DELTA_T_PREDICTION_HORIZON_MJD: Day = MODERN_DELTA_T_END_MJD;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use qtty::{Day, Days};
 
-    #[test]
-    fn delta_t_ancient_sample() {
-        let dt = delta_t_seconds_from_ut(JulianDate::new(2_000_000.0));
-        assert!((dt - Seconds::new(2_734.342_214_024_879_5)).abs() < Seconds::new(1e-6));
+    /// Convert a JD float to a `Day` for passing to `delta_t_seconds`.
+    fn jd(jd: f64) -> Day {
+        Day::new(jd)
     }
 
+    /// `delta_t_table` anchor at 1620 CE: P(0) must equal DELTA_T[0] = 124.0 s.
     #[test]
-    fn delta_t_medieval_sample() {
-        let dt = delta_t_seconds_from_ut(JulianDate::new(2_100_000.0));
-        assert!((dt - Seconds::new(1_485.280_240_204_242_3)).abs() < Seconds::new(1e-6));
-    }
-
-    #[test]
-    fn delta_t_table_sample() {
-        let dt = delta_t_seconds_from_ut(JulianDate::new(2_312_752.5));
-        assert!((dt - Seconds::new(115.0)).abs() < Seconds::new(1e-6));
-    }
-
-    #[test]
-    fn delta_t_table_upper_clip() {
-        let dt = delta_t_table(JulianDate::new(2_449_356.0));
-        assert!((dt - Seconds::new(59.3)).abs() < Seconds::new(1e-6));
-    }
-
-    #[test]
-    fn delta_t_2000() {
-        // IERS observed value: 63.83 s
-        let dt = delta_t_seconds_from_ut(JulianDate::J2000);
+    fn delta_t_table_knot_0_is_124() {
+        let dt = delta_t_seconds_extrapolated(JD_TABLE_START_1620);
         assert!(
-            (dt - Seconds::new(63.83)).abs() < Seconds::new(0.1),
-            "ΔT at J2000 = {dt}, expected 63.83 s"
+            (dt.value() - 124.0).abs() < 1e-9,
+            "ΔT at 1620 CE (knot 0) expected 124.0 s, got {:.6} s",
+            dt.value()
         );
     }
 
+    /// `delta_t_table` anchor at 1622 CE: P(0) at the second knot must equal DELTA_T[1] = 115.0 s.
     #[test]
-    fn delta_t_2010() {
-        // IERS observed value for 2010.0: ~66.07 s
-        // JD 2455197.5 ≈ 2010-01-01
-        let dt = delta_t_seconds_from_ut(JulianDate::new(2_455_197.5));
+    fn delta_t_table_knot_1_is_115() {
+        let dt = delta_t_seconds_extrapolated(JD_TABLE_START_1620 + BIENNIAL_STEP_D);
         assert!(
-            (dt - Seconds::new(66.07)).abs() < Seconds::new(0.5),
-            "ΔT at 2010. = {dt}, expected ~66.07 s"
+            (dt.value() - 115.0).abs() < 1e-9,
+            "ΔT at 1622 CE (knot 1) expected 115.0 s, got {:.6} s",
+            dt.value()
         );
     }
 
+    /// `delta_t_table` anchor at 1624 CE: P(0) at the third knot must equal DELTA_T[2] = 106.0 s.
     #[test]
-    fn delta_t_2020() {
-        // IERS observed value for 2020.0: ~69.36 s
-        // The old Meeus extrapolation gave ~121 s here — way off.
-        // JD for 2020-01-01 ≈ 2458849.5
-        let dt = delta_t_seconds_from_ut(JulianDate::new(2_458_849.5));
+    fn delta_t_table_knot_2_is_106() {
+        let dt = delta_t_seconds_extrapolated(JD_TABLE_START_1620 + BIENNIAL_STEP_D * 2.0);
         assert!(
-            (dt - Seconds::new(69.36)).abs() < Seconds::new(0.5),
-            "ΔT at 2020.0 = {dt}, expected ~69.36 s"
+            (dt.value() - 106.0).abs() < 1e-9,
+            "ΔT at 1624 CE (knot 2) expected 106.0 s, got {:.6} s",
+            dt.value()
         );
     }
 
+    /// Midpoint of the first biennial interval (n = 0.5): pure quadratic interpolation
+    /// between DELTA_T[0]=124, DELTA_T[1]=115, DELTA_T[2]=106 gives 119.5 s.
+    ///
+    /// Calculation: a=-9, b=-9, c=0 → P(0.5) = 124 + 0.5·(−9) = 119.5.
     #[test]
-    fn delta_t_2025() {
-        // IERS observed value for 2025.0: ~69.36 s
-        // JD for 2025-01-01 ≈ 2460676.5
-        let dt = delta_t_seconds_from_ut(JulianDate::new(2_460_676.5));
+    fn delta_t_table_midpoint_interval_0_is_119_5() {
+        let dt = delta_t_seconds_extrapolated(JD_TABLE_START_1620 + BIENNIAL_STEP_D * 0.5);
         assert!(
-            (dt - Seconds::new(69.36)).abs() < Seconds::new(0.5),
-            "ΔT at 2025.0 = {dt}, expected ~69.36 s"
+            (dt.value() - 119.5).abs() < 1e-9,
+            "ΔT at midpoint of [1620,1622] expected 119.5 s, got {:.6} s",
+            dt.value()
         );
     }
 
+    /// Continuity at every biennial knot: the value approaching from the left
+    /// (n → 1⁻) must equal the value at n = 0 from the right.
     #[test]
-    fn delta_t_extrapolated_near_future() {
-        // Beyond 2026, linear extrapolation at ~0.02 s/yr
-        // At 2030.0 (4 yr past end), ΔT ≈ 69.36 + 0.02*4 ≈ 69.44
-        let jd_2030 = JulianDate::new(2_462_502.5);
-        let dt = delta_t_seconds_from_ut(jd_2030);
+    fn delta_t_table_boundary_continuity() {
+        // Test the first 10 internal knot boundaries.
+        for k in 1..10usize {
+            let jd_knot = JD_TABLE_START_1620 + BIENNIAL_STEP_D * k as f64;
+            let left = delta_t_table(jd_knot - Day::new(1e-6)).value();
+            let right = delta_t_table(jd_knot + Day::new(1e-6)).value();
+            let exact = delta_t_table(jd_knot).value();
+            assert!(
+                (left - exact).abs() < 1e-3,
+                "Discontinuity at knot {k}: left={left:.6}, exact={exact:.6}"
+            );
+            assert!(
+                (right - exact).abs() < 1e-3,
+                "Discontinuity at knot {k}: right={right:.6}, exact={exact:.6}"
+            );
+        }
+    }
+
+    /// Monotone early segment: ΔT should decrease from 1620 to 1900 as the
+    /// table values go from 124 s down to ≈ 2.6 s.
+    #[test]
+    fn delta_t_table_decreases_1620_to_1900() {
+        let dt_1620 = delta_t_seconds_extrapolated(JD_TABLE_START_1620).value();
+        let jd_1900 = 2_415_020.5; // 1900 Jan 0.5 (standard epoch)
+        let dt_1900 = delta_t_seconds_extrapolated(jd(jd_1900)).value();
         assert!(
-            (dt - Seconds::new(69.44)).abs() < Seconds::new(1.0),
-            "ΔT at 2030. = {dt}, expected ~69.44 s"
+            dt_1620 > dt_1900,
+            "ΔT should decrease 1620→1900, got {dt_1620:.2} > {dt_1900:.2}"
         );
-        // Must NOT be the old ~135+ s value
-        assert!(dt < Seconds::new(75.0), "ΔT at 2030 is too large: {dt}");
     }
 
+    /// C0 continuity at the 1620 CE regime boundary: medieval→table.
+    ///
+    /// Immediately before 1620 the medieval formula (with offset) returns the
+    /// same value as `DELTA_T[0] = 124.0 s` immediately after. The allowed
+    /// tolerance is 1 ms (float arithmetic near the boundary).
     #[test]
-    fn ut_scale_applies_delta_t() {
-        let ut = Time::<UT>::new(2_451_545.0);
-        let jd_tt = ut.to::<crate::JD>();
-        let offset = jd_tt - JulianDate::new(2_451_545.0);
-        let expected = delta_t_seconds_from_ut(JulianDate::new(2_451_545.0)).to::<Day>();
-        assert!((offset - expected).abs() < Days::new(1e-9));
+    fn regime_boundary_1620_is_continuous() {
+        let eps = Day::new(1e-4); // ~8.6 seconds before/after
+        let before = delta_t_seconds_extrapolated(JD_TABLE_START_1620 - eps).value();
+        let after = delta_t_seconds_extrapolated(JD_TABLE_START_1620 + eps).value();
+        assert!(
+            (before - after).abs() < 1e-3,
+            "ΔT regime gap at 1620 CE: {before:.6} → {after:.6} s (gap {:.6} s)",
+            (before - after).abs()
+        );
     }
 
+    /// C0 continuity at the 948 CE regime boundary: ancient→medieval.
+    ///
+    /// Both sub-models with their continuity offsets must agree to within 1 ms
+    /// when evaluated just before and just after 948 CE.
     #[test]
-    fn ut_scale_roundtrip() {
-        let jd_tt = JulianDate::new(2_451_545.0);
-        let ut: Time<UT> = jd_tt.to::<UT>();
-        let back: JulianDate = ut.to::<crate::JD>();
-        assert!((back - jd_tt).abs() < Days::new(1e-12));
+    fn regime_boundary_948_is_continuous() {
+        let eps = Day::new(1e-4);
+        let before = delta_t_seconds_extrapolated(JD_EPOCH_948_UT - eps).value();
+        let after = delta_t_seconds_extrapolated(JD_EPOCH_948_UT + eps).value();
+        assert!(
+            (before - after).abs() < 1e-3,
+            "ΔT regime gap at 948 CE: {before:.6} → {after:.6} s (gap {:.6} s)",
+            (before - after).abs()
+        );
     }
 
+    /// `delta_t_seconds` returns `Err(Ut1HorizonExceeded)` for dates beyond the
+    /// compiled prediction horizon, and `Ok` for dates within it.
     #[test]
-    fn delta_t_convenience_method() {
-        let ut = Time::<UT>::new(2_451_545.0);
-        let dt = ut.delta_t();
-        assert!((dt - Seconds::new(63.83)).abs() < Seconds::new(0.5));
+    fn delta_t_seconds_horizon_guard() {
+        use crate::error::ConversionError;
+        // JD 2_465_000 ≈ 2026 is well beyond any reasonable compiled horizon.
+        let past = delta_t_seconds(Day::new(2_465_000.0));
+        assert!(
+            matches!(past, Err(ConversionError::Ut1HorizonExceeded)),
+            "expected Ut1HorizonExceeded past horizon, got {past:?}"
+        );
+        // J2000 (2000-01-01) must be well within the supported range.
+        let present = delta_t_seconds(Day::new(2_451_545.0));
+        assert!(
+            present.is_ok(),
+            "expected Ok within horizon, got {present:?}"
+        );
+    }
+
+    /// C0 continuity at the 1973 biennial→modern stitch.
+    ///
+    /// The biennial table ends near 1973 (MODERN_DELTA_T_START_MJD); the modern
+    /// USNO series begins there.  The two must agree to within 0.01 s at that
+    /// boundary.
+    #[test]
+    fn regime_boundary_1973_biennial_to_modern_is_continuous() {
+        use crate::constats::JD_MINUS_MJD;
+        use crate::generated::MODERN_DELTA_T_START_MJD;
+        // Convert MJD start to JD.
+        let jd_start = MODERN_DELTA_T_START_MJD + JD_MINUS_MJD;
+        let eps = Day::new(1e-4); // ~8.6 s
+        let before = delta_t_seconds_extrapolated(jd_start - eps).value();
+        let after = delta_t_seconds_extrapolated(jd_start + eps).value();
+        assert!(
+            (before - after).abs() < 0.01,
+            "ΔT gap at 1973 biennial→modern stitch: {before:.6} → {after:.6} s (gap {:.6} s)",
+            (before - after).abs()
+        );
+    }
+
+    /// `MODERN_DELTA_T_OBSERVED_END_MJD` must lie strictly inside the compiled
+    /// point array (so delta_t lookup works at that boundary).
+    #[test]
+    fn modern_delta_t_observed_end_is_in_range() {
+        use crate::generated::MODERN_DELTA_T_OBSERVED_END_MJD;
+        assert!(
+            MODERN_DELTA_T_OBSERVED_END_MJD > MODERN_DELTA_T_START_MJD,
+            "observed end must be after series start"
+        );
+        assert!(
+            MODERN_DELTA_T_OBSERVED_END_MJD < MODERN_DELTA_T_END_MJD,
+            "observed end must be before prediction horizon"
+        );
     }
 }

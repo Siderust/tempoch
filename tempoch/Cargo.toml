@@ -24,4 +24,13 @@ tempoch-core = { path = "../tempoch-core", version = "0.4.1" }
 [dev-dependencies]
 chrono = "0.4.44"
 qtty = "0.5.0"
-serde_json = "1.0"
+serde_json = "1"
+
+[[example]]
+name = "05_serde"
+path = "examples/05_serde.rs"
+required-features = ["serde"]
+
+[[example]]
+name = "06_runtime_tables"
+path = "examples/06_runtime_tables.rs"

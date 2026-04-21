@@ -32,4 +32,7 @@ pub enum TempochStatus {
     /// discarded.  Domain errors (`UtcConversionFailed`, `InvalidPeriod`, etc.)
     /// are never reported via this variant.
     InternalPanic = 7,
+    /// A UT1 / ΔT conversion was requested for a date outside the compiled
+    /// ΔT data horizon.  The output value has not been written.
+    Ut1HorizonExceeded = 8,
 }

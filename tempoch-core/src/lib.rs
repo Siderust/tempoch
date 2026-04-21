@@ -1,81 +1,80 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Vallés Puig, Ramon
 
-//! Time Module
+//! Typed astronomical time primitives.
 //!
-//! This module provides time-related types and abstractions for astronomical calculations.
+//! The central type is [`Time<S>`], where `S` is a [`Scale`] marker
+//! (`TT`, `TAI`, `UTC`, `UT1`, `TDB`, `TCG`, `TCB`).
 //!
-//! # Core types
+//! The old format-generic storage model has been replaced with explicit
+//! constructors and accessors:
 //!
-//! - [`Time<S>`] — generic instant parameterised by a [`TimeScale`] marker.
-//! - [`TimeScale`] — trait that defines a time scale (epoch offset + conversions).
-//! - [`JulianDate`] — type alias for `Time<JD>`.
-//! - [`JulianEphemerisDay`] — type alias for `Time<JDE>`.
-//! - [`ModifiedJulianDate`] — type alias for `Time<MJD>`.
-//! - [`Period<S>`] — a time interval parameterised by a [`TimeScale`] marker.
-//! - [`Interval<T>`] — a generic interval over any [`TimeInstant`].
-//! - [`TimeInstant`] — trait for points in time usable with [`Interval`].
+//! - built-in coordinate scales expose J2000-second, JD, and MJD
+//!   constructors/accessors
+//! - `UTC` exposes both raw instant-axis helpers and civil/transport APIs
+//!   (`chrono`, POSIX)
+//! - `TAI` exposes GPS transport helpers
+//! - unified conversion targets are available through `time.to::<Target>()`,
+//!   `time.try_to::<Target>()`, and `time.to_with::<Target>(&ctx)`
 //!
-//! # Time scales
-//!
-//! The following markers implement [`TimeScale`]:
-//!
-//! | Marker | Scale |
-//! |--------|-------|
-//! | [`JD`] | Julian Date |
-//! | [`JDE`] | Julian Ephemeris Day |
-//! | [`MJD`] | Modified Julian Date |
-//! | [`TDB`] | Barycentric Dynamical Time |
-//! | [`TT`] | Terrestrial Time |
-//! | [`TAI`] | International Atomic Time |
-//! | [`TCG`] | Geocentric Coordinate Time |
-//! | [`TCB`] | Barycentric Coordinate Time |
-//! | [`GPS`] | GPS Time |
-//! | [`UnixTime`] | Unix / POSIX time |
-//! | [`UT`] | Universal Time (Earth rotation) |
-//!
-//! # ΔT (Delta T)
-//!
-//! The difference **ΔT = TT − UT** is applied automatically by the
-//! [`UT`] time scale.  Use `Time::<UT>::new(jd_ut)` for UT-based values,
-//! or construct any scale via `from_utc()` which routes through `UT` internally.
-//! The raw ΔT value (in seconds) is available via [`Time::<UT>::delta_t()`](Time::delta_t).
+//! See [`constats`] for typed epoch and offset constants.
 
+mod civil;
+pub mod constats;
+mod context;
+mod data;
 mod delta_t;
-pub(crate) mod instant;
-mod julian_date_ext;
-mod period;
-mod scales;
+pub(crate) mod encoding;
+pub mod eop;
+pub mod error;
+pub(crate) mod generated;
+mod interval;
+pub mod scalar;
+mod scale;
+mod sealed;
+mod target;
+mod time;
 
-// ── Re-exports ────────────────────────────────────────────────────────────
+#[cfg(feature = "serde")]
+#[path = "serde.rs"]
+mod serde_impl;
+#[cfg(feature = "serde")]
+pub mod tagged;
 
-pub use instant::{NonFiniteTimeError, Time, TimeInstant, TimeScale};
-pub use period::{
-    complement_within, intersect_periods, normalize_periods, validate_period_list, ConversionError,
-    Interval, InvalidIntervalError, Period, PeriodListError, UtcPeriod,
+pub use constats::UTC_DEFINED_FROM_MJD;
+pub use context::TimeContext;
+pub use data::active::{refresh_runtime_time_data, update_runtime_time_data};
+pub use delta_t::{delta_t_seconds, delta_t_seconds_extrapolated, DELTA_T_PREDICTION_HORIZON_MJD};
+pub use error::{ConversionError, TimeDataError};
+pub use generated::{
+    EOP_END_MJD, EOP_OBSERVED_END_MJD, EOP_START_MJD, MODERN_DELTA_T_OBSERVED_END_MJD,
 };
-pub use scales::{tai_minus_utc, UnixTime, GPS, JD, JDE, MJD, TAI, TCB, TCG, TDB, TT, UT};
+pub use interval::{
+    complement_within, intersect_periods, normalize_periods, validate_period_list, Interval,
+    InvalidIntervalError, InvalidPeriodError, Period, PeriodListError,
+};
+pub use scalar::{
+    scalar_add_days, scalar_difference_in_days, time_tt_from_scalar, time_tt_to_scalar, ScaleKind,
+    GPS_EPOCH_JD_TAI,
+};
+pub use scale::{ContinuousScale, CoordinateScale, Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
+pub use target::{
+    ContextConversionTarget, ConversionTarget, GpsSecs, InfallibleConversionTarget, J2000s,
+    UnixSecs, JD, MJD,
+};
+pub use time::Time;
 
-// ── Backward-compatible type aliases ──────────────────────────────────────
-
-/// Julian Date — continuous count of days since the Julian Period.
-///
-/// This is a type alias for [`Time<JD>`].  All historical call-sites
-/// (`JulianDate::new(...)`, `JulianDate::J2000`, `.julian_centuries()`, …)
-/// continue to work without modification.
-pub type JulianDate = Time<JD>;
-
-/// Julian Ephemeris Day — dynamical Julian day used by many ephemeris formulas.
-///
-/// This is a type alias for [`Time<JDE>`].
-pub type JulianEphemerisDay = Time<JDE>;
-
-/// Modified Julian Date — `JD − 2 400 000.5`.
-///
-/// This is a type alias for [`Time<MJD>`].
-pub type ModifiedJulianDate = Time<MJD>;
-
-/// Universal Time — Earth-rotation civil time scale.
-///
-/// This is a type alias for [`Time<UT>`].
-pub type UniversalTime = Time<UT>;
+#[cfg(test)]
+mod size_tests {
+    use super::*;
+    #[test]
+    fn time_uses_compensated_pair_storage() {
+        assert_eq!(core::mem::size_of::<Time<TT>>(), 16);
+        assert_eq!(core::mem::size_of::<Time<TAI>>(), 16);
+        assert_eq!(core::mem::size_of::<Time<TDB>>(), 16);
+        assert_eq!(core::mem::size_of::<Time<TCG>>(), 16);
+        assert_eq!(core::mem::size_of::<Time<TCB>>(), 16);
+        assert_eq!(core::mem::size_of::<Time<UT1>>(), 16);
+        assert_eq!(core::mem::size_of::<Time<UTC>>(), 16);
+    }
+}

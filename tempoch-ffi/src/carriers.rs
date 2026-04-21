@@ -5,11 +5,17 @@
 //!
 //! The FFI exposes scalar time values as plain `double`s plus an explicit
 //! [`TempochScaleId`] when generic dispatch is needed. This keeps the C ABI
-//! small and regular while preserving the Rust crate's scale semantics in the
-//! implementation.
+//! small and regular. All conversion and arithmetic policy is centralized in
+//! `tempoch::scalar` — this module only maps the C ABI discriminant to the
+//! Rust [`ScaleKind`] and provides thin wrappers for the FFI entry points.
 
 use chrono::{DateTime, Utc};
-use tempoch::{JulianDate, Time, TimeInstant, GPS, JD, JDE, MJD, TAI, TCB, TCG, TDB, TT, UT};
+use qtty::time::Seconds;
+use qtty::Day;
+use tempoch::{
+    scalar::{scalar_add_days, scalar_difference_in_days, time_tt_from_scalar, time_tt_to_scalar},
+    ConversionError, ScaleKind, Time, TimeContext, TT, UTC,
+};
 
 /// Time scale identifier for generic dispatch functions.
 ///
@@ -20,25 +26,25 @@ use tempoch::{JulianDate, Time, TimeInstant, GPS, JD, JDE, MJD, TAI, TCB, TCG, T
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TempochScaleId {
-    /// Julian Date (TT).
+    /// Julian Date (TT), expressed in days.
     JD = 0,
-    /// Modified Julian Date (TT).
+    /// Modified Julian Date (TT), expressed in days.
     MJD = 1,
-    /// Barycentric Dynamical Time.
+    /// Barycentric Dynamical Time, expressed as Julian days on the TDB axis.
     TDB = 2,
-    /// Terrestrial Time.
+    /// Terrestrial Time, expressed as Julian days on the TT axis.
     TT = 3,
-    /// International Atomic Time.
+    /// International Atomic Time, expressed as Julian days on the TAI axis.
     TAI = 4,
-    /// Geocentric Coordinate Time.
+    /// Geocentric Coordinate Time, expressed as Julian days on the TCG axis.
     TCG = 5,
-    /// Barycentric Coordinate Time.
+    /// Barycentric Coordinate Time, expressed as Julian days on the TCB axis.
     TCB = 6,
-    /// GPS Time.
+    /// GPS time, expressed in days since the GPS epoch.
     GPS = 7,
-    /// Universal Time UT1.
+    /// Universal Time UT1, expressed as Julian days on the UT1 axis.
     UT = 8,
-    /// Julian Ephemeris Date.
+    /// Julian Ephemeris Date, numerically equal to JD(TT) in this ABI.
     JDE = 9,
     /// Unix / POSIX time in seconds since 1970-01-01T00:00:00 UTC.
     UnixTime = 10,
@@ -65,155 +71,98 @@ impl TempochScaleId {
     }
 }
 
-#[inline]
-fn utc_to_unix_seconds(datetime: DateTime<Utc>) -> f64 {
-    datetime.timestamp() as f64 + datetime.timestamp_subsec_nanos() as f64 / 1e9
+impl From<TempochScaleId> for ScaleKind {
+    #[inline]
+    fn from(id: TempochScaleId) -> Self {
+        match id {
+            // JD, JDE, and TT are all JD on the TT axis in the scalar ABI.
+            TempochScaleId::JD | TempochScaleId::JDE | TempochScaleId::TT => ScaleKind::JdTt,
+            TempochScaleId::MJD => ScaleKind::MjdTt,
+            TempochScaleId::TDB => ScaleKind::Tdb,
+            TempochScaleId::TAI => ScaleKind::Tai,
+            TempochScaleId::TCG => ScaleKind::Tcg,
+            TempochScaleId::TCB => ScaleKind::Tcb,
+            TempochScaleId::GPS => ScaleKind::GpsDays,
+            TempochScaleId::UT => ScaleKind::Ut1,
+            TempochScaleId::UnixTime => ScaleKind::Unix,
+        }
+    }
 }
 
 #[inline]
-fn unix_seconds_to_utc(seconds: f64) -> Option<DateTime<Utc>> {
-    if !seconds.is_finite() {
-        return None;
-    }
-
-    let mut whole = seconds.floor();
-    let mut nanos = ((seconds - whole) * 1e9).round();
-    if nanos >= 1e9 {
-        whole += 1.0;
-        nanos = 0.0;
-    }
-
-    DateTime::<Utc>::from_timestamp(whole as i64, nanos as u32)
+fn default_context() -> TimeContext {
+    TimeContext::new()
 }
 
 /// Convert a JD(TT) value to the requested scale's native scalar.
-pub(crate) fn jd_to_scale_value(jd: f64, scale: TempochScaleId) -> f64 {
-    let t = JulianDate::new(jd);
-    match scale {
-        TempochScaleId::JD => t.to::<JD>().value(),
-        TempochScaleId::MJD => t.to::<MJD>().value(),
-        TempochScaleId::TDB => t.to::<TDB>().value(),
-        TempochScaleId::TT => t.to::<TT>().value(),
-        TempochScaleId::TAI => t.to::<TAI>().value(),
-        TempochScaleId::TCG => t.to::<TCG>().value(),
-        TempochScaleId::TCB => t.to::<TCB>().value(),
-        TempochScaleId::GPS => t.to::<GPS>().value(),
-        TempochScaleId::UT => t.to::<UT>().value(),
-        TempochScaleId::JDE => t.to::<JDE>().value(),
-        TempochScaleId::UnixTime => t.to_utc().map(utc_to_unix_seconds).unwrap_or(f64::NAN),
-    }
+pub(crate) fn jd_to_scale_value(jd: f64, scale: TempochScaleId) -> Result<f64, ConversionError> {
+    let ctx = default_context();
+    let tt = time_tt_from_scalar(jd, ScaleKind::JdTt, &ctx)?;
+    time_tt_to_scalar(tt, ScaleKind::from(scale), &ctx)
 }
 
 /// Convert a native scalar in the given scale to JD(TT).
-pub(crate) fn scale_value_to_jd(value: f64, scale: TempochScaleId) -> f64 {
-    match scale {
-        TempochScaleId::JD => Time::<JD>::new(value).to::<JD>().value(),
-        TempochScaleId::MJD => Time::<MJD>::new(value).to::<JD>().value(),
-        TempochScaleId::TDB => Time::<TDB>::new(value).to::<JD>().value(),
-        TempochScaleId::TT => Time::<TT>::new(value).to::<JD>().value(),
-        TempochScaleId::TAI => Time::<TAI>::new(value).to::<JD>().value(),
-        TempochScaleId::TCG => Time::<TCG>::new(value).to::<JD>().value(),
-        TempochScaleId::TCB => Time::<TCB>::new(value).to::<JD>().value(),
-        TempochScaleId::GPS => Time::<GPS>::new(value).to::<JD>().value(),
-        TempochScaleId::UT => Time::<UT>::new(value).to::<JD>().value(),
-        TempochScaleId::JDE => Time::<JDE>::new(value).to::<JD>().value(),
-        TempochScaleId::UnixTime => unix_seconds_to_utc(value)
-            .map(|dt| Time::<JD>::from_utc(dt).value())
-            .unwrap_or(f64::NAN),
-    }
+pub(crate) fn scale_value_to_jd(value: f64, scale: TempochScaleId) -> Result<f64, ConversionError> {
+    let ctx = default_context();
+    let tt = time_tt_from_scalar(value, ScaleKind::from(scale), &ctx)?;
+    time_tt_to_scalar(tt, ScaleKind::JdTt, &ctx)
 }
 
 /// Convert a UTC instant to a native scalar in the requested scale.
-pub(crate) fn time_from_utc_value(datetime: DateTime<Utc>, scale: TempochScaleId) -> f64 {
-    match scale {
-        TempochScaleId::JD => Time::<JD>::from_utc(datetime).value(),
-        TempochScaleId::MJD => Time::<MJD>::from_utc(datetime).value(),
-        TempochScaleId::TDB => Time::<TDB>::from_utc(datetime).value(),
-        TempochScaleId::TT => Time::<TT>::from_utc(datetime).value(),
-        TempochScaleId::TAI => Time::<TAI>::from_utc(datetime).value(),
-        TempochScaleId::TCG => Time::<TCG>::from_utc(datetime).value(),
-        TempochScaleId::TCB => Time::<TCB>::from_utc(datetime).value(),
-        TempochScaleId::GPS => Time::<GPS>::from_utc(datetime).value(),
-        TempochScaleId::UT => Time::<UT>::from_utc(datetime).value(),
-        TempochScaleId::JDE => Time::<JDE>::from_utc(datetime).value(),
-        TempochScaleId::UnixTime => utc_to_unix_seconds(datetime),
+pub(crate) fn time_from_utc_value(datetime: DateTime<Utc>, scale: TempochScaleId) -> Option<f64> {
+    let ctx = default_context();
+    let kind = ScaleKind::from(scale);
+    if matches!(kind, ScaleKind::Unix) {
+        // Validate via the civil API, then return the POSIX timestamp directly.
+        // Routing Unix values through UTC→TT→UTC would silently accumulate
+        // ~10 µs of error because
+        // TT_MINUS_TAI (32.184 s) is not exactly representable in f64.
+        Time::<UTC>::try_from_chrono_with(datetime, &ctx).ok()?;
+        let nanos = datetime.timestamp_subsec_nanos().min(999_999_999);
+        return Some(datetime.timestamp() as f64 + nanos as f64 / 1e9);
     }
+
+    let tt = Time::<UTC>::try_from_chrono_with(datetime, &ctx)
+        .ok()?
+        .to_scale::<TT>();
+    time_tt_to_scalar(tt, kind, &ctx).ok()
 }
 
 /// Convert a native scalar in the requested scale to UTC.
 pub(crate) fn time_to_utc_value(value: f64, scale: TempochScaleId) -> Option<DateTime<Utc>> {
-    match scale {
-        TempochScaleId::JD => Time::<JD>::new(value).to_utc(),
-        TempochScaleId::MJD => Time::<MJD>::new(value).to_utc(),
-        TempochScaleId::TDB => Time::<TDB>::new(value).to_utc(),
-        TempochScaleId::TT => Time::<TT>::new(value).to_utc(),
-        TempochScaleId::TAI => Time::<TAI>::new(value).to_utc(),
-        TempochScaleId::TCG => Time::<TCG>::new(value).to_utc(),
-        TempochScaleId::TCB => Time::<TCB>::new(value).to_utc(),
-        TempochScaleId::GPS => Time::<GPS>::new(value).to_utc(),
-        TempochScaleId::UT => Time::<UT>::new(value).to_utc(),
-        TempochScaleId::JDE => Time::<JDE>::new(value).to_utc(),
-        TempochScaleId::UnixTime => unix_seconds_to_utc(value),
+    let ctx = default_context();
+    let kind = ScaleKind::from(scale);
+    if matches!(kind, ScaleKind::Unix) {
+        // Route through the civil API so that out-of-history-range Unix
+        // timestamps and non-finite values are rejected consistently with
+        // all other scales.
+        return Time::<UTC>::from_unix_seconds_with(Seconds::new(value), &ctx)
+            .ok()?
+            .try_to_chrono_with(&ctx)
+            .ok();
     }
+
+    time_tt_from_scalar(value, kind, &ctx)
+        .ok()?
+        .to_scale::<UTC>()
+        .try_to_chrono_with(&ctx)
+        .ok()
 }
 
 /// Compute a same-scale duration in days.
 pub(crate) fn time_difference_days_value(lhs: f64, rhs: f64, scale: TempochScaleId) -> f64 {
-    match scale {
-        TempochScaleId::JD => Time::<JD>::new(lhs)
-            .difference(&Time::<JD>::new(rhs))
-            .value(),
-        TempochScaleId::MJD => Time::<MJD>::new(lhs)
-            .difference(&Time::<MJD>::new(rhs))
-            .value(),
-        TempochScaleId::TDB => Time::<TDB>::new(lhs)
-            .difference(&Time::<TDB>::new(rhs))
-            .value(),
-        TempochScaleId::TT => Time::<TT>::new(lhs)
-            .difference(&Time::<TT>::new(rhs))
-            .value(),
-        TempochScaleId::TAI => Time::<TAI>::new(lhs)
-            .difference(&Time::<TAI>::new(rhs))
-            .value(),
-        TempochScaleId::TCG => Time::<TCG>::new(lhs)
-            .difference(&Time::<TCG>::new(rhs))
-            .value(),
-        TempochScaleId::TCB => Time::<TCB>::new(lhs)
-            .difference(&Time::<TCB>::new(rhs))
-            .value(),
-        TempochScaleId::GPS => Time::<GPS>::new(lhs)
-            .difference(&Time::<GPS>::new(rhs))
-            .value(),
-        TempochScaleId::UT => Time::<UT>::new(lhs)
-            .difference(&Time::<UT>::new(rhs))
-            .value(),
-        TempochScaleId::JDE => Time::<JDE>::new(lhs)
-            .difference(&Time::<JDE>::new(rhs))
-            .value(),
-        TempochScaleId::UnixTime => (lhs - rhs) / 86_400.0,
-    }
+    scalar_difference_in_days(lhs, rhs, ScaleKind::from(scale))
 }
 
 /// Add a duration in days in the native scale and return the resulting scalar.
-pub(crate) fn time_add_days_value(value: f64, days: qtty::Days, scale: TempochScaleId) -> f64 {
-    match scale {
-        TempochScaleId::JD => Time::<JD>::new(value).add_duration(days).value(),
-        TempochScaleId::MJD => Time::<MJD>::new(value).add_duration(days).value(),
-        TempochScaleId::TDB => Time::<TDB>::new(value).add_duration(days).value(),
-        TempochScaleId::TT => Time::<TT>::new(value).add_duration(days).value(),
-        TempochScaleId::TAI => Time::<TAI>::new(value).add_duration(days).value(),
-        TempochScaleId::TCG => Time::<TCG>::new(value).add_duration(days).value(),
-        TempochScaleId::TCB => Time::<TCB>::new(value).add_duration(days).value(),
-        TempochScaleId::GPS => Time::<GPS>::new(value).add_duration(days).value(),
-        TempochScaleId::UT => Time::<UT>::new(value).add_duration(days).value(),
-        TempochScaleId::JDE => Time::<JDE>::new(value).add_duration(days).value(),
-        TempochScaleId::UnixTime => value + days.value() * 86_400.0,
-    }
+pub(crate) fn time_add_days_value(value: f64, days: Day, scale: TempochScaleId) -> f64 {
+    scalar_add_days(value, days, ScaleKind::from(scale))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::time::UNIX_ROUNDTRIP_TOLERANCE_SECONDS;
 
     #[test]
     fn layout_scale_id() {
@@ -237,16 +186,26 @@ mod tests {
     #[test]
     fn jd_to_mjd_roundtrip() {
         let jd = 2_451_545.0;
-        let mjd = jd_to_scale_value(jd, TempochScaleId::MJD);
-        let back = scale_value_to_jd(mjd, TempochScaleId::MJD);
+        let mjd = jd_to_scale_value(jd, TempochScaleId::MJD).unwrap();
+        let back = scale_value_to_jd(mjd, TempochScaleId::MJD).unwrap();
         assert!((back - jd).abs() < 1e-10);
     }
 
     #[test]
     fn unix_time_generic_roundtrip_uses_seconds() {
         let unix = 946_728_000.0;
-        let jd = scale_value_to_jd(unix, TempochScaleId::UnixTime);
-        let back = jd_to_scale_value(jd, TempochScaleId::UnixTime);
-        assert!((back - unix).abs() < 1e-6);
+        let jd = scale_value_to_jd(unix, TempochScaleId::UnixTime).unwrap();
+        let back = jd_to_scale_value(jd, TempochScaleId::UnixTime).unwrap();
+        assert!((back - unix).abs() <= UNIX_ROUNDTRIP_TOLERANCE_SECONDS);
+    }
+
+    #[test]
+    fn gps_scale_uses_days_since_epoch() {
+        // JD(TT) at the GPS epoch: JD(UTC) = 2_444_244.5, TT-UTC = 51.184 s
+        const SECONDS_PER_DAY: f64 = 86_400.0;
+        const TT_MINUS_UTC_AT_GPS_EPOCH_SECS: f64 = 51.184;
+        let jd_tt_at_gps_epoch = 2_444_244.5 + TT_MINUS_UTC_AT_GPS_EPOCH_SECS / SECONDS_PER_DAY;
+        let gps = jd_to_scale_value(jd_tt_at_gps_epoch, TempochScaleId::GPS).unwrap();
+        assert!(gps.abs() < 1e-9);
     }
 }

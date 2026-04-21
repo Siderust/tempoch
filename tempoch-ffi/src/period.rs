@@ -5,8 +5,11 @@
 
 use crate::catch_panic;
 use crate::error::TempochStatus;
+use qtty::Day;
 use qtty_ffi::{QttyQuantity, UnitId};
-use tempoch::{Interval, ModifiedJulianDate, Period, MJD};
+use tempoch::{Interval, Time, TT};
+
+type MjdPeriod = Interval<Time<TT>>;
 
 /// A time period expressed in Modified Julian Date, suitable for C interop.
 #[repr(C)]
@@ -19,19 +22,19 @@ pub struct TempochPeriodMjd {
 }
 
 impl TempochPeriodMjd {
-    /// Convert from a Rust `Period<MJD>` to the C-repr struct.
-    pub fn from_period(p: &Period<MJD>) -> Self {
+    /// Convert from a Rust MJD interval to the C-repr struct.
+    pub fn from_period(p: &MjdPeriod) -> Self {
         Self {
-            start_mjd: p.start.value(),
-            end_mjd: p.end.value(),
+            start_mjd: p.start.modified_julian_days() / Day::new(1.0),
+            end_mjd: p.end.modified_julian_days() / Day::new(1.0),
         }
     }
 
-    fn try_to_period(&self) -> Result<Period<MJD>, TempochStatus> {
-        let start = ModifiedJulianDate::try_new(self.start_mjd)
+    fn try_to_period(&self) -> Result<MjdPeriod, TempochStatus> {
+        let start = Time::<TT>::from_modified_julian_days(Day::new(self.start_mjd))
             .map_err(|_| TempochStatus::InvalidPeriod)?;
-        let end =
-            ModifiedJulianDate::try_new(self.end_mjd).map_err(|_| TempochStatus::InvalidPeriod)?;
+        let end = Time::<TT>::from_modified_julian_days(Day::new(self.end_mjd))
+            .map_err(|_| TempochStatus::InvalidPeriod)?;
         Interval::try_new(start, end).map_err(|_| TempochStatus::InvalidPeriod)
     }
 }
@@ -182,7 +185,7 @@ mod tests {
             end_mjd: 51_546.5,
         };
         let qty = tempoch_period_mjd_duration_qty(p);
-        assert_eq!(qty.unit, UnitId::Day);
+        assert_eq!(qty.unit, UnitId::Day as u32);
         assert!((qty.value - 2.0).abs() < 1e-12);
     }
 

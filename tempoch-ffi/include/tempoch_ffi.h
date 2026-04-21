@@ -44,9 +44,49 @@ enum tempoch_status_t
   // discarded.  Domain errors (`UtcConversionFailed`, `InvalidPeriod`, etc.)
   // are never reported via this variant.
   TEMPOCH_STATUS_T_INTERNAL_PANIC = 7,
+  // A UT1 / ΔT conversion was requested for a date outside the compiled
+  // ΔT data horizon.  The output value has not been written.
+  TEMPOCH_STATUS_T_UT1_HORIZON_EXCEEDED = 8,
 };
 #ifndef __cplusplus
 typedef int32_t tempoch_status_t;
+#endif // __cplusplus
+
+// Time scale identifier for generic dispatch functions.
+//
+// In the C ABI, callers pass raw `int32_t` values and must validate them
+// before dispatch.
+//
+enum tempoch_scale_id_t
+#ifdef __cplusplus
+  : int32_t
+#endif // __cplusplus
+ {
+  // Julian Date (TT), expressed in days.
+  TEMPOCH_SCALE_ID_T_JD = 0,
+  // Modified Julian Date (TT), expressed in days.
+  TEMPOCH_SCALE_ID_T_MJD = 1,
+  // Barycentric Dynamical Time, expressed as Julian days on the TDB axis.
+  TEMPOCH_SCALE_ID_T_TDB = 2,
+  // Terrestrial Time, expressed as Julian days on the TT axis.
+  TEMPOCH_SCALE_ID_T_TT = 3,
+  // International Atomic Time, expressed as Julian days on the TAI axis.
+  TEMPOCH_SCALE_ID_T_TAI = 4,
+  // Geocentric Coordinate Time, expressed as Julian days on the TCG axis.
+  TEMPOCH_SCALE_ID_T_TCG = 5,
+  // Barycentric Coordinate Time, expressed as Julian days on the TCB axis.
+  TEMPOCH_SCALE_ID_T_TCB = 6,
+  // GPS time, expressed in days since the GPS epoch.
+  TEMPOCH_SCALE_ID_T_GPS = 7,
+  // Universal Time UT1, expressed as Julian days on the UT1 axis.
+  TEMPOCH_SCALE_ID_T_UT = 8,
+  // Julian Ephemeris Date, numerically equal to JD(TT) in this ABI.
+  TEMPOCH_SCALE_ID_T_JDE = 9,
+  // Unix / POSIX time in seconds since 1970-01-01T00:00:00 UTC.
+  TEMPOCH_SCALE_ID_T_UNIX_TIME = 10,
+};
+#ifndef __cplusplus
+typedef int32_t tempoch_scale_id_t;
 #endif // __cplusplus
 
 // A time period expressed in Modified Julian Date, suitable for C interop.
@@ -69,7 +109,7 @@ typedef struct tempoch_utc_t {
   uint8_t hour;
   // Minute of the hour (0–59).
   uint8_t minute;
-  // Second of the minute (0–59).
+  // Second of the minute (0–60). `60` denotes a positive leap second.
   uint8_t second;
   // Sub-second component in nanoseconds (0–999_999_999).
   uint32_t nanosecond;
@@ -81,7 +121,7 @@ extern "C" {
 
 // Returns the tempoch-ffi ABI version (major*10000 + minor*100 + patch).
 //
-// Current version: 0.4.0 → 400
+// Current ABI line: 0.4.x -> 400
  uint32_t tempoch_ffi_version(void);
 
 // Create a new MJD period. Returns `InvalidPeriod` if the endpoints are
@@ -248,13 +288,52 @@ tempoch_status_t tempoch_period_mjd_intersection(struct tempoch_period_mjd_t a,
 // Convert Julian Ephemeris Date back to Julian Date (TT).
  double tempoch_jde_to_jd(double jde);
 
-// Convert a Julian Date (TT) to Unix time in seconds since 1970-01-01T00:00:00 UTC.
+// Convert a Julian Date (TT) to Unix time in **seconds** since 1970-01-01T00:00:00 UTC.
+//
+// The result is a standard Unix timestamp suitable for passing to C `gmtime()`,
+// Python `datetime.fromtimestamp()`, etc. Internally the conversion routes
+// through the compiled UTC-TAI history.
+//
+// Round-tripping `Unix -> JD -> Unix` is expected to stay within a few
+// microseconds. Callers should not assume nanosecond-exact reversibility
+// through the JD(TT) axis.
+//
+// Returns `NaN` if `jd` is non-finite or cannot be represented by the
+// compiled UTC civil-time model.
  double tempoch_jd_to_unix(double jd);
 
-// Convert Unix time in seconds back to Julian Date (TT).
+// Convert Unix time in **seconds** since 1970-01-01T00:00:00 UTC back to Julian Date (TT).
+//
+// Accepts a standard Unix timestamp (seconds, not days). The conversion
+// uses the compiled UTC-TAI history for leap-second handling.
+//
+// Round-tripping `Unix -> JD -> Unix` is expected to stay within a few
+// microseconds. Callers should not assume nanosecond-exact reversibility
+// through the JD(TT) axis.
+//
+// Returns `NaN` if `unix` is non-finite or outside the supported UTC civil range.
  double tempoch_unix_to_jd(double unix);
 
-// Return ΔT = TT − UT1 in seconds for a given Julian Date.
+// Create a Unix timestamp from seconds since 1970-01-01T00:00:00 UTC.
+//
+// This is a convenience identity for the C ABI: the returned `double` is
+// the same value, confirming that the FFI Unix convention is **seconds**.
+// Use [`tempoch_unix_to_jd`] when you need the corresponding Julian Date.
+ double tempoch_unix_from_seconds(double seconds);
+
+// Extract the Unix timestamp in seconds from a value previously obtained
+// via [`tempoch_jd_to_unix`] or [`tempoch_unix_from_seconds`].
+//
+// This is also a convenience identity confirming the seconds convention.
+ double tempoch_unix_to_seconds(double unix);
+
+// Return ΔT = TT − UT1 in seconds for a Julian Date.
+//
+// For dates within the compiled data range this is the observed/predicted
+// value from USNO data. For dates beyond [`tempoch::DELTA_T_PREDICTION_HORIZON_MJD`]
+// the result is a quadratic tail-fit extrapolation; accuracy degrades
+// rapidly past the horizon. The value is never `NaN`; non-finite `jd`
+// (infinity or NaN) returns `0.0`.
  double tempoch_delta_t_seconds(double jd);
 
 // Convert a `double` time value from one scale to another.

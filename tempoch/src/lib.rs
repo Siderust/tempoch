@@ -1,49 +1,30 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Vallés Puig, Ramon
 
-//! Time Module
+//! Public façade over `tempoch-core`.
 //!
-//! This crate is a façade over `tempoch-core` and re-exports its public API.
+//! The crate root exposes the redesigned scale-only time model:
 //!
-//! # Core types
-//!
-//! - [`Time<S>`] — generic instant parameterised by a [`TimeScale`] marker.
-//! - [`TimeScale`] — trait that defines a time scale (epoch offset + conversions).
-//! - [`JulianDate`] — type alias for `Time<JD>`.
-//! - [`JulianEphemerisDay`] — type alias for `Time<JDE>`.
-//! - [`ModifiedJulianDate`] — type alias for `Time<MJD>`.
-//! - [`Period<S>`] — a time interval parameterised by a [`TimeScale`] marker.
-//! - [`Interval<T>`] — a generic interval over any [`TimeInstant`].
-//! - [`TimeInstant`] — trait for points in time usable with [`Interval`].
-//!
-//! # Time scales
-//!
-//! The following markers implement [`TimeScale`]:
-//!
-//! | Marker | Scale |
-//! |--------|-------|
-//! | [`JD`] | Julian Date |
-//! | [`JDE`] | Julian Ephemeris Day |
-//! | [`MJD`] | Modified Julian Date |
-//! | [`TDB`] | Barycentric Dynamical Time |
-//! | [`TT`] | Terrestrial Time |
-//! | [`TAI`] | International Atomic Time |
-//! | [`TCG`] | Geocentric Coordinate Time |
-//! | [`TCB`] | Barycentric Coordinate Time |
-//! | [`GPS`] | GPS Time |
-//! | [`UnixTime`] | Unix / POSIX time |
-//! | [`UT`] | Universal Time (Earth rotation) |
-//!
-//! # ΔT (Delta T)
-//!
-//! The difference **ΔT = TT − UT** is applied automatically by the
-//! [`UT`] time scale.  Use `Time::<UT>::new(jd_ut)` for UT-based values,
-//! or construct any scale via `from_utc()` which routes through `UT` internally.
-//! The raw ΔT value (in seconds) is available via [`Time::<UT>::delta_t()`](Time::delta_t).
+//! - [`Time<S>`] for typed instants on a given scale
+//! - [`Scale`] markers such as [`TT`], [`TAI`], [`UTC`], and [`UT1`]
+//! - unified conversion targets via `time.to::<Target>()`, `try_to`, and
+//!   `to_with`
+//! - [`constats`] for typed epoch and offset constants
 
-pub use tempoch_core::{
-    complement_within, intersect_periods, normalize_periods, tai_minus_utc, validate_period_list,
-    ConversionError, Interval, InvalidIntervalError, JulianDate, JulianEphemerisDay,
-    ModifiedJulianDate, NonFiniteTimeError, Period, PeriodListError, Time, TimeInstant, TimeScale,
-    UniversalTime, UnixTime, UtcPeriod, GPS, JD, JDE, MJD, TAI, TCB, TCG, TDB, TT, UT,
+pub use tempoch_core::scalar;
+pub use tempoch_core::scalar::{
+    scalar_add_days, scalar_difference_in_days, time_tt_from_scalar, time_tt_to_scalar,
 };
+pub use tempoch_core::{
+    complement_within, constats, delta_t_seconds, delta_t_seconds_extrapolated, eop,
+    intersect_periods, normalize_periods, refresh_runtime_time_data, update_runtime_time_data,
+    validate_period_list, ContextConversionTarget, ContinuousScale, ConversionError,
+    ConversionTarget, CoordinateScale, GpsSecs, InfallibleConversionTarget, Interval,
+    InvalidIntervalError, InvalidPeriodError, J2000s, Period, PeriodListError, Scale, ScaleKind,
+    Time, TimeContext, TimeDataError, UnixSecs, DELTA_T_PREDICTION_HORIZON_MJD, EOP_END_MJD,
+    EOP_OBSERVED_END_MJD, EOP_START_MJD, GPS_EPOCH_JD_TAI, JD, MJD,
+    MODERN_DELTA_T_OBSERVED_END_MJD, TAI, TCB, TCG, TDB, TT, UT1, UTC, UTC_DEFINED_FROM_MJD,
+};
+
+#[cfg(feature = "serde")]
+pub use tempoch_core::tagged;

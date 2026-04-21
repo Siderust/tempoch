@@ -214,7 +214,7 @@ fn period_duration_qty_unit_is_day() {
         end_mjd: 59_002.0,
     };
     let qty = tempoch_period_mjd_duration_qty(p);
-    assert_eq!(qty.unit, UnitId::Day);
+    assert_eq!(qty.unit, UnitId::Day as u32);
     assert!((qty.value - 2.0).abs() < 1e-12);
 }
 
@@ -371,7 +371,7 @@ fn julian_centuries_at_j2000_is_zero() {
 fn julian_centuries_qty_at_j2000_is_zero() {
     let qty = tempoch_jd_julian_centuries_qty(2_451_545.0);
     assert!(qty.value.abs() < 1e-12);
-    assert_eq!(qty.unit, UnitId::JulianCentury);
+    assert_eq!(qty.unit, UnitId::JulianCentury as u32);
 }
 
 #[test]
@@ -479,7 +479,7 @@ fn generic_time_difference_and_add() {
         )
     };
     assert_eq!(s2, TempochStatus::Ok);
-    assert_eq!(diff_qty.unit, UnitId::Day);
+    assert_eq!(diff_qty.unit, UnitId::Day as u32);
     assert!((diff_qty.value - 1.0).abs() < 1e-12);
 
     let mut added = 0.0;
