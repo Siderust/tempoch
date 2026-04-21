@@ -16,11 +16,13 @@ pub use tempoch_core::{
     intersect_periods, normalize_periods, refresh_runtime_time_data, update_runtime_time_data,
     validate_period_list, ContextConversionTarget, ContinuousScale, ConversionError,
     ConversionTarget, CoordinateScale, GpsSecs, InfallibleConversionTarget, Interval,
-    InvalidIntervalError, InvalidPeriodError, J2000s, Period, PeriodListError, Scale, Time,
-    TimeContext, TimeDataError, UnixSecs, DELTA_T_PREDICTION_HORIZON_MJD, EOP_END_MJD,
-    EOP_OBSERVED_END_MJD, EOP_START_MJD, JD, MJD, MODERN_DELTA_T_OBSERVED_END_MJD, TAI, TCB, TCG,
-    TDB, TT, UT1, UTC,
+    InvalidIntervalError, InvalidPeriodError, J2000s, Period, PeriodListError, Scale, ScaleKind,
+    Time, TimeContext, TimeDataError, UnixSecs, DELTA_T_PREDICTION_HORIZON_MJD, EOP_END_MJD,
+    EOP_OBSERVED_END_MJD, EOP_START_MJD, GPS_EPOCH_JD_TAI, JD, MJD,
+    MODERN_DELTA_T_OBSERVED_END_MJD, TAI, TCB, TCG, TDB, TT, UT1, UTC,
 };
+pub use tempoch_core::scalar::{scalar_add_days, scalar_difference_in_days, time_tt_from_scalar, time_tt_to_scalar};
+pub use tempoch_core::scalar;
 
 #[cfg(feature = "serde")]
 pub use tempoch_core::tagged;

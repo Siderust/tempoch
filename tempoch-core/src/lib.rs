@@ -29,6 +29,7 @@ pub mod eop;
 pub mod error;
 pub(crate) mod generated;
 mod interval;
+pub mod scalar;
 mod scale;
 mod sealed;
 mod target;
@@ -52,6 +53,10 @@ pub use interval::{
     InvalidIntervalError, InvalidPeriodError, Period, PeriodListError,
 };
 pub use scale::{ContinuousScale, CoordinateScale, Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
+pub use scalar::{
+    scalar_add_days, scalar_difference_in_days, time_tt_from_scalar, time_tt_to_scalar,
+    GPS_EPOCH_JD_TAI, ScaleKind,
+};
 pub use target::{
     ContextConversionTarget, ConversionTarget, GpsSecs, InfallibleConversionTarget, J2000s,
     UnixSecs, JD, MJD,
