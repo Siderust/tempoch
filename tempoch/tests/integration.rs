@@ -3,9 +3,8 @@ use qtty::{Day, Second};
 #[cfg(feature = "serde")]
 use serde_json::json;
 use tempoch::{
-    complement_within,
     constats::{J2000_JD_TT, TT_MINUS_TAI},
-    intersect_periods, CoordinateScale, J2000s, Period, Time, TimeContext, UnixSecs, JD, MJD, TAI,
+    CoordinateScale, J2000s, Period, Time, TimeContext, UnixSecs, JD, MJD, TAI,
     TT, UT1, UTC,
 };
 
@@ -114,8 +113,8 @@ fn interval_set_ops_match_expected_intervals() {
         ),
     ];
 
-    let below_b = complement_within(outer, &b);
-    let between = intersect_periods(&a, &below_b);
+    let below_b = outer.complement(&b);
+    let between = Period::intersect_many(&a, &below_b);
 
     assert_eq!(between.len(), 3);
     assert_eq!(between[0].start.to::<MJD>(), Day::new(1.0));

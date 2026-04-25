@@ -122,6 +122,8 @@ impl<T: Copy + PartialOrd> Interval<T> {
         }
     }
 
+    // ── Pair operations ──────────────────────────────────────────────────────
+
     /// Overlap as a half-open range. Returns `None` if the intervals touch
     /// only at a point or do not overlap.
     #[inline]
@@ -134,138 +136,163 @@ impl<T: Copy + PartialOrd> Interval<T> {
             None
         }
     }
-}
 
-/// Gaps (complement) of `periods` within `outer`. `periods` must be sorted
-/// and non-overlapping (see [`validate_period_list`]).
-pub fn complement_within<T: Copy + PartialOrd>(
-    outer: Interval<T>,
-    periods: &[Interval<T>],
-) -> Vec<Interval<T>> {
-    let mut gaps = Vec::with_capacity(periods.len().saturating_add(1));
-    let mut cursor = outer.start;
-    for p in periods {
-        if p.start > cursor {
-            gaps.push(Interval::new(cursor, p.start));
-        }
-        if p.end > cursor {
-            cursor = p.end;
-        }
-    }
-    if cursor < outer.end {
-        gaps.push(Interval::new(cursor, outer.end));
-    }
-    gaps
-}
-
-/// Checked variant of [`complement_within`].
-///
-/// Validates that `outer` is well ordered and that `periods` is sorted,
-/// non-overlapping, and internally valid before computing the complement.
-pub fn try_complement_within<T: Copy + PartialOrd>(
-    outer: Interval<T>,
-    periods: &[Interval<T>],
-) -> Result<Vec<Interval<T>>, PeriodListError> {
-    if outer
-        .start
-        .partial_cmp(&outer.end)
-        .is_none_or(|ordering| ordering == core::cmp::Ordering::Greater)
-    {
-        return Err(PeriodListError::InvalidInterval { index: 0 });
-    }
-    validate_period_list(periods)?;
-    Ok(complement_within(outer, periods))
-}
-
-/// Intersection of two sorted, non-overlapping period lists. `O(n + m)`.
-pub fn intersect_periods<T: Copy + PartialOrd>(
-    a: &[Interval<T>],
-    b: &[Interval<T>],
-) -> Vec<Interval<T>> {
-    let mut result = Vec::with_capacity(a.len().min(b.len()));
-    let (mut i, mut j) = (0, 0);
-    while i < a.len() && j < b.len() {
-        let start = partial_max(a[i].start, b[j].start);
-        let end = partial_min(a[i].end, b[j].end);
-        if start < end {
-            result.push(Interval::new(start, end));
-        }
-        if a[i].end <= b[j].end {
-            i += 1;
+    /// Smallest interval covering both `self` and `other`, together with any
+    /// gap between them.
+    ///
+    /// Returns one interval when they overlap or touch, two when they are
+    /// strictly disjoint (sorted by start time).
+    #[inline]
+    pub fn union(&self, other: &Self) -> Vec<Self> {
+        if self.start <= other.end && other.start <= self.end {
+            vec![Self::new(
+                partial_min(self.start, other.start),
+                partial_max(self.end, other.end),
+            )]
+        } else if self.start <= other.start {
+            vec![*self, *other]
         } else {
-            j += 1;
+            vec![*other, *self]
         }
     }
-    result
-}
 
-/// Checked variant of [`intersect_periods`].
-///
-/// Validates both input lists before computing their intersection.
-pub fn try_intersect_periods<T: Copy + PartialOrd>(
-    a: &[Interval<T>],
-    b: &[Interval<T>],
-) -> Result<Vec<Interval<T>>, PeriodListError> {
-    validate_period_list(a)?;
-    validate_period_list(b)?;
-    Ok(intersect_periods(a, b))
-}
+    // ── Self-as-outer complement ─────────────────────────────────────────────
 
-/// Check that a list is sorted, non-overlapping, and each `start <= end`.
-pub fn validate_period_list<T: Copy + PartialOrd>(
-    periods: &[Interval<T>],
-) -> Result<(), PeriodListError> {
-    let mut prev: Option<Interval<T>> = None;
-    for (i, period) in periods.iter().copied().enumerate() {
-        if period
+    /// Gaps inside `self` that are not covered by any interval in `periods`.
+    ///
+    /// `periods` must be sorted and non-overlapping
+    /// (see [`Interval::validate`]).
+    #[inline]
+    pub fn complement(&self, periods: &[Self]) -> Vec<Self> {
+        let mut gaps = Vec::with_capacity(periods.len().saturating_add(1));
+        let mut cursor = self.start;
+        for p in periods {
+            if p.start > cursor {
+                gaps.push(Self::new(cursor, p.start));
+            }
+            if p.end > cursor {
+                cursor = p.end;
+            }
+        }
+        if cursor < self.end {
+            gaps.push(Self::new(cursor, self.end));
+        }
+        gaps
+    }
+
+    /// Checked variant of [`complement`](Self::complement).
+    ///
+    /// Validates that `self` is well ordered and that `periods` is sorted,
+    /// non-overlapping, and internally valid before computing the complement.
+    #[inline]
+    pub fn try_complement(&self, periods: &[Self]) -> Result<Vec<Self>, PeriodListError> {
+        if self
             .start
-            .partial_cmp(&period.end)
+            .partial_cmp(&self.end)
             .is_none_or(|ordering| ordering == core::cmp::Ordering::Greater)
         {
-            return Err(PeriodListError::InvalidInterval { index: i });
+            return Err(PeriodListError::InvalidInterval { index: 0 });
         }
-        if let Some(previous) = prev {
-            if previous
+        Self::validate(periods)?;
+        Ok(self.complement(periods))
+    }
+
+    // ── List operations (associated functions) ───────────────────────────────
+
+    /// Check that a list is sorted, non-overlapping, and each `start <= end`.
+    pub fn validate(periods: &[Self]) -> Result<(), PeriodListError> {
+        let mut prev: Option<Interval<T>> = None;
+        for (i, period) in periods.iter().copied().enumerate() {
+            if period
                 .start
-                .partial_cmp(&period.start)
+                .partial_cmp(&period.end)
                 .is_none_or(|ordering| ordering == core::cmp::Ordering::Greater)
             {
-                return Err(PeriodListError::Unsorted { index: i });
+                return Err(PeriodListError::InvalidInterval { index: i });
             }
-            if previous.end > period.start {
-                return Err(PeriodListError::Overlapping { index: i });
-            }
-        }
-        prev = Some(period);
-    }
-    Ok(())
-}
-
-/// Sort and merge overlapping/adjacent intervals.
-pub fn normalize_periods<T: Copy + PartialOrd>(periods: &[Interval<T>]) -> Vec<Interval<T>> {
-    if periods.is_empty() {
-        return Vec::new();
-    }
-    let mut sorted: Vec<_> = periods.to_vec();
-    sorted.sort_unstable_by(|a, b| {
-        a.start
-            .partial_cmp(&b.start)
-            .unwrap_or(core::cmp::Ordering::Equal)
-    });
-    let mut merged = Vec::with_capacity(sorted.len());
-    merged.push(sorted[0]);
-    for period in sorted.into_iter().skip(1) {
-        if let Some(last) = merged.last_mut() {
-            if period.start <= last.end {
-                if period.end > last.end {
-                    last.end = period.end;
+            if let Some(previous) = prev {
+                if previous
+                    .start
+                    .partial_cmp(&period.start)
+                    .is_none_or(|ordering| ordering == core::cmp::Ordering::Greater)
+                {
+                    return Err(PeriodListError::Unsorted { index: i });
                 }
+                if previous.end > period.start {
+                    return Err(PeriodListError::Overlapping { index: i });
+                }
+            }
+            prev = Some(period);
+        }
+        Ok(())
+    }
+
+    /// Intersection of two sorted, non-overlapping period lists. `O(n + m)`.
+    pub fn intersect_many(a: &[Self], b: &[Self]) -> Vec<Self> {
+        let mut result = Vec::with_capacity(a.len().min(b.len()));
+        let (mut i, mut j) = (0, 0);
+        while i < a.len() && j < b.len() {
+            let start = partial_max(a[i].start, b[j].start);
+            let end = partial_min(a[i].end, b[j].end);
+            if start < end {
+                result.push(Self::new(start, end));
+            }
+            if a[i].end <= b[j].end {
+                i += 1;
             } else {
-                merged.push(period);
+                j += 1;
             }
         }
+        result
     }
-    merged
+
+    /// Checked variant of [`intersect_many`](Self::intersect_many).
+    ///
+    /// Validates both input lists before computing their intersection.
+    pub fn try_intersect_many(a: &[Self], b: &[Self]) -> Result<Vec<Self>, PeriodListError> {
+        Self::validate(a)?;
+        Self::validate(b)?;
+        Ok(Self::intersect_many(a, b))
+    }
+
+    /// Union of two sorted period lists. Merges overlapping and adjacent
+    /// intervals. The result is sorted and non-overlapping.
+    pub fn union_many(a: &[Self], b: &[Self]) -> Vec<Self> {
+        let mut combined: Vec<Self> = a.iter().chain(b.iter()).copied().collect();
+        combined.sort_unstable_by(|x, y| {
+            x.start
+                .partial_cmp(&y.start)
+                .unwrap_or(core::cmp::Ordering::Equal)
+        });
+        Self::normalize(&combined)
+    }
+
+    /// Sort and merge overlapping/adjacent intervals.
+    pub fn normalize(periods: &[Self]) -> Vec<Self> {
+        if periods.is_empty() {
+            return Vec::new();
+        }
+        let mut sorted: Vec<_> = periods.to_vec();
+        sorted.sort_unstable_by(|a, b| {
+            a.start
+                .partial_cmp(&b.start)
+                .unwrap_or(core::cmp::Ordering::Equal)
+        });
+        let mut merged = Vec::with_capacity(sorted.len());
+        merged.push(sorted[0]);
+        for period in sorted.into_iter().skip(1) {
+            if let Some(last) = merged.last_mut() {
+                if period.start <= last.end {
+                    if period.end > last.end {
+                        last.end = period.end;
+                    }
+                } else {
+                    merged.push(period);
+                }
+            }
+        }
+        merged
+    }
 }
 
 #[cfg(test)]
@@ -311,7 +338,7 @@ mod tests {
             Interval::<f64>::new(1.0_f64, 2.0),
             Interval::<f64>::new(4.0, 6.0),
         ];
-        let gaps = complement_within(outer, &inside);
+        let gaps = outer.complement(&inside);
         assert_eq!(gaps.len(), 3);
         assert_eq!(gaps[0], Interval::<f64>::new(0.0, 1.0));
         assert_eq!(gaps[1], Interval::<f64>::new(2.0, 4.0));
@@ -325,7 +352,7 @@ mod tests {
             Interval::<f64>::new(10.0, 15.0),
         ];
         let b = vec![Interval::<f64>::new(3.0_f64, 12.0)];
-        let ix = intersect_periods(&a, &b);
+        let ix = Interval::intersect_many(&a, &b);
         assert_eq!(ix.len(), 2);
         assert_eq!(ix[0], Interval::<f64>::new(3.0, 5.0));
         assert_eq!(ix[1], Interval::<f64>::new(10.0, 12.0));
@@ -338,7 +365,7 @@ mod tests {
             Interval::<f64>::new(0.0, 3.0),
             Interval::<f64>::new(2.0, 6.0),
         ];
-        let merged = normalize_periods(&input);
+        let merged = Interval::normalize(&input);
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0], Interval::<f64>::new(0.0, 8.0));
     }
@@ -350,7 +377,7 @@ mod tests {
             Interval::<f64>::new(3.0, 8.0),
         ];
         assert_eq!(
-            validate_period_list(&periods),
+            Interval::validate(&periods),
             Err(PeriodListError::Overlapping { index: 1 })
         );
     }
@@ -386,7 +413,7 @@ mod tests {
 
     #[test]
     fn normalize_empty_returns_empty() {
-        let result = normalize_periods::<f64>(&[]);
+        let result = Interval::<f64>::normalize(&[]);
         assert!(result.is_empty());
     }
 
@@ -398,7 +425,7 @@ mod tests {
             end: 1.0,
         }];
         assert_eq!(
-            validate_period_list(&periods),
+            Interval::validate(&periods),
             Err(PeriodListError::InvalidInterval { index: 0 })
         );
     }
@@ -410,7 +437,7 @@ mod tests {
             Interval::<f64>::new(1.0_f64, 4.0),
         ];
         assert_eq!(
-            validate_period_list(&periods),
+            Interval::validate(&periods),
             Err(PeriodListError::Unsorted { index: 1 })
         );
     }
@@ -423,13 +450,13 @@ mod tests {
             Interval::<f64>::new(1.0_f64, 4.0),
         ];
         assert_eq!(
-            try_complement_within(outer, &periods),
+            outer.try_complement(&periods),
             Err(PeriodListError::Unsorted { index: 1 })
         );
 
         let invalid_outer = Interval::<f64>::new(10.0_f64, 0.0);
         assert_eq!(
-            try_complement_within(invalid_outer, &[]),
+            invalid_outer.try_complement(&[]),
             Err(PeriodListError::InvalidInterval { index: 0 })
         );
     }
@@ -439,9 +466,38 @@ mod tests {
         let a = vec![Interval::<f64>::new(0.0_f64, 5.0)];
         let b = vec![Interval::<f64>::new(3.0_f64, 7.0)];
         assert_eq!(
-            try_intersect_periods(&a, &b).unwrap(),
-            intersect_periods(&a, &b)
+            Interval::try_intersect_many(&a, &b).unwrap(),
+            Interval::intersect_many(&a, &b)
         );
+    }
+
+    #[test]
+    fn union_pair_overlapping() {
+        let a = Interval::<f64>::new(0.0_f64, 5.0);
+        let b = Interval::<f64>::new(3.0_f64, 8.0);
+        let u = a.union(&b);
+        assert_eq!(u.len(), 1);
+        assert_eq!(u[0], Interval::<f64>::new(0.0, 8.0));
+    }
+
+    #[test]
+    fn union_pair_disjoint() {
+        let a = Interval::<f64>::new(0.0_f64, 3.0);
+        let b = Interval::<f64>::new(5.0_f64, 8.0);
+        let u = a.union(&b);
+        assert_eq!(u.len(), 2);
+        assert_eq!(u[0], Interval::<f64>::new(0.0, 3.0));
+        assert_eq!(u[1], Interval::<f64>::new(5.0, 8.0));
+    }
+
+    #[test]
+    fn union_many_merges_two_lists() {
+        let a = vec![Interval::<f64>::new(0.0_f64, 3.0), Interval::<f64>::new(7.0, 9.0)];
+        let b = vec![Interval::<f64>::new(2.0_f64, 5.0)];
+        let u = Interval::union_many(&a, &b);
+        assert_eq!(u.len(), 2);
+        assert_eq!(u[0], Interval::<f64>::new(0.0, 5.0));
+        assert_eq!(u[1], Interval::<f64>::new(7.0, 9.0));
     }
 
     #[test]

@@ -1,6 +1,4 @@
-use tempoch::{
-    complement_within, intersect_periods, normalize_periods, validate_period_list, Period, Time, TT,
-};
+use tempoch::{Interval, Period, Time, TT};
 
 fn mjd(value: f64) -> Time<TT> {
     Time::<TT>::from_modified_julian_days(value.into()).unwrap()
@@ -17,11 +15,11 @@ fn main() {
         Period::<TT>::new(mjd(61_000.70), mjd(61_001.00)),
     ];
 
-    let overlaps = intersect_periods(&a, &b);
-    let gaps = complement_within(day, &a);
-    let merged = normalize_periods(&[a[0], a[1], overlaps[0]]);
+    let overlaps = Period::intersect_many(&a, &b);
+    let gaps = day.complement(&a);
+    let merged = Interval::normalize(&[a[0], a[1], overlaps[0]]);
 
-    validate_period_list(&a).unwrap();
+    Period::validate(&a).unwrap();
 
     println!("overlaps: {}", overlaps.len());
     println!("gaps    : {}", gaps.len());

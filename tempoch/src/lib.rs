@@ -16,9 +16,8 @@ pub use tempoch_core::scalar::{
     scalar_add_days, scalar_difference_in_days, time_tt_from_scalar, time_tt_to_scalar,
 };
 pub use tempoch_core::{
-    complement_within, constats, delta_t_seconds, delta_t_seconds_extrapolated, eop,
-    intersect_periods, normalize_periods, try_complement_within, try_intersect_periods,
-    validate_period_list, ContextConversionTarget, ContinuousScale, ConversionError,
+    constats, delta_t_seconds, delta_t_seconds_extrapolated, eop,
+    ContextConversionTarget, ContinuousScale, ConversionError,
     ConversionTarget, CoordinateScale, GpsSecs, InfallibleConversionTarget, Interval,
     InvalidIntervalError, InvalidPeriodError, J2000s, Period, PeriodListError, Scale, ScaleKind,
     Time, TimeContext, TimeDataError, UnixSecs, DELTA_T_PREDICTION_HORIZON_MJD, EOP_END_MJD,

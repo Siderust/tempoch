@@ -55,9 +55,7 @@ pub use generated::{
     EOP_END_MJD, EOP_OBSERVED_END_MJD, EOP_START_MJD, MODERN_DELTA_T_OBSERVED_END_MJD,
 };
 pub use interval::{
-    complement_within, intersect_periods, normalize_periods, try_complement_within,
-    try_intersect_periods, validate_period_list, Interval, InvalidIntervalError,
-    InvalidPeriodError, Period, PeriodListError,
+    Interval, InvalidIntervalError, InvalidPeriodError, Period, PeriodListError,
 };
 pub use scalar::{
     scalar_add_days, scalar_difference_in_days, time_tt_from_scalar, time_tt_to_scalar, ScaleKind,
