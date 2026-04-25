@@ -13,33 +13,49 @@ use crate::encoding::{
 use crate::error::ConversionError;
 use crate::scale::{Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
 use crate::sealed::Sealed;
+use affn::algebra::{AffineMap1, Space, SplitPoint1, SplitQuantity};
 use qtty::time::{Days, Seconds};
-use qtty::unit::Day;
+use qtty::unit::{Day, Second as SecondUnit};
 use qtty::Second;
 
-#[inline]
-fn two_sum(a: f64, b: f64) -> (f64, f64) {
-    let s = a + b;
-    let bb = s - a;
-    let err = (a - (s - bb)) + (b - bb);
-    (s, err)
-}
+#[derive(Debug, Copy, Clone)]
+struct SourceAxis;
+impl Space for SourceAxis {}
+
+#[derive(Debug, Copy, Clone)]
+struct TargetAxis;
+impl Space for TargetAxis {}
 
 #[inline]
 fn normalize_pair(hi: f64, lo: f64) -> (Second, Second) {
-    let (sum, err) = two_sum(hi, lo);
-    let (sum2, err2) = two_sum(sum, err);
-    (Second::new(sum2), Second::new(err2))
+    SplitQuantity::<SecondUnit>::new(Second::new(hi), Second::new(lo)).pair()
 }
 
 #[inline]
 fn add_constant(src_hi: Second, src_lo: Second, offset: Second) -> (Second, Second) {
-    normalize_pair(src_hi.value(), src_lo.value() + offset.value())
+    SplitQuantity::<SecondUnit>::new(src_hi, src_lo)
+        .add_quantity(offset)
+        .pair()
 }
 
 #[inline]
 fn total_seconds(src_hi: Second, src_lo: Second) -> Second {
-    src_hi + src_lo
+    SplitQuantity::<SecondUnit>::new(src_hi, src_lo).total()
+}
+
+#[inline]
+fn linear_map_pair(
+    src_hi: Second,
+    src_lo: Second,
+    source_origin: Second,
+    target_origin: Second,
+    scale: f64,
+) -> (Second, Second) {
+    let map =
+        AffineMap1::<SourceAxis, TargetAxis, SecondUnit>::new(source_origin, target_origin, scale);
+    map.apply_split_point(SplitPoint1::<SourceAxis, SecondUnit>::new(src_hi, src_lo))
+        .coordinate()
+        .pair()
 }
 
 #[inline]
@@ -125,20 +141,16 @@ impl InfallibleScaleConvert<TT> for TDB {
 impl InfallibleScaleConvert<TCG> for TT {
     #[inline]
     fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
-        let src = total_seconds(src_hi, src_lo);
         let t0 = jd_to_j2000_seconds(IAU_TIME_EPOCH_T0_JD);
-        let delta = Second::new(L_G * (src - t0).value() / (1.0 - L_G));
-        add_constant(src_hi, src_lo, delta)
+        linear_map_pair(src_hi, src_lo, t0, t0, 1.0 / (1.0 - L_G))
     }
 }
 
 impl InfallibleScaleConvert<TT> for TCG {
     #[inline]
     fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
-        let src = total_seconds(src_hi, src_lo);
         let t0 = jd_to_j2000_seconds(IAU_TIME_EPOCH_T0_JD);
-        let delta = Second::new(-L_G * (src - t0).value());
-        add_constant(src_hi, src_lo, delta)
+        linear_map_pair(src_hi, src_lo, t0, t0, 1.0 - L_G)
     }
 }
 
@@ -146,13 +158,14 @@ impl InfallibleScaleConvert<TCB> for TDB {
     #[inline]
     fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
         // TCB = T0 + (TDB - T0 - TDB0) / (1 - L_B)
-        // Rearranged as an additive correction to preserve the compensated pair:
-        //   TCB - TDB = (TDB - T0) * L_B / (1 - L_B) - TDB0 / (1 - L_B)
-        let src = total_seconds(src_hi, src_lo);
         let t0 = jd_to_j2000_seconds(IAU_TIME_EPOCH_T0_JD);
-        let delta =
-            Second::new((src - t0).value() * L_B / (1.0 - L_B) - TDB0.value() / (1.0 - L_B));
-        add_constant(src_hi, src_lo, delta)
+        linear_map_pair(
+            src_hi,
+            src_lo,
+            t0,
+            t0 - Second::new(TDB0.value() / (1.0 - L_B)),
+            1.0 / (1.0 - L_B),
+        )
     }
 }
 
@@ -160,12 +173,8 @@ impl InfallibleScaleConvert<TDB> for TCB {
     #[inline]
     fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
         // TDB = T0 + (1 - L_B) * (TCB - T0) + TDB0
-        // Rearranged as an additive correction to preserve the compensated pair:
-        //   TDB - TCB = -(TCB - T0) * L_B + TDB0
-        let src = total_seconds(src_hi, src_lo);
         let t0 = jd_to_j2000_seconds(IAU_TIME_EPOCH_T0_JD);
-        let delta = Second::new(-(src - t0).value() * L_B + TDB0.value());
-        add_constant(src_hi, src_lo, delta)
+        linear_map_pair(src_hi, src_lo, t0, t0 + TDB0, 1.0 - L_B)
     }
 }
 

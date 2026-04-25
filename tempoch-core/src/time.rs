@@ -13,28 +13,27 @@ use super::error::ConversionError;
 use super::scale::conversion::{ContextScaleConvert, InfallibleScaleConvert};
 use super::scale::{CoordinateScale, Scale};
 use super::target::{ContextConversionTarget, ConversionTarget, InfallibleConversionTarget};
+use affn::algebra::{Space, SplitPoint1};
 use qtty::time::Seconds;
+use qtty::unit::Second as SecondUnit;
 use qtty::{Day, Second};
-
-#[inline]
-fn two_sum(a: f64, b: f64) -> (f64, f64) {
-    let s = a + b;
-    let bb = s - a;
-    let err = (a - (s - bb)) + (b - bb);
-    (s, err)
-}
-
-#[inline]
-fn normalize_pair(hi: f64, lo: f64) -> (f64, f64) {
-    let (sum, err) = two_sum(hi, lo);
-    let (sum2, err2) = two_sum(sum, err);
-    (sum2, err2)
-}
 
 #[inline]
 fn is_finite_pair(hi: f64, lo: f64) -> bool {
     hi.is_finite() && lo.is_finite()
 }
+
+#[derive(Copy, Clone)]
+pub(crate) struct ScaleAxis<S: Scale>(PhantomData<fn() -> S>);
+
+impl<S: Scale> core::fmt::Debug for ScaleAxis<S> {
+    #[inline]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_tuple("ScaleAxis").field(&S::NAME).finish()
+    }
+}
+
+impl<S: Scale> Space for ScaleAxis<S> {}
 
 /// A point in time on scale `S`.
 ///
@@ -49,9 +48,7 @@ fn is_finite_pair(hi: f64, lo: f64) -> bool {
 /// arithmetic operate on that stored instant axis; use the civil API when you
 /// need leap-second-labelled UTC values.
 pub struct Time<S: Scale> {
-    hi: Second,
-    lo: Second,
-    _scale: PhantomData<S>,
+    instant: SplitPoint1<ScaleAxis<S>, SecondUnit>,
 }
 
 impl<S: Scale> Copy for Time<S> {}
@@ -65,15 +62,17 @@ impl<S: Scale> Clone for Time<S> {
 impl<S: Scale> PartialEq for Time<S> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.hi == other.hi && self.lo == other.lo
+        self.split_seconds() == other.split_seconds()
     }
 }
 
 impl<S: Scale> PartialOrd for Time<S> {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-        match self.hi.partial_cmp(&other.hi) {
-            Some(core::cmp::Ordering::Equal) => self.lo.partial_cmp(&other.lo),
+        let (self_hi, self_lo) = self.split_seconds();
+        let (other_hi, other_lo) = other.split_seconds();
+        match self_hi.partial_cmp(&other_hi) {
+            Some(core::cmp::Ordering::Equal) => self_lo.partial_cmp(&other_lo),
             ordering => ordering,
         }
     }
@@ -81,12 +80,13 @@ impl<S: Scale> PartialOrd for Time<S> {
 
 impl<S: Scale> core::fmt::Debug for Time<S> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let (hi, lo) = self.split_seconds();
         write!(
             f,
             "Time<{}>({:.17e} s, {:.17e} s)",
             S::NAME,
-            self.hi.value(),
-            self.lo.value()
+            hi.value(),
+            lo.value()
         )
     }
 }
@@ -102,14 +102,11 @@ impl<S: Scale> Time<S> {
     pub(crate) fn new_unchecked(hi: Second, lo: Second) -> Self {
         debug_assert!(hi.is_finite());
         debug_assert!(lo.is_finite());
-        let (hi, lo) = normalize_pair(hi.value(), lo.value());
+        let instant = SplitPoint1::new(hi, lo);
+        let (hi, lo) = instant.coordinate().pair();
         debug_assert!(hi.is_finite());
         debug_assert!(lo.is_finite());
-        Self {
-            hi: Second::new(hi),
-            lo: Second::new(lo),
-            _scale: PhantomData,
-        }
+        Self { instant }
     }
 
     #[inline]
@@ -123,12 +120,12 @@ impl<S: Scale> Time<S> {
 
     #[inline]
     pub(crate) fn split_seconds(self) -> (Second, Second) {
-        (self.hi, self.lo)
+        self.instant.coordinate().pair()
     }
 
     #[inline]
     pub(crate) fn total_seconds(self) -> Second {
-        self.hi + self.lo
+        self.instant.coordinate().total()
     }
 
     /// Raw internal storage pair in J2000-TT seconds on the instance scale.
@@ -264,7 +261,7 @@ impl<S: CoordinateScale> core::ops::Sub for Time<S> {
 
     #[inline]
     fn sub(self, rhs: Self) -> Second {
-        (self.hi - rhs.hi) + (self.lo - rhs.lo)
+        self.instant - rhs.instant
     }
 }
 
@@ -273,7 +270,9 @@ impl<S: CoordinateScale> core::ops::Add<Second> for Time<S> {
 
     #[inline]
     fn add(self, rhs: Second) -> Self {
-        Self::new_unchecked(self.hi, self.lo + rhs)
+        Self {
+            instant: self.instant + rhs,
+        }
     }
 }
 
@@ -282,7 +281,9 @@ impl<S: CoordinateScale> core::ops::Sub<Second> for Time<S> {
 
     #[inline]
     fn sub(self, rhs: Second) -> Self {
-        Self::new_unchecked(self.hi, self.lo - rhs)
+        Self {
+            instant: self.instant - rhs,
+        }
     }
 }
 

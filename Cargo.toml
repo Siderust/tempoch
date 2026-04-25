@@ -9,5 +9,5 @@ members = [
 ]
 
 [patch.crates-io]
-qtty = { git = "https://github.com/Siderust/qtty", branch = "main" }
-qtty-ffi = { git = "https://github.com/Siderust/qtty", branch = "main" }
+qtty = { path = "../qtty/qtty" }
+qtty-ffi = { path = "../qtty/qtty-ffi" }
