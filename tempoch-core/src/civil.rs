@@ -111,8 +111,11 @@ impl Time<UTC> {
             return Err(ConversionError::NonFinite);
         }
         let mjd_utc = unix_seconds_to_mjd(seconds);
-        let tai_minus_utc =
-            time_data_try_tai_minus_utc_mjd(ctx.time_data(), mjd_utc, ctx.allows_pre_definition_utc())?;
+        let tai_minus_utc = time_data_try_tai_minus_utc_mjd(
+            ctx.time_data(),
+            mjd_utc,
+            ctx.allows_pre_definition_utc(),
+        )?;
         let tai_secs = mjd_to_j2000_seconds(mjd_utc) + tai_minus_utc;
         Self::try_new(tai_secs, Second::new(0.0))
     }

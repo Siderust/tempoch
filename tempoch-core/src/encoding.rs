@@ -39,11 +39,8 @@ impl Space for TargetDayAxis {}
 
 #[inline]
 fn affine_day_coordinate(source: Day, source_origin: Day, target_origin: Day) -> Day {
-    let map = AffineMap1::<SourceDayAxis, TargetDayAxis, DayUnit>::new(
-        source_origin,
-        target_origin,
-        1.0,
-    );
+    let map =
+        AffineMap1::<SourceDayAxis, TargetDayAxis, DayUnit>::new(source_origin, target_origin, 1.0);
     map.apply_point(Point1::<SourceDayAxis, DayUnit>::new(source))
         .x()
 }

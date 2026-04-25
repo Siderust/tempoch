@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Vallés Puig, Ramon
 
-#![cfg(feature = "serde")]
-
 use crate::interval::Interval;
 use crate::scale::Scale;
 use crate::time::Time;

@@ -105,7 +105,7 @@ default_context_scale_target!(UT1 => UTC);
 
 #[cfg(test)]
 mod tests {
-    use crate::representation::{J2000s, JD, MJD, Unix, GPS};
+    use crate::representation::{J2000s, Unix, GPS, JD, MJD};
     use crate::scale::{TAI, TT, UT1, UTC};
     use qtty::Second;
 
@@ -114,18 +114,22 @@ mod tests {
         let tt = crate::time::Time::<TT>::from_raw_j2000_seconds(Second::new(12_345.678)).unwrap();
 
         assert_eq!(tt.to::<J2000s>().raw(), tt.raw_j2000_seconds());
-        assert_eq!(tt.to::<JD>().raw(), crate::encoding::j2000_seconds_to_jd(tt.raw_j2000_seconds()));
-        assert_eq!(tt.to::<MJD>().raw(), crate::encoding::j2000_seconds_to_mjd(tt.raw_j2000_seconds()));
+        assert_eq!(
+            tt.to::<JD>().raw(),
+            crate::encoding::j2000_seconds_to_jd(tt.raw_j2000_seconds())
+        );
+        assert_eq!(
+            tt.to::<MJD>().raw(),
+            crate::encoding::j2000_seconds_to_mjd(tt.raw_j2000_seconds())
+        );
     }
 
     #[test]
     fn unix_and_gps_targets_use_expected_axes() {
         let ctx = crate::context::TimeContext::new();
-        let utc = crate::time::Time::<UTC>::from_raw_unix_seconds_with(
-            Second::new(946_728_000.0),
-            &ctx,
-        )
-        .unwrap();
+        let utc =
+            crate::time::Time::<UTC>::from_raw_unix_seconds_with(Second::new(946_728_000.0), &ctx)
+                .unwrap();
         let unix = utc.try_to::<Unix>().unwrap();
         assert!((unix.raw() - utc.raw_unix_seconds_with(&ctx).unwrap()).abs() < Second::new(1e-12));
 

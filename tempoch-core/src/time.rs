@@ -89,13 +89,7 @@ impl<S: Scale> PartialOrd for Time<S> {
 impl<S: Scale> core::fmt::Debug for Time<S> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let (hi, lo) = self.split_seconds();
-        write!(
-            f,
-            "Time<{}>({:.17e}, {:.17e})",
-            S::NAME,
-            hi,
-            lo
-        )
+        write!(f, "Time<{}>({:.17e}, {:.17e})", S::NAME, hi, lo)
     }
 }
 
@@ -152,6 +146,7 @@ impl<S: CoordinateScale> Time<S> {
 
     /// Build from a split J2000-second pair.
     #[inline]
+    #[cfg(test)]
     pub(crate) fn from_raw_j2000_seconds_split(
         hi: Second,
         lo: Second,
@@ -276,14 +271,9 @@ mod tests {
 
     #[test]
     fn normalized_constructor_keeps_sum() {
-        let time = Time::<TT>::from_raw_j2000_seconds_split(
-            Second::new(1.0e9),
-            Second::new(0.25),
-        )
-        .unwrap();
-        assert!(
-            (time.raw_j2000_seconds() - Second::new(1.0e9 + 0.25)).abs() < Second::new(1e-6)
-        );
+        let time = Time::<TT>::from_raw_j2000_seconds_split(Second::new(1.0e9), Second::new(0.25))
+            .unwrap();
+        assert!((time.raw_j2000_seconds() - Second::new(1.0e9 + 0.25)).abs() < Second::new(1e-6));
     }
 
     #[test]
@@ -302,29 +292,27 @@ mod tests {
         let tt = Time::<TT>::from_raw_j2000_seconds(Second::new(1_000_000.0)).unwrap();
         let tdb = tt.to_scale::<TDB>();
         let tt2 = tdb.to_scale::<TT>();
-        assert!(
-            (tt.raw_j2000_seconds() - tt2.raw_j2000_seconds()).abs() < Second::new(1e-6)
-        );
+        assert!((tt.raw_j2000_seconds() - tt2.raw_j2000_seconds()).abs() < Second::new(1e-6));
     }
 
     #[test]
     fn tt_tcg_offset_is_finite() {
-        let tt = Time::<TT>::from_raw_j2000_seconds(
-            qtty::Day::new(1.0).to::<qtty::unit::Second>(),
-        )
-        .unwrap();
+        let tt = Time::<TT>::from_raw_j2000_seconds(qtty::Day::new(1.0).to::<qtty::unit::Second>())
+            .unwrap();
         let tcg = tt.to_scale::<TCG>();
         assert!(tcg.raw_j2000_seconds().is_finite());
     }
 
     #[test]
     fn utc_exposes_raw_axis_helpers_and_arithmetic() {
-        let utc = Time::<UTC>::from_raw_j2000_seconds(
-            mjd_to_j2000_seconds(qtty::Day::new(51_544.5)),
-        )
-        .unwrap();
+        let utc =
+            Time::<UTC>::from_raw_j2000_seconds(mjd_to_j2000_seconds(qtty::Day::new(51_544.5)))
+                .unwrap();
         let shifted = utc + Second::new(10.0);
-        assert_eq!(j2000_seconds_to_mjd(utc.raw_j2000_seconds()), qtty::Day::new(51_544.5));
+        assert_eq!(
+            j2000_seconds_to_mjd(utc.raw_j2000_seconds()),
+            qtty::Day::new(51_544.5)
+        );
         assert!((shifted - utc - Second::new(10.0)).abs() < Second::new(1e-12));
     }
 }

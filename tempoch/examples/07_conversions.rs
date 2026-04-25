@@ -1,14 +1,14 @@
 use qtty::Second;
 use tempoch::{
-    GPS, GpsTime, J2000s, Time, TimeContext, Unix, UnixTime, JD, MJD, TAI, TDB, TT, UT1,
+    GpsTime, J2000s, Time, TimeContext, Unix, UnixTime, GPS, JD, MJD, TAI, TDB, TT, UT1,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ctx = TimeContext::with_builtin_eop();
 
     // Start from a civil/transport representation.
-    let utc = UnixTime::try_new(Second::new(1_700_000_000.25))
-        .and_then(|e| e.to_time_with(&ctx))?;
+    let utc =
+        UnixTime::try_new(Second::new(1_700_000_000.25)).and_then(|e| e.to_time_with(&ctx))?;
 
     // Convert across continuous scales.
     let tai: Time<TAI> = utc.to::<TAI>();

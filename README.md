@@ -14,7 +14,7 @@ Typed astronomical time primitives for Rust.
 - The canonical internal carrier is a split `(hi, lo)` pair of J2000-based
   seconds so epoch-sized values can retain sub-second precision through
   conversions and arithmetic.
-- `JD`, `MJD`, `J2000s`, `UnixSecs`, and `GpsSecs` are views or transport
+- `JD`, `MJD`, `J2000s`, `Unix`, and `GPS` are views or transport
   encodings, not alternate storage backends.
 - `UTC` keeps its civil meaning, but internally it is stored on a continuous
   instant axis and interpreted through the active UTC-TAI data tables.
@@ -136,21 +136,21 @@ the horizon. Use the exported `DELTA_T_PREDICTION_HORIZON_MJD` typed
 
 ```toml
 [dependencies]
-tempoch = "0.4"
+tempoch = "0.4.2"
 ```
 
 Enable `serde` if you want to serialize typed times and periods:
 
 ```toml
 [dependencies]
-tempoch = { version = "0.4", features = ["serde"] }
+tempoch = { version = "0.4.2", features = ["serde"] }
 ```
 
 The `serde` feature composes with the ordinary runtime refresh behavior:
 
 ```toml
 [dependencies]
-tempoch = { version = "0.4", features = ["serde"] }
+tempoch = { version = "0.4.2", features = ["serde", "runtime-data-fetch"] }
 ```
 
 ## Serde
@@ -167,11 +167,14 @@ With the `serde` feature enabled:
 use qtty::Second;
 use tempoch::{
     tagged::{TaggedPeriod, TaggedTime},
-    Period, Time, TT,
+    J2000Seconds, Period, TT,
 };
 
-let tt = Time::<TT>::from_j2000_seconds(Second::new(42.5)).unwrap();
-let period = Period::<TT>::new(42.5, 43.5);
+let tt = J2000Seconds::<TT>::try_new(Second::new(42.5)).unwrap().to_time();
+let period = Period::<TT>::new(
+    tt,
+    J2000Seconds::<TT>::try_new(Second::new(43.5)).unwrap().to_time(),
+);
 
 assert_eq!(serde_json::to_string(&tt).unwrap(), r#"{"hi":42.5,"lo":0.0}"#);
 assert_eq!(
@@ -206,7 +209,7 @@ println!("TT in MJD : {:.9}", tt_now.to::<MJD>());
 
 ```rust
 use qtty::Day;
-use tempoch::{complement_within, intersect_periods, ModifiedJulianDate, Period, TT};
+use tempoch::{ModifiedJulianDate, Period, TT};
 
 let day = Period::<TT>::new(
   ModifiedJulianDate::<TT>::try_new(Day::new(61_000.0)).unwrap().to_time(),
@@ -233,8 +236,8 @@ let b = vec![
   ),
 ];
 
-let overlap = intersect_periods(&a, &b);
-let gaps = complement_within(day, &a);
+let overlap = Period::intersect_many(&a, &b);
+let gaps = day.complement(&a);
 
 assert_eq!(overlap.len(), 2);
 assert_eq!(gaps.len(), 3);
@@ -270,7 +273,7 @@ cargo run -p tempoch --example 06_runtime_tables
 ```
 
 ```rust,no_run
-use qtty::Second;
+use qtty::{Day, Second};
 use tempoch::{JD, JulianDate, Time, TimeContext, UnixTime, Unix, TT, UT1, UTC};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

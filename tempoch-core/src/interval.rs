@@ -181,12 +181,19 @@ impl<T: Copy + PartialOrd> Interval<T> {
         let mut gaps = Vec::with_capacity(periods.len().saturating_add(1));
         let mut cursor = self.start;
         for p in periods {
+            if p.end <= cursor {
+                continue;
+            }
+            if p.start >= self.end {
+                break;
+            }
             if p.start > cursor {
                 gaps.push(Self::new(cursor, p.start));
             }
-            if p.end > cursor {
-                cursor = p.end;
+            if p.end >= self.end {
+                return gaps;
             }
+            cursor = p.end;
         }
         if cursor < self.end {
             gaps.push(Self::new(cursor, self.end));
@@ -320,7 +327,6 @@ impl<T: Copy + PartialOrd> Interval<T> {
 mod tests {
     use super::*;
     use crate::representation::{JulianDate, ModifiedJulianDate, MJD};
-    use crate::target::ConversionTarget;
     use crate::{Time, TT};
     use qtty::Day;
     #[cfg(feature = "serde")]
@@ -369,6 +375,28 @@ mod tests {
     }
 
     #[test]
+    fn complement_ignores_periods_after_outer_interval() {
+        let outer = Interval::<f64>::new(10.0_f64, 20.0);
+        let inside = vec![Interval::<f64>::new(25.0_f64, 30.0)];
+
+        assert_eq!(
+            outer.complement(&inside),
+            vec![Interval::<f64>::new(10.0, 20.0)]
+        );
+    }
+
+    #[test]
+    fn complement_clips_periods_spanning_outer_end() {
+        let outer = Interval::<f64>::new(10.0_f64, 20.0);
+        let inside = vec![Interval::<f64>::new(12.0_f64, 30.0)];
+
+        assert_eq!(
+            outer.complement(&inside),
+            vec![Interval::<f64>::new(10.0, 12.0)]
+        );
+    }
+
+    #[test]
     fn intersect_merge() {
         let a = vec![
             Interval::<f64>::new(0.0_f64, 5.0),
@@ -408,8 +436,12 @@ mod tests {
     #[test]
     fn period_accepts_typed_times() {
         let p = Period::<TT>::new(
-            ModifiedJulianDate::<TT>::try_new(Day::new(51_544.5)).unwrap().to_time(),
-            ModifiedJulianDate::<TT>::try_new(Day::new(51_545.25)).unwrap().to_time(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(51_544.5))
+                .unwrap()
+                .to_time(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(51_545.25))
+                .unwrap()
+                .to_time(),
         );
         assert_eq!(p.start.to::<MJD>().raw(), Day::new(51_544.5));
         assert_eq!(p.end.to::<MJD>().raw(), Day::new(51_545.25));
@@ -515,7 +547,10 @@ mod tests {
 
     #[test]
     fn union_many_merges_two_lists() {
-        let a = vec![Interval::<f64>::new(0.0_f64, 3.0), Interval::<f64>::new(7.0, 9.0)];
+        let a = vec![
+            Interval::<f64>::new(0.0_f64, 3.0),
+            Interval::<f64>::new(7.0, 9.0),
+        ];
         let b = vec![Interval::<f64>::new(2.0_f64, 5.0)];
         let u = Interval::union_many(&a, &b);
         assert_eq!(u.len(), 2);
@@ -526,8 +561,12 @@ mod tests {
     #[test]
     fn display_formats_periods_via_endpoint_display() {
         let mjd = Period::<TT>::new(
-            ModifiedJulianDate::<TT>::try_new(Day::new(51_544.5)).unwrap().to_time(),
-            ModifiedJulianDate::<TT>::try_new(Day::new(51_545.25)).unwrap().to_time(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(51_544.5))
+                .unwrap()
+                .to_time(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(51_545.25))
+                .unwrap()
+                .to_time(),
         );
 
         assert!(mjd.to_string().contains("TT"));
@@ -537,12 +576,20 @@ mod tests {
     #[test]
     fn serde_roundtrips_period_shapes() {
         let mjd = Period::<TT>::new(
-            ModifiedJulianDate::<TT>::try_new(Day::new(51_544.5)).unwrap().to_time(),
-            ModifiedJulianDate::<TT>::try_new(Day::new(51_545.25)).unwrap().to_time(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(51_544.5))
+                .unwrap()
+                .to_time(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(51_545.25))
+                .unwrap()
+                .to_time(),
         );
         let jd = Period::<TT>::new(
-            JulianDate::<TT>::try_new(Day::new(2_451_545.0)).unwrap().to_time(),
-            JulianDate::<TT>::try_new(Day::new(2_451_546.0)).unwrap().to_time(),
+            JulianDate::<TT>::try_new(Day::new(2_451_545.0))
+                .unwrap()
+                .to_time(),
+            JulianDate::<TT>::try_new(Day::new(2_451_546.0))
+                .unwrap()
+                .to_time(),
         );
         let native = Period::<TT>::new(
             Time::<TT>::from_raw_j2000_seconds(qtty::Second::new(100.0)).unwrap(),

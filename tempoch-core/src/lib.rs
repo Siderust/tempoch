@@ -13,7 +13,7 @@
 //!   duration; shifting an instant by a duration yields another instant.
 //! - Internal storage is a compensated `(hi, lo)` pair of J2000-based seconds
 //!   so large epoch values can retain small corrections and sub-second detail.
-//! - `JD`, `MJD`, `J2000s`, `UnixSecs`, and `GpsSecs` are conversion targets,
+//! - `JD`, `MJD`, `J2000s`, `Unix`, and `GPS` are conversion targets,
 //!   not independent storage models.
 //! - `UTC` keeps special civil semantics: it is stored as a continuous instant
 //!   and interpreted through the active UTC-TAI table when civil labels are
@@ -68,21 +68,16 @@ pub use error::{ConversionError, TimeDataError};
 pub use generated::{
     EOP_END_MJD, EOP_OBSERVED_END_MJD, EOP_START_MJD, MODERN_DELTA_T_OBSERVED_END_MJD,
 };
-pub use interval::{
-    Interval, InvalidIntervalError, InvalidPeriodError, Period, PeriodListError,
+pub use interval::{Interval, InvalidIntervalError, InvalidPeriodError, Period, PeriodListError};
+pub use representation::{
+    EncodedTime, GpsTime, InfallibleRepresentationForScale, J2000Seconds, J2000s, JulianDate,
+    ModifiedJulianDate, RepresentationForScale, TimeRepresentation, Unix, UnixTime, GPS, JD, MJD,
 };
 pub use scalar::{
     scalar_add_days, scalar_difference_in_days, time_tt_from_scalar, time_tt_to_scalar, ScaleKind,
 };
 pub use scale::{ContinuousScale, CoordinateScale, Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
-pub use target::{
-    ContextConversionTarget, ConversionTarget, InfallibleConversionTarget,
-};
-pub use representation::{
-    EncodedTime, GPS, GpsTime, J2000Seconds, J2000s, JD, JulianDate, MJD,
-    ModifiedJulianDate, TimeRepresentation, Unix, UnixTime,
-    InfallibleRepresentationForScale, RepresentationForScale,
-};
+pub use target::{ContextConversionTarget, ConversionTarget, InfallibleConversionTarget};
 pub use time::Time;
 
 #[cfg(test)]

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Vallés Puig, Ramon
 
-#![cfg(feature = "serde")]
-
 //! Tagged serde wire formats for interchange use-cases.
 //!
 //! The crate-level `Serialize`/`Deserialize` impls for [`crate::Time`] and

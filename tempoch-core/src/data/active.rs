@@ -189,8 +189,10 @@ pub(crate) fn time_data_eop_at(data: &TimeDataBundle, mjd_utc: DayQuantity) -> O
         // Allow extrapolation here: these calls are for internal ΔT bookkeeping
         // (correcting EOP-derived UT1-UTC to the actual UTC-TAI offset), not for
         // validating UTC representations. Pre-1961 EOP data is rare but valid.
-        let lo_offset = time_data_tai_minus_utc_mjd_extrapolated(data, DayQuantity::new(lo_i as f64));
-        let hi_offset = time_data_tai_minus_utc_mjd_extrapolated(data, DayQuantity::new(hi_i as f64));
+        let lo_offset =
+            time_data_tai_minus_utc_mjd_extrapolated(data, DayQuantity::new(lo_i as f64));
+        let hi_offset =
+            time_data_tai_minus_utc_mjd_extrapolated(data, DayQuantity::new(hi_i as f64));
         let query_offset = time_data_tai_minus_utc_mjd_extrapolated(data, mjd_utc);
         match (lo_offset, hi_offset, query_offset) {
             (Some(lo_tmu), Some(hi_tmu), Some(query_tmu)) => {
@@ -582,8 +584,10 @@ mod tests {
 
         with_test_time_data(bundle, || {
             let ctx = TimeContext::with_builtin_eop();
-            let tt =
-                Time::<TT>::from_raw_j2000_seconds(crate::encoding::jd_to_j2000_seconds(DayQuantity::new(2_400_000.5 + 57_000.0))).unwrap();
+            let tt = Time::<TT>::from_raw_j2000_seconds(crate::encoding::jd_to_j2000_seconds(
+                DayQuantity::new(2_400_000.5 + 57_000.0),
+            ))
+            .unwrap();
             let compiled = {
                 let data = compiled_time_data();
                 let dut1 = time_data_eop_at(data.as_ref(), DayQuantity::new(57_000.0))
@@ -662,11 +666,15 @@ mod tests {
                 .value();
 
         with_test_time_data(bundle, || {
-            let overridden = UnixTime::try_new(unix).and_then(|e| e.to_time_with(&TimeContext::new())).unwrap();
+            let overridden = UnixTime::try_new(unix)
+                .and_then(|e| e.to_time_with(&TimeContext::new()))
+                .unwrap();
             let overridden_value =
                 overridden.raw_seconds_pair().0.value() + overridden.raw_seconds_pair().1.value();
             assert!((overridden_value - compiled_value).abs() > 0.1);
-            let roundtrip = overridden.raw_unix_seconds_with(&TimeContext::new()).unwrap();
+            let roundtrip = overridden
+                .raw_unix_seconds_with(&TimeContext::new())
+                .unwrap();
             assert!((roundtrip - unix).abs() < Second::new(1e-3));
             let chrono = overridden.try_to_chrono().unwrap();
             let from_chrono = Time::<UTC>::try_from_chrono(chrono).unwrap();
@@ -705,8 +713,12 @@ mod tests {
         let ctx_after = TimeContext::new();
 
         let unix = Second::new(1_680_000_000.25);
-        let before = UnixTime::try_new(unix).and_then(|e| e.to_time_with(&ctx_before)).unwrap();
-        let after = UnixTime::try_new(unix).and_then(|e| e.to_time_with(&ctx_after)).unwrap();
+        let before = UnixTime::try_new(unix)
+            .and_then(|e| e.to_time_with(&ctx_before))
+            .unwrap();
+        let after = UnixTime::try_new(unix)
+            .and_then(|e| e.to_time_with(&ctx_after))
+            .unwrap();
         let before_value =
             before.raw_seconds_pair().0.value() + before.raw_seconds_pair().1.value();
         let after_value = after.raw_seconds_pair().0.value() + after.raw_seconds_pair().1.value();

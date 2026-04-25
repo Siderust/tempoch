@@ -85,18 +85,13 @@ pub fn time_tt_from_scalar(
         ScaleKind::Tcb => {
             JulianDate::<TCB>::try_new(Day::new(value)).map(|e| e.to_time().to_scale::<TT>())
         }
-        ScaleKind::GpsDays => {
-            JulianDate::<TAI>::try_new(GPS_EPOCH_JD_TAI + Day::new(value))
-                .map(|e| e.to_time().to_scale::<TT>())
-        }
-        ScaleKind::Ut1 => {
-            JulianDate::<UT1>::try_new(Day::new(value)).and_then(|e| e.to_time().to_scale_with::<TT>(ctx))
-        }
-        ScaleKind::Unix => {
-            UnixTime::try_new(Second::new(value))
-                .and_then(|e| e.to_time_with(ctx))
-                .map(|t| t.to_scale::<TT>())
-        }
+        ScaleKind::GpsDays => JulianDate::<TAI>::try_new(GPS_EPOCH_JD_TAI + Day::new(value))
+            .map(|e| e.to_time().to_scale::<TT>()),
+        ScaleKind::Ut1 => JulianDate::<UT1>::try_new(Day::new(value))
+            .and_then(|e| e.to_time().to_scale_with::<TT>(ctx)),
+        ScaleKind::Unix => UnixTime::try_new(Second::new(value))
+            .and_then(|e| e.to_time_with(ctx))
+            .map(|t| t.to_scale::<TT>()),
     }
 }
 

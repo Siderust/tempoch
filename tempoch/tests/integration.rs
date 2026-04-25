@@ -4,8 +4,8 @@ use qtty::{Day, Second};
 use serde_json::json;
 use tempoch::{
     constats::{J2000_JD_TT, TT_MINUS_TAI},
-    ConversionError, CoordinateScale, J2000Seconds, J2000s, JulianDate, ModifiedJulianDate,
-    Period, Time, TimeContext, Unix, JD, MJD, TAI, TT, UT1, UTC,
+    ConversionError, CoordinateScale, J2000Seconds, J2000s, JulianDate, ModifiedJulianDate, Period,
+    Time, TimeContext, Unix, JD, MJD, TAI, TT, UT1, UTC,
 };
 
 #[test]
@@ -108,27 +108,47 @@ fn utc_supports_coordinate_views_and_pre_1961_roundtrips() {
 #[test]
 fn interval_set_ops_match_expected_intervals() {
     let outer = Period::<TT>::new(
-        ModifiedJulianDate::<TT>::try_new(Day::new(0.0)).unwrap().to_time(),
-        ModifiedJulianDate::<TT>::try_new(Day::new(10.0)).unwrap().to_time(),
+        ModifiedJulianDate::<TT>::try_new(Day::new(0.0))
+            .unwrap()
+            .to_time(),
+        ModifiedJulianDate::<TT>::try_new(Day::new(10.0))
+            .unwrap()
+            .to_time(),
     );
     let a = vec![
         Period::<TT>::new(
-            ModifiedJulianDate::<TT>::try_new(Day::new(1.0)).unwrap().to_time(),
-            ModifiedJulianDate::<TT>::try_new(Day::new(3.0)).unwrap().to_time(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(1.0))
+                .unwrap()
+                .to_time(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(3.0))
+                .unwrap()
+                .to_time(),
         ),
         Period::<TT>::new(
-            ModifiedJulianDate::<TT>::try_new(Day::new(5.0)).unwrap().to_time(),
-            ModifiedJulianDate::<TT>::try_new(Day::new(9.0)).unwrap().to_time(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(5.0))
+                .unwrap()
+                .to_time(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(9.0))
+                .unwrap()
+                .to_time(),
         ),
     ];
     let b = vec![
         Period::<TT>::new(
-            ModifiedJulianDate::<TT>::try_new(Day::new(2.0)).unwrap().to_time(),
-            ModifiedJulianDate::<TT>::try_new(Day::new(4.0)).unwrap().to_time(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(2.0))
+                .unwrap()
+                .to_time(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(4.0))
+                .unwrap()
+                .to_time(),
         ),
         Period::<TT>::new(
-            ModifiedJulianDate::<TT>::try_new(Day::new(7.0)).unwrap().to_time(),
-            ModifiedJulianDate::<TT>::try_new(Day::new(8.0)).unwrap().to_time(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(7.0))
+                .unwrap()
+                .to_time(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(8.0))
+                .unwrap()
+                .to_time(),
         ),
     ];
 
@@ -203,8 +223,12 @@ fn serde_still_works_with_current_shape() {
         .unwrap()
         .to_time();
     let period = Period::<TT>::new(
-        J2000Seconds::<TT>::try_new(Second::new(1.25)).unwrap().to_time(),
-        J2000Seconds::<TT>::try_new(Second::new(2.5)).unwrap().to_time(),
+        J2000Seconds::<TT>::try_new(Second::new(1.25))
+            .unwrap()
+            .to_time(),
+        J2000Seconds::<TT>::try_new(Second::new(2.5))
+            .unwrap()
+            .to_time(),
     );
 
     assert_eq!(
@@ -230,8 +254,12 @@ fn tagged_serde_preserves_scale_in_payload() {
         .unwrap()
         .to_time();
     let period = Period::<TT>::new(
-        J2000Seconds::<TT>::try_new(Second::new(1.25)).unwrap().to_time(),
-        J2000Seconds::<TT>::try_new(Second::new(2.5)).unwrap().to_time(),
+        J2000Seconds::<TT>::try_new(Second::new(1.25))
+            .unwrap()
+            .to_time(),
+        J2000Seconds::<TT>::try_new(Second::new(2.5))
+            .unwrap()
+            .to_time(),
     );
 
     assert_eq!(

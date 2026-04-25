@@ -7,7 +7,9 @@ use core::fmt;
 use core::marker::PhantomData;
 
 use crate::context::TimeContext;
-use crate::encoding::{j2000_seconds_to_jd, j2000_seconds_to_mjd, jd_to_j2000_seconds, mjd_to_j2000_seconds};
+use crate::encoding::{
+    j2000_seconds_to_jd, j2000_seconds_to_mjd, jd_to_j2000_seconds, mjd_to_j2000_seconds,
+};
 use crate::error::ConversionError;
 use crate::scale::conversion::InfallibleScaleConvert;
 use crate::scale::{CoordinateScale, Scale, TAI, UTC};
@@ -29,7 +31,10 @@ pub trait TimeRepresentation: Sealed + Copy + Clone + fmt::Debug + 'static {
 /// Representation witness for scale `S`.
 #[allow(private_bounds)]
 pub trait RepresentationForScale<S: Scale>: TimeRepresentation + Sealed {
-    fn try_from_time(time: Time<S>, ctx: &TimeContext) -> Result<Quantity<Self::Unit>, ConversionError>;
+    fn try_from_time(
+        time: Time<S>,
+        ctx: &TimeContext,
+    ) -> Result<Quantity<Self::Unit>, ConversionError>;
     fn try_into_time(
         raw: Quantity<Self::Unit>,
         ctx: &TimeContext,
@@ -287,7 +292,9 @@ macro_rules! coordinate_representation {
                 time: Time<S>,
                 _ctx: &TimeContext,
             ) -> Result<$quantity, ConversionError> {
-                Ok(<Self as InfallibleRepresentationForScale<S>>::from_time(time))
+                Ok(<Self as InfallibleRepresentationForScale<S>>::from_time(
+                    time,
+                ))
             }
 
             #[inline]
@@ -295,7 +302,9 @@ macro_rules! coordinate_representation {
                 raw: $quantity,
                 _ctx: &TimeContext,
             ) -> Result<Time<S>, ConversionError> {
-                Ok(<Self as InfallibleRepresentationForScale<S>>::into_time(raw))
+                Ok(<Self as InfallibleRepresentationForScale<S>>::into_time(
+                    raw,
+                ))
             }
         }
 
@@ -349,12 +358,16 @@ impl RepresentationForScale<UTC> for Unix {
 impl RepresentationForScale<TAI> for GPS {
     #[inline]
     fn try_from_time(time: Time<TAI>, _ctx: &TimeContext) -> Result<Second, ConversionError> {
-        Ok(<Self as InfallibleRepresentationForScale<TAI>>::from_time(time))
+        Ok(<Self as InfallibleRepresentationForScale<TAI>>::from_time(
+            time,
+        ))
     }
 
     #[inline]
     fn try_into_time(raw: Second, _ctx: &TimeContext) -> Result<Time<TAI>, ConversionError> {
-        Ok(<Self as InfallibleRepresentationForScale<TAI>>::into_time(raw))
+        Ok(<Self as InfallibleRepresentationForScale<TAI>>::into_time(
+            raw,
+        ))
     }
 }
 

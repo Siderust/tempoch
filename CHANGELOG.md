@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.4.2 - 2026-04-25]
+
 ### Added
 
 - The new axis/representation time model now backs the public API:
@@ -43,6 +45,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- `Interval::complement` now clips gaps to the outer interval when a sorted
+  input period starts after the outer end.
 - Removed a spurious Kepler-equation correction from the dominant
   Fairhead-Bretagnon TDB-TT term, eliminating an approximately 28 µs
   systematic error.
@@ -58,7 +62,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - The public façade now centers the scale-only `Time<S>` model, with
   coordinate and transport encodings exposed as conversion targets (`JD`,
-  `MJD`, `J2000s`, `UnixSecs`, `GpsSecs`) instead of storage types.
+  `MJD`, `J2000s`, `Unix`, `GPS`) instead of storage types.
 - UTC and UT1 behavior now comes from generated official UTC-TAI, Delta T,
   and EOP tables. `TimeContext::new()` remains monthly-Delta-T by default,
   `with_builtin_eop()` prefers the bundled daily DUT1 path in range, and
@@ -78,6 +82,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - `tempoch-ffi` now maps UT1 horizon failures to a dedicated status code and
   keeps its Unix and civil-time conversions aligned with the crate's leap-second
   and pre-1961 UTC semantics.
+- Updated release dependencies to `affn 0.6.1`, `qtty 0.6.1`, and
+  `qtty-ffi 0.6.1`; workspace CI now checks all feature combinations used by
+  the release validation path and gates coverage on the public runtime/FFI
+  crates while still running the maintenance-crate tests.
 
 ## [0.4.1 - 2026-03-31]
 
