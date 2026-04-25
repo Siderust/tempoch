@@ -196,6 +196,16 @@ where
         }
     }
 
+    /// Convert this encoded instant to the canonical [`Time<S>`] model.
+    ///
+    /// Snapshots the active time-data bundle at call time via
+    /// [`TimeContext::new`]. For reproducible pipelines, prefer
+    /// [`to_time_with`](Self::to_time_with) with an explicit context.
+    #[inline]
+    pub fn try_to_time(self) -> Result<Time<S>, ConversionError> {
+        R::try_into_time(self.raw, &TimeContext::new())
+    }
+
     /// Convert this encoded instant to the canonical [`Time<S>`] model using an explicit context.
     #[inline]
     pub fn to_time_with(self, ctx: &TimeContext) -> Result<Time<S>, ConversionError> {
@@ -427,6 +437,23 @@ impl<S: CoordinateScale> InfallibleConversionTarget<S> for MJD {
     #[inline]
     fn convert(src: Time<S>) -> Self::Output {
         EncodedTime::from_time_infallible(src)
+    }
+}
+
+impl<S> ConversionTarget<S> for Unix
+where
+    S: crate::scale::Scale + InfallibleScaleConvert<UTC>,
+{
+    type Output = EncodedTime<UTC, Unix>;
+
+    /// Snapshots the active time-data bundle at call time via
+    /// [`TimeContext::new`]. For reproducible pipelines, prefer
+    /// [`to_with::<Unix>(&ctx)`](crate::time::Time::to_with).
+    #[inline]
+    fn try_convert(src: Time<S>) -> Result<Self::Output, ConversionError> {
+        let utc = src.to_scale::<UTC>();
+        let raw = Unix::try_from_time(utc, &TimeContext::new())?;
+        Ok(EncodedTime::new_unchecked(raw))
     }
 }
 

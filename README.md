@@ -25,9 +25,9 @@ Typed astronomical time primitives for Rust.
   `TAI`, `UTC`, `UT1`, `TDB`, `TCG`, `TCB`).
 - Unified target-based conversions:
   - `.to::<TT>()`, `.to::<UTC>()`, `.to::<TDB>()` for infallible scale routes
-  - `.to_with::<UT1>(&ctx)` for context-backed UT1 routes (all data-dependent routes require an explicit `TimeContext`)
+  - `.to_with::<UT1>(&ctx)` for context-backed UT1 routes, or `.try_to::<UT1>()` shorthand (snapshots active data at call time)
   - `.to::<JD>()`, `.to::<MJD>()`, `.to::<J2000s>()` for coordinate views
-  - `.to_with::<Unix>(&ctx)` and `.to::<GPS>()` for transport encodings
+  - `.try_to::<Unix>()` and `.to::<GPS>()` for transport encodings
 - UTC conversion through `chrono`, leap-second aware over the official history
   (1961-01-01 onward). Requests for dates before the UTC standard was defined
   return `ConversionError::UtcBeforeDefinition` by default; opt in to the
@@ -51,7 +51,7 @@ Typed astronomical time primitives for Rust.
 - Julian Day, Modified Julian Day, and SI-second views via `JD`, `MJD`, and
   `J2000s` conversion targets on every built-in scale, including UTC's stored
   instant axis.
-- Unix/POSIX timestamps via `UnixTime::try_new(sec).and_then(|e| e.to_time_with(&ctx))` and `.to_with::<Unix>(&ctx)`.
+- Unix/POSIX timestamps via `UnixTime::try_new(sec).and_then(|e| e.to_time_with(&ctx))` and `.try_to::<Unix>()`.
 - GPS transport values via `GpsTime::try_new(sec).map(|e| e.to_time())` and `.to::<GPS>()`.
 - Compiled time-data tables generated from official UTC-TAI and Delta T
   sources.
@@ -192,13 +192,12 @@ assert_eq!(
 
 ```rust
 use chrono::Utc;
-use tempoch::{JD, MJD, Time, TimeContext, TT, UTC};
+use tempoch::{JD, MJD, Time, TT, UTC};
 
-let ctx = TimeContext::new();
-let utc_now = Time::<UTC>::try_from_chrono_with(Utc::now(), &ctx).unwrap();
+let utc_now = Time::<UTC>::from_chrono(Utc::now());
 let tt_now: Time<TT> = utc_now.to::<TT>();
 
-println!("UTC       : {}", utc_now.to_chrono_with(&ctx).unwrap());
+println!("UTC       : {}", utc_now.to_chrono().unwrap());
 println!("TT in JD  : {:.9}", tt_now.to::<JD>());
 println!("TT in MJD : {:.9}", tt_now.to::<MJD>());
 ```
@@ -257,9 +256,10 @@ assert_eq!(gaps.len(), 3);
 history, modern Delta T, and daily IERS EOP while keeping the public API
 unchanged. `TimeContext` and `Time::to_with` consult a cached bundle in
 `~/.tempoch/data`, refreshing it once on first use when the cache is missing,
-invalid, or older than 24 hours. All data-dependent conversions (UT1, Unix,
-UTC civil) require an explicit `TimeContext` so that pipeline reproducibility
-is always visible at the call site.
+invalid, or older than 24 hours. Data-dependent shorthand methods (e.g.
+`try_to::<UT1>()`, `try_to::<Unix>()`, `try_to_chrono()`) snapshot a fresh
+`TimeContext` internally. For reproducible pipelines, use the `_with` variants
+with an explicit context.
 
 Set `TEMPOCH_DATA_DIR` to override the cache location.
 
@@ -280,7 +280,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let unix = UnixTime::try_new(Second::new(1_700_000_000.0))
         .and_then(|e| e.to_time_with(&ctx))?;
-    let back = unix.to_with::<Unix>(&ctx)?;
+    let back = unix.try_to::<Unix>()?;
 
     println!("UT1 JD     : {:.9}", ut1.to::<JD>());
     println!("Unix roundtrip: {:.3}", back);

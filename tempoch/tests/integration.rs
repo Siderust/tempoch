@@ -10,11 +10,10 @@ use tempoch::{
 
 #[test]
 fn utc_roundtrip_j2000_is_stable() {
-    let ctx = TimeContext::new();
     let datetime = DateTime::from_timestamp(946_728_000, 0).unwrap();
-    let utc = Time::<UTC>::try_from_chrono_with(datetime, &ctx).unwrap();
+    let utc = Time::<UTC>::try_from_chrono(datetime).unwrap();
     let jd_tt: Time<TT> = utc.to::<TT>();
-    let back = jd_tt.to::<UTC>().try_to_chrono_with(&ctx).unwrap();
+    let back = jd_tt.to::<UTC>().try_to_chrono().unwrap();
     let delta_ns = back.timestamp_nanos_opt().unwrap() - datetime.timestamp_nanos_opt().unwrap();
     assert!(delta_ns.abs() < 50_000);
 }
@@ -34,6 +33,19 @@ fn ut1_context_roundtrip_near_j2000() {
 }
 
 #[test]
+fn default_try_to_ut1_uses_default_context() {
+    let tt = J2000Seconds::<TT>::try_new(Second::new(0.0))
+        .unwrap()
+        .to_time();
+    let via_default: Time<UT1> = tt.try_to::<UT1>().unwrap();
+    let via_context: Time<UT1> = tt.to_with::<UT1>(&TimeContext::new()).unwrap();
+    assert!(
+        (via_default.to::<J2000s>().raw() - via_context.to::<J2000s>().raw()).abs()
+            < Second::new(1e-12)
+    );
+}
+
+#[test]
 fn public_constats_epochs_are_usable() {
     let j2000 = JulianDate::<TT>::try_new(J2000_JD_TT).unwrap().to_time();
     let tai_s: Time<TAI> = j2000.to::<TAI>();
@@ -47,18 +59,17 @@ fn public_constats_epochs_are_usable() {
 
 #[test]
 fn utc_leap_second_roundtrip_is_preserved() {
-    let ctx = TimeContext::new();
     let leap = NaiveDate::from_ymd_opt(2016, 12, 31)
         .unwrap()
         .and_hms_nano_opt(23, 59, 59, 1_250_000_000)
         .unwrap()
         .and_utc();
 
-    let utc = Time::<UTC>::try_from_chrono_with(leap, &ctx).unwrap();
-    let back = utc.try_to_chrono_with(&ctx).unwrap();
+    let utc = Time::<UTC>::try_from_chrono(leap).unwrap();
+    let back = utc.try_to_chrono().unwrap();
 
-    assert!(utc.is_leap_second_with(&ctx));
-    assert!(utc.to_with::<Unix>(&ctx).is_err());
+    assert!(utc.is_leap_second());
+    assert!(utc.try_to::<Unix>().is_err());
     assert_eq!(back.timestamp(), leap.timestamp());
     assert!(
         (back.timestamp_subsec_nanos() as i64 - leap.timestamp_subsec_nanos() as i64).abs()
@@ -82,7 +93,7 @@ fn utc_supports_coordinate_views_and_pre_1961_roundtrips() {
 
     // Default: pre-1961 dates must be rejected.
     assert!(matches!(
-        Time::<UTC>::try_from_chrono_with(pre_1961, &TimeContext::new()),
+        Time::<UTC>::try_from_chrono(pre_1961),
         Err(ConversionError::UtcBeforeDefinition)
     ));
 
