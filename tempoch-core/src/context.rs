@@ -70,6 +70,9 @@ impl TimeContext {
     }
 
     /// Construct a default context backed by the monthly ΔT table.
+    ///
+    /// This is the lightweight, always-available choice. It does not consult
+    /// the daily EOP series even when the bundled data contains one.
     #[inline]
     pub fn new() -> Self {
         Self::snapshot(EopSource::None)
@@ -78,6 +81,9 @@ impl TimeContext {
     /// Construct a context that prefers the compiled daily IERS
     /// `finals2000A.all` series for UT1 conversions when the epoch is
     /// within its coverage window.
+    ///
+    /// Outside the bundled EOP coverage, this falls back to the same monthly
+    /// ΔT path used by [`TimeContext::new`].
     #[inline]
     pub fn with_builtin_eop() -> Self {
         Self::snapshot(EopSource::Builtin)
@@ -89,8 +95,11 @@ impl TimeContext {
     }
 
     /// Interpolated EOP at `mjd_utc`, if this context has an EOP source and
-    /// the MJD is in range. Intended for scale-conversion internals and for
-    /// callers who want the same values the context uses.
+    /// the MJD is in range.
+    ///
+    /// This exposes the same interpolated values that context-backed scale
+    /// conversions consult internally, so callers can inspect or reuse them
+    /// without reimplementing the lookup path.
     #[inline]
     pub fn eop_at(&self, mjd_utc: Day) -> Option<EopValues> {
         match self.eop {
@@ -99,7 +108,10 @@ impl TimeContext {
         }
     }
 
-    /// Interpolated UT1 − UTC from the context's EOP source, if available.
+    /// Interpolated `UT1 - UTC` from the context's EOP source, if available.
+    ///
+    /// Returns `None` when this context is monthly-ΔT-only or when the epoch is
+    /// outside the captured EOP coverage window.
     #[inline]
     pub fn ut1_minus_utc(&self, mjd_utc: Day) -> Option<Second> {
         self.eop_at(mjd_utc).map(|v| v.ut1_minus_utc)

@@ -11,9 +11,8 @@ use crate::error::ConversionError;
 use crate::generated::eop_data::EOP_POINTS;
 use crate::generated::time_data::{MODERN_DELTA_T_POINTS, UTC_TAI_SEGMENTS};
 use chrono::{DateTime, Utc};
-use qtty::time::{Days, Nanoseconds, Seconds};
 use qtty::unit::{Day, Nanosecond, Second as SecondUnit};
-use qtty::{Day as DayQuantity, Second};
+use qtty::{Day as DayQuantity, Nanosecond as NanosecondQty, Second};
 use std::sync::{Arc, OnceLock, RwLock};
 #[cfg(any(test, feature = "runtime-data-fetch"))]
 use tempoch_time_data::TimeDataError as InternalDataError;
@@ -24,7 +23,7 @@ use tempoch_time_data::{EopPoint, TimeDataBundle, TimeDataProvenance, UtcTaiSegm
 #[cfg(test)]
 use std::sync::Mutex;
 
-const NANOS_PER_SECOND: Nanoseconds = Nanoseconds::new(1_000_000_000.0);
+const NANOS_PER_SECOND: NanosecondQty = NanosecondQty::new(1_000_000_000.0);
 #[cfg(test)]
 const RUNTIME_DATA_MAX_AGE_SECONDS: i64 = 24 * 60 * 60;
 
@@ -32,9 +31,9 @@ const RUNTIME_DATA_MAX_AGE_SECONDS: i64 = 24 * 60 * 60;
 enum UtcTaiRegion {
     Segment(UtcTaiSegment),
     Leap {
-        end_mjd: Days,
-        end_tt: Days,
-        next_start_tt: Days,
+        end_mjd: DayQuantity,
+        end_tt: DayQuantity,
+        next_start_tt: DayQuantity,
     },
 }
 
@@ -234,8 +233,8 @@ fn find_eop_point(points: &[EopPoint], mjd: i32) -> Option<EopPoint> {
 /// or warn on pre-history dates themselves.
 pub(crate) fn time_data_try_tai_minus_utc_mjd(
     data: &TimeDataBundle,
-    mjd_utc: Days,
-) -> Option<Seconds> {
+    mjd_utc: DayQuantity,
+) -> Option<Second> {
     let segments = data.utc_tai_segments();
     let first = segments[0];
     if mjd_utc < DayQuantity::new(first.start_mjd as f64) {
@@ -249,7 +248,7 @@ pub(crate) fn time_data_try_tai_minus_utc_mjd(
 
 pub(crate) fn time_data_utc_from_tai_seconds(
     data: &TimeDataBundle,
-    tai_secs: Seconds,
+    tai_secs: Second,
 ) -> Result<DateTime<Utc>, ConversionError> {
     if !tai_secs.is_finite() {
         return Err(ConversionError::NonFinite);
@@ -268,16 +267,16 @@ pub(crate) fn time_data_utc_from_tai_seconds(
         } => {
             let boundary = datetime_from_utc_mjd(end_mjd).ok_or(ConversionError::OutOfRange)?;
             let base_secs = boundary.timestamp() - 1;
-            let leap_nanos: Nanoseconds =
+            let leap_nanos: NanosecondQty =
                 NANOS_PER_SECOND + (mjd_tt - end_tt).to::<SecondUnit>().to::<Nanosecond>();
-            let window_nanos: Nanoseconds = (next_start_tt - end_tt)
+            let window_nanos: NanosecondQty = (next_start_tt - end_tt)
                 .to::<SecondUnit>()
                 .to::<Nanosecond>()
                 .round()
-                .max(Nanoseconds::one());
-            let max_nanos = NANOS_PER_SECOND + window_nanos - Nanoseconds::one();
+                .max(NanosecondQty::one());
+            let max_nanos = NANOS_PER_SECOND + window_nanos - NanosecondQty::one();
             let nanos = leap_nanos.round().clamp(NANOS_PER_SECOND, max_nanos);
-            DateTime::<Utc>::from_timestamp(base_secs, (nanos / Nanoseconds::one()) as u32)
+            DateTime::<Utc>::from_timestamp(base_secs, (nanos / NanosecondQty::one()) as u32)
                 .ok_or(ConversionError::OutOfRange)
         }
     }
@@ -287,22 +286,22 @@ pub(crate) fn time_data_tai_seconds_from_utc(
     data: &TimeDataBundle,
     dt: DateTime<Utc>,
 ) -> Result<Second, ConversionError> {
-    let base_jd_utc = unix_seconds_to_jd(Seconds::new(dt.timestamp() as f64));
+    let base_jd_utc = unix_seconds_to_jd(Second::new(dt.timestamp() as f64));
     let tai_minus_utc = time_data_try_tai_minus_utc_mjd(data, jd_to_mjd(base_jd_utc))
         .ok_or(ConversionError::UtcHistoryUnsupported)?;
     let subsec_nanos = dt.timestamp_subsec_nanos();
     if subsec_nanos >= 1_000_000_000 {
         let next = time_data_try_tai_minus_utc_mjd(
             data,
-            jd_to_mjd(base_jd_utc) + Seconds::new(1.0).to::<Day>(),
+            jd_to_mjd(base_jd_utc) + Second::new(1.0).to::<Day>(),
         )
         .ok_or(ConversionError::InvalidLeapSecond)?;
-        if next - tai_minus_utc < Seconds::new(0.5) {
+        if next - tai_minus_utc < Second::new(0.5) {
             return Err(ConversionError::InvalidLeapSecond);
         }
     }
 
-    let frac = Nanoseconds::new(subsec_nanos as f64).to::<SecondUnit>();
+    let frac = NanosecondQty::new(subsec_nanos as f64).to::<SecondUnit>();
     Ok(jd_to_j2000_seconds(base_jd_utc) + tai_minus_utc + frac)
 }
 
@@ -368,33 +367,33 @@ fn compiled_time_data() -> Arc<TimeDataBundle> {
         .clone()
 }
 
-fn utc_offset_seconds_in_segment(mjd_utc: Days, segment: UtcTaiSegment) -> Seconds {
+fn utc_offset_seconds_in_segment(mjd_utc: DayQuantity, segment: UtcTaiSegment) -> Second {
     let utc_offset = mjd_utc - DayQuantity::new(segment.reference_mjd);
     Second::new(segment.base_seconds)
         + Second::new(segment.slope_seconds_per_day) * (utc_offset / DayQuantity::new(1.0))
 }
 
-fn utc_mjd_to_tt_mjd_in_segment(mjd_utc: Days, segment: UtcTaiSegment) -> Days {
+fn utc_mjd_to_tt_mjd_in_segment(mjd_utc: DayQuantity, segment: UtcTaiSegment) -> DayQuantity {
     mjd_utc + (utc_offset_seconds_in_segment(mjd_utc, segment) + TT_MINUS_TAI).to::<Day>()
 }
 
-fn tt_mjd_to_utc_mjd_in_segment(mjd_tt: Days, segment: UtcTaiSegment) -> Days {
-    let scale = Days::new(1.0) + Second::new(segment.slope_seconds_per_day).to::<Day>();
-    let ref_days = DayQuantity::new(segment.reference_mjd) / Days::new(1.0);
+fn tt_mjd_to_utc_mjd_in_segment(mjd_tt: DayQuantity, segment: UtcTaiSegment) -> DayQuantity {
+    let scale = DayQuantity::new(1.0) + Second::new(segment.slope_seconds_per_day).to::<Day>();
+    let ref_days = DayQuantity::new(segment.reference_mjd) / DayQuantity::new(1.0);
     let offset_days = (Second::new(segment.base_seconds)
         - Second::new(segment.slope_seconds_per_day) * ref_days
         + TT_MINUS_TAI)
         .to::<Day>();
-    Days::new((mjd_tt - offset_days) / scale)
+    DayQuantity::new((mjd_tt - offset_days) / scale)
 }
 
-fn segment_start_tt(segment: UtcTaiSegment) -> Days {
+fn segment_start_tt(segment: UtcTaiSegment) -> DayQuantity {
     utc_mjd_to_tt_mjd_in_segment(DayQuantity::new(segment.start_mjd as f64), segment)
 }
 
 fn locate_utc_region_from_tt_mjd(
     segments: &[UtcTaiSegment],
-    mjd_tt: Days,
+    mjd_tt: DayQuantity,
 ) -> Result<UtcTaiRegion, ConversionError> {
     let idx =
         segments.partition_point(|segment| segment_start_tt(*segment) <= mjd_tt + UTC_INTERVAL_EPS);
@@ -418,25 +417,25 @@ fn locate_utc_region_from_tt_mjd(
     Ok(UtcTaiRegion::Segment(segment))
 }
 
-fn datetime_from_seconds_since_epoch(seconds_since_epoch: Seconds) -> Option<DateTime<Utc>> {
+fn datetime_from_seconds_since_epoch(seconds_since_epoch: Second) -> Option<DateTime<Utc>> {
     if !seconds_since_epoch.is_finite() {
         return None;
     }
 
     let mut secs = seconds_since_epoch.floor();
-    let mut nanos: Nanoseconds = (seconds_since_epoch - secs).to::<Nanosecond>().round();
+    let mut nanos: NanosecondQty = (seconds_since_epoch - secs).to::<Nanosecond>().round();
     if nanos >= NANOS_PER_SECOND {
-        secs += Seconds::one();
+        secs += Second::one();
         nanos -= NANOS_PER_SECOND;
     }
 
     DateTime::<Utc>::from_timestamp(
-        (secs / Seconds::one()) as i64,
-        (nanos / Nanoseconds::one()) as u32,
+        (secs / Second::one()) as i64,
+        (nanos / NanosecondQty::one()) as u32,
     )
 }
 
-fn datetime_from_utc_mjd(mjd_utc: Days) -> Option<DateTime<Utc>> {
+fn datetime_from_utc_mjd(mjd_utc: DayQuantity) -> Option<DateTime<Utc>> {
     datetime_from_seconds_since_epoch(mjd_to_unix_seconds(mjd_utc))
 }
 

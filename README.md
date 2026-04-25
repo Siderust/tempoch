@@ -6,6 +6,19 @@
 
 Typed astronomical time primitives for Rust.
 
+`tempoch` is built around a few deliberate modeling choices:
+
+- A `Time<S>` value is an instant on a scale-specific axis, not a bare `f64`.
+- Time instants are modeled with affine semantics: `time_a - time_b` yields a
+  duration, while shifting an instant is `time + seconds`.
+- The canonical internal carrier is a split `(hi, lo)` pair of J2000-based
+  seconds so epoch-sized values can retain sub-second precision through
+  conversions and arithmetic.
+- `JD`, `MJD`, `J2000s`, `UnixSecs`, and `GpsSecs` are views or transport
+  encodings, not alternate storage backends.
+- `UTC` keeps its civil meaning, but internally it is stored on a continuous
+  instant axis and interpreted through the active UTC-TAI data tables.
+
 `tempoch` provides:
 
 - `Time<S>` instants parameterized by a physical or civil scale (`TT`,
@@ -56,6 +69,62 @@ Typed astronomical time primitives for Rust.
 **Storage model:** `Time<S>` stores a compensated `(hi, lo)` pair of seconds
 since J2000 TT on the target axis. Tags such as `JD`, `MJD`, `UnixSecs`, and
 `GpsSecs` are conversion targets, not storage types.
+
+## Design Decisions
+
+### `Time<S>` is an affine point, not a scalar
+
+`tempoch` treats an instant as a point on a time axis. That is why the API is
+deliberately shaped around:
+
+- `time_a - time_b -> duration`
+- `time + duration -> time`
+- `time - duration -> time`
+
+and does not model "adding two instants" as a meaningful operation.
+
+Internally, this is represented with `affn::SplitPoint1`, which keeps the
+affine semantics aligned with the rest of the geometry model instead of
+re-introducing scalar-like mistakes through ad hoc time arithmetic.
+
+### Why time uses split storage
+
+Astronomical epochs are large in absolute value, but many important corrections
+are tiny:
+
+- leap-second boundaries
+- TT-TAI offsets
+- TT-TDB corrections
+- UT1 adjustments
+- sub-second transport roundtrips
+
+Using one `f64` for "seconds since epoch" would lose low-order precision once a
+small correction is combined with a value on the order of `1e9` seconds.
+`tempoch` therefore stores every `Time<S>` as a normalized compensated pair
+`(hi, lo)` whose sum is the represented instant. The high part carries the
+epoch-sized component; the low part preserves the small remainder.
+
+This is why `Time<S>` serializes as `{"hi","lo"}` with `serde`, and why the
+crate reuses `affn::SplitQuantity` / `SplitPoint1` instead of a plain scalar
+field.
+
+### Why J2000 seconds are canonical
+
+The crate exposes Julian Day, Modified Julian Day, Unix, and GPS helpers, but
+those are public coordinate or transport views. The storage choice remains
+canonical J2000-based seconds because it gives one precise internal axis for
+arithmetic and scale conversion, while still allowing JD/MJD-style APIs at the
+boundary.
+
+### Why UTC is treated specially
+
+`UTC` is a civil scale with leap-second labeling, so it cannot be treated as a
+simple uniform scalar everywhere. `tempoch` keeps the internal instant storage
+continuous, then maps that stored instant to civil UTC through the active
+UTC-TAI table. That separation lets the crate support both:
+
+- precise instant arithmetic and transport encodings
+- leap-second-aware civil conversions
 
 The compiled modern ΔT series runs through MJD 63871 (`2033-10-01`). Beyond
 that date the built-in bundle stops and UT1 conversions fail with

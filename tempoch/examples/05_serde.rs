@@ -29,19 +29,19 @@ fn main() {
     println!("Period JSON : {window_json}");
     println!("Tagged Time JSON   : {tagged_tt_json}");
     println!("Tagged Period JSON : {tagged_window_json}");
-    println!("TT round-trip     : {:.1}", tt_back.j2000_seconds().value());
+    println!("TT round-trip     : {:.1}", tt_back.j2000_seconds());
     println!(
         "Window round-trip : {:.1} → {:.1}",
-        window_back.start.j2000_seconds().value(),
-        window_back.end.j2000_seconds().value()
+        window_back.start.j2000_seconds(),
+        window_back.end.j2000_seconds()
     );
     println!(
         "Tagged TT round-trip     : {:.1}",
-        tagged_tt_back.j2000_seconds().value()
+        tagged_tt_back.j2000_seconds()
     );
     println!(
         "Tagged Window round-trip : {:.1} → {:.1}",
-        tagged_window_back.start.j2000_seconds().value(),
-        tagged_window_back.end.j2000_seconds().value()
+        tagged_window_back.start.j2000_seconds(),
+        tagged_window_back.end.j2000_seconds()
     );
 }

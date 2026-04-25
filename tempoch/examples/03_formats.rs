@@ -17,24 +17,24 @@ fn main() {
 
     let utc = Time::<UTC>::from_unix_seconds(Second::new(1_700_000_000.25)).unwrap();
 
-    println!("J2000 TT seconds  : {:.9}", j2000_tt.to::<J2000s>().value());
-    println!("Sample TT JD      : {:.9}", sample_tt.to::<JD>().value());
-    println!("Sample TT MJD     : {:.9}", sample_tt.to::<MJD>().value());
+    println!("J2000 TT seconds  : {:.9}", j2000_tt.to::<J2000s>());
+    println!("Sample TT JD      : {:.9}", sample_tt.to::<JD>());
+    println!("Sample TT MJD     : {:.9}", sample_tt.to::<MJD>());
     println!(
         "J2000 from JD     : {:.9}",
-        j2000_from_jd.to::<J2000s>().value()
+        j2000_from_jd.to::<J2000s>()
     );
     println!(
         "Unix epoch JD(TT) : {:.9}",
-        unix_epoch_jd.to::<JD>().value()
+        unix_epoch_jd.to::<JD>()
     );
-    println!("Half-day JD(TT)   : {:.9}", half_day_jd.to::<JD>().value());
+    println!("Half-day JD(TT)   : {:.9}", half_day_jd.to::<JD>());
     println!(
         "Unix epoch MJD(TT): {:.9}",
-        unix_epoch_mjd.to::<MJD>().value()
+        unix_epoch_mjd.to::<MJD>()
     );
     println!(
         "UTC POSIX         : {:.3}",
-        utc.try_to::<UnixSecs>().unwrap().value()
+        utc.try_to::<UnixSecs>().unwrap()
     );
 }

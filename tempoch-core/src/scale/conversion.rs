@@ -14,9 +14,8 @@ use crate::error::ConversionError;
 use crate::scale::{Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
 use crate::sealed::Sealed;
 use affn::algebra::{AffineMap1, Space, SplitPoint1, SplitQuantity};
-use qtty::time::{Days, Seconds};
 use qtty::unit::{Day, Second as SecondUnit};
-use qtty::Second;
+use qtty::{Day as JdDay, Second};
 
 #[derive(Debug, Copy, Clone)]
 struct SourceAxis;
@@ -59,13 +58,13 @@ fn linear_map_pair(
 }
 
 #[inline]
-fn tdb_minus_tt_seconds(jd_tt: Days) -> Seconds {
+fn tdb_minus_tt_seconds(jd_tt: JdDay) -> Second {
     // Source: USNO Circular 179 truncated seven-term Fairhead-Bretagnon
     // approximation for TDB - TT. The documented high-accuracy regime for this
     // specific truncation is about 10 microseconds over 1600-01-01 to
     // 2200-01-01 TT.
     let t = jd_to_julian_centuries(jd_tt);
-    Seconds::new(
+    Second::new(
         0.001_657 * (628.3076 * t + 6.2401).sin()
             + 0.000_022 * (575.3385 * t + 4.2970).sin()
             + 0.000_014 * (1256.6152 * t + 6.1969).sin()
@@ -259,7 +258,7 @@ utc_through_tai!(TCG);
 utc_through_tai!(TCB);
 
 #[inline]
-fn context_delta_t(jd_ut1: Days, ctx: &TimeContext) -> Result<Seconds, ConversionError> {
+fn context_delta_t(jd_ut1: JdDay, ctx: &TimeContext) -> Result<Second, ConversionError> {
     let data = active_time_data();
     let mut mjd_utc = jd_to_mjd(jd_ut1);
     for _ in 0..2 {

@@ -10,7 +10,7 @@
 //! Rust [`ScaleKind`] and provides thin wrappers for the FFI entry points.
 
 use chrono::{DateTime, Utc};
-use qtty::time::Seconds;
+use qtty::Second;
 use qtty::Day;
 use tempoch::{
     scalar::{scalar_add_days, scalar_difference_in_days, time_tt_from_scalar, time_tt_to_scalar},
@@ -139,7 +139,7 @@ pub(crate) fn time_to_utc_value(value: f64, scale: TempochScaleId) -> Option<Dat
         // Route through the civil API so that out-of-history-range Unix
         // timestamps and non-finite values are rejected consistently with
         // all other scales.
-        return Time::<UTC>::from_unix_seconds_with(Seconds::new(value), &ctx)
+        return Time::<UTC>::from_unix_seconds_with(Second::new(value), &ctx)
             .ok()?
             .try_to_chrono_with(&ctx)
             .ok();

@@ -14,20 +14,20 @@ fn main() {
     let tcg: Time<TCG> = tt.to::<TCG>();
     let tcb: Time<TCB> = tt.to::<TCB>();
 
-    println!("TT  JD  : {:.9}", tt.to::<JD>().value());
-    println!("TAI JD  : {:.9}", tai.to::<JD>().value());
-    println!("UT1 JD  : {:.9}", ut1.to::<JD>().value());
-    println!("TDB JD  : {:.9}", tdb.to::<JD>().value());
-    println!("TCG JD  : {:.9}", tcg.to::<JD>().value());
-    println!("TCB JD  : {:.9}", tcb.to::<JD>().value());
+    println!("TT  JD  : {:.9}", tt.to::<JD>());
+    println!("TAI JD  : {:.9}", tai.to::<JD>());
+    println!("UT1 JD  : {:.9}", ut1.to::<JD>());
+    println!("TDB JD  : {:.9}", tdb.to::<JD>());
+    println!("TCG JD  : {:.9}", tcg.to::<JD>());
+    println!("TCB JD  : {:.9}", tcb.to::<JD>());
     println!("UTC     : {}", utc.to_chrono().unwrap());
     println!(
-        "TT-TAI  : {:.6} s",
-        (tt.to::<J2000s>() - tai.to::<J2000s>()).value()
+        "TT-TAI  : {:.6}",
+        (tt.to::<J2000s>() - tai.to::<J2000s>())
     );
     println!(
-        "TT-UT1  : {:.6} s",
-        (tt.to::<J2000s>() - ut1.to::<J2000s>()).value()
+        "TT-UT1  : {:.6}",
+        (tt.to::<J2000s>() - ut1.to::<J2000s>())
     );
     assert!(
         (tt.to::<J2000s>() - tai.to::<J2000s>() - Second::new(32.184)).abs() < Second::new(1e-9)

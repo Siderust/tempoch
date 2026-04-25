@@ -14,7 +14,6 @@ use super::scale::conversion::{ContextScaleConvert, InfallibleScaleConvert};
 use super::scale::{CoordinateScale, Scale};
 use super::target::{ContextConversionTarget, ConversionTarget, InfallibleConversionTarget};
 use affn::algebra::{Space, SplitPoint1};
-use qtty::time::Seconds;
 use qtty::unit::Second as SecondUnit;
 use qtty::{Day, Second};
 
@@ -41,6 +40,18 @@ impl<S: Scale> Space for ScaleAxis<S> {}
 /// J2000 TT on the scale's coordinate axis. The pair sums to the exact value
 /// represented by the instance, while keeping the low-order remainder small
 /// enough to retain much better precision than a single `f64`.
+///
+/// `Time<S>` is intentionally modeled as an affine point, not as a raw scalar:
+/// subtracting two instants yields a duration, while adding or subtracting a
+/// duration shifts an instant. Internally this is represented with
+/// `affn::SplitPoint1`, which preserves the same point-vs-displacement
+/// semantics used elsewhere in the codebase.
+///
+/// The split representation exists because astronomical epochs are large
+/// values, while important corrections are often tiny. A single `f64` would
+/// discard low-order precision too aggressively once epoch-sized values are
+/// combined with sub-second or microsecond-scale offsets, so `Time<S>` keeps
+/// the large component in `hi` and the residual correction in `lo`.
 ///
 /// `UTC` remains special: it stores a continuous instant on the same internal
 /// axis used by `TAI`, but its civil interpretation still comes from the
@@ -83,17 +94,17 @@ impl<S: Scale> core::fmt::Debug for Time<S> {
         let (hi, lo) = self.split_seconds();
         write!(
             f,
-            "Time<{}>({:.17e} s, {:.17e} s)",
+            "Time<{}>({:.17e}, {:.17e})",
             S::NAME,
-            hi.value(),
-            lo.value()
+            hi,
+            lo
         )
     }
 }
 
 impl<S: Scale> core::fmt::Display for Time<S> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{} {:.9} s", S::NAME, self.total_seconds().value())
+        write!(f, "{} {:.9}", S::NAME, self.total_seconds())
     }
 }
 
@@ -138,13 +149,13 @@ impl<S: Scale> Time<S> {
 impl<S: CoordinateScale> Time<S> {
     /// Build from J2000 TT seconds on the scale's coordinate axis.
     #[inline]
-    pub fn from_j2000_seconds(seconds: Seconds) -> Result<Self, ConversionError> {
+    pub fn from_j2000_seconds(seconds: Second) -> Result<Self, ConversionError> {
         Self::try_new(seconds, Second::new(0.0))
     }
 
     /// Build from a split J2000-second pair.
     #[inline]
-    pub fn from_j2000_seconds_split(hi: Seconds, lo: Seconds) -> Result<Self, ConversionError> {
+    pub fn from_j2000_seconds_split(hi: Second, lo: Second) -> Result<Self, ConversionError> {
         Self::try_new(hi, lo)
     }
 
@@ -168,7 +179,7 @@ impl<S: CoordinateScale> Time<S> {
 
     /// Scale-coordinate seconds since J2000 TT.
     #[inline]
-    pub fn j2000_seconds(self) -> Seconds {
+    pub fn j2000_seconds(self) -> Second {
         self.total_seconds()
     }
 

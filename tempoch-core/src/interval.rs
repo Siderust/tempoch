@@ -75,9 +75,14 @@ impl fmt::Display for PeriodListError {
 impl std::error::Error for PeriodListError {}
 
 /// Half-open time interval `[start, end)`.
+///
+/// Half-open intervals are convenient for period arithmetic because adjacent
+/// intervals such as `[a, b)` and `[b, c)` touch without overlapping.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Interval<T: Copy + PartialOrd> {
+    /// Inclusive lower bound.
     pub start: T,
+    /// Exclusive upper bound.
     pub end: T,
 }
 
@@ -100,8 +105,11 @@ pub type Period<S> = Interval<Time<S>>;
 pub type InvalidPeriodError = InvalidIntervalError;
 
 impl<T: Copy + PartialOrd> Interval<T> {
-    /// Construct without validation. Prefer [`try_new`](Self::try_new) for
-    /// computed inputs.
+    /// Construct without validation.
+    ///
+    /// This accepts any `start`/`end` pair, including reversed or NaN-like
+    /// endpoints. Prefer [`try_new`](Self::try_new) when the bounds come from
+    /// computation or external input.
     #[inline]
     pub fn new<S: Into<T>, E: Into<T>>(start: S, end: E) -> Self {
         Self {
@@ -111,6 +119,8 @@ impl<T: Copy + PartialOrd> Interval<T> {
     }
 
     /// Validating constructor: rejects `start > end` and NaN endpoints.
+    ///
+    /// Zero-length intervals where `start == end` are allowed.
     #[inline]
     pub fn try_new<S: Into<T>, E: Into<T>>(start: S, end: E) -> Result<Self, InvalidIntervalError> {
         let start = start.into();
@@ -142,6 +152,9 @@ impl<T: Copy + PartialOrd> Interval<T> {
     ///
     /// Returns one interval when they overlap or touch, two when they are
     /// strictly disjoint (sorted by start time).
+    ///
+    /// This pairwise API preserves disjointness instead of forcing a merged
+    /// interval that would invent coverage through the gap.
     #[inline]
     pub fn union(&self, other: &Self) -> Vec<Self> {
         if self.start <= other.end && other.start <= self.end {
@@ -161,7 +174,8 @@ impl<T: Copy + PartialOrd> Interval<T> {
     /// Gaps inside `self` that are not covered by any interval in `periods`.
     ///
     /// `periods` must be sorted and non-overlapping
-    /// (see [`Interval::validate`]).
+    /// (see [`Interval::validate`]). Intervals outside `self` are effectively
+    /// ignored except for how they advance the internal cursor.
     #[inline]
     pub fn complement(&self, periods: &[Self]) -> Vec<Self> {
         let mut gaps = Vec::with_capacity(periods.len().saturating_add(1));
@@ -200,6 +214,8 @@ impl<T: Copy + PartialOrd> Interval<T> {
     // ── List operations (associated functions) ───────────────────────────────
 
     /// Check that a list is sorted, non-overlapping, and each `start <= end`.
+    ///
+    /// Touching intervals such as `[a, b)` followed by `[b, c)` are valid.
     pub fn validate(periods: &[Self]) -> Result<(), PeriodListError> {
         let mut prev: Option<Interval<T>> = None;
         for (i, period) in periods.iter().copied().enumerate() {
@@ -255,8 +271,10 @@ impl<T: Copy + PartialOrd> Interval<T> {
         Ok(Self::intersect_many(a, b))
     }
 
-    /// Union of two sorted period lists. Merges overlapping and adjacent
-    /// intervals. The result is sorted and non-overlapping.
+    /// Union of two sorted period lists.
+    ///
+    /// Overlapping and adjacent intervals are merged. The result is sorted and
+    /// non-overlapping.
     pub fn union_many(a: &[Self], b: &[Self]) -> Vec<Self> {
         let mut combined: Vec<Self> = a.iter().chain(b.iter()).copied().collect();
         combined.sort_unstable_by(|x, y| {
@@ -267,7 +285,10 @@ impl<T: Copy + PartialOrd> Interval<T> {
         Self::normalize(&combined)
     }
 
-    /// Sort and merge overlapping/adjacent intervals.
+    /// Sort and merge overlapping or adjacent intervals.
+    ///
+    /// This is useful for normalizing hand-built or concatenated period lists
+    /// before later set operations.
     pub fn normalize(periods: &[Self]) -> Vec<Self> {
         if periods.is_empty() {
             return Vec::new();

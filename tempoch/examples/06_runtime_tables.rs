@@ -9,8 +9,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let unix = Time::<UTC>::from_unix_seconds(1_700_000_000.0.into())?;
     let back = unix.try_to::<UnixSecs>()?;
 
-    println!("probe TT JD  : {:.9}", probe_tt.to::<JD>().value());
-    println!("probe UT1 JD : {:.9}", probe_ut1.to::<JD>().value());
-    println!("Unix roundtrip: {:.3}", back.value());
+    println!("probe TT JD  : {:.9}", probe_tt.to::<JD>());
+    println!("probe UT1 JD : {:.9}", probe_ut1.to::<JD>());
+    println!("Unix roundtrip: {:.3}", back);
     Ok(())
 }

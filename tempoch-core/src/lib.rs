@@ -6,6 +6,19 @@
 //! The central type is [`Time<S>`], where `S` is a [`Scale`] marker
 //! (`TT`, `TAI`, `UTC`, `UT1`, `TDB`, `TCG`, `TCB`).
 //!
+//! `tempoch` makes a few explicit modeling decisions:
+//!
+//! - [`Time<S>`] is an instant on a scale-specific axis, not a bare scalar.
+//! - Time arithmetic follows affine rules: instant minus instant yields a
+//!   duration; shifting an instant by a duration yields another instant.
+//! - Internal storage is a compensated `(hi, lo)` pair of J2000-based seconds
+//!   so large epoch values can retain small corrections and sub-second detail.
+//! - `JD`, `MJD`, `J2000s`, `UnixSecs`, and `GpsSecs` are conversion targets,
+//!   not independent storage models.
+//! - `UTC` keeps special civil semantics: it is stored as a continuous instant
+//!   and interpreted through the active UTC-TAI table when civil labels are
+//!   needed.
+//!
 //! The old format-generic storage model has been replaced with explicit
 //! constructors and accessors:
 //!
