@@ -27,6 +27,19 @@ pub const UNIX_EPOCH_JD: Day = Day::new(2_440_587.5);
 /// Unix epoch as a Modified Julian Day on the UTC axis.
 pub const UNIX_EPOCH_MJD: Day = Day::new(40_587.0);
 
+/// GPS epoch as a Julian Day on the UTC axis: 1980-01-06T00:00:00 UTC.
+pub const GPS_EPOCH_JD_UTC: Day = Day::new(2_444_244.5);
+
+/// Exact `TAI - UTC` offset at the GPS epoch.
+pub const GPS_EPOCH_TAI_MINUS_UTC: Second = Second::new(19.0);
+
+/// GPS epoch expressed as a Julian Day on the TAI axis.
+///
+/// At the GPS epoch, `TAI - UTC = 19 s` exactly, so this is
+/// `GPS_EPOCH_JD_UTC + 19 s`, converted to Julian days.
+pub const GPS_EPOCH_JD_TAI: Day =
+    GPS_EPOCH_JD_UTC.const_add(GPS_EPOCH_TAI_MINUS_UTC.to_const::<qtty::unit::Day>());
+
 /// IAU 2000 B1.9 reference epoch `T0` as JD(TT).
 pub const IAU_TIME_EPOCH_T0_JD: Day = Day::new(2_443_144.500_372_5);
 
@@ -56,7 +69,7 @@ pub const TDB_TT_MODEL_HIGH_ACCURACY_END_JD: Day = Day::new(2_524_598.5);
 /// GPS epoch expressed as TAI seconds since J2000 TT on the TAI axis.
 ///
 /// The storage convention is `(JD_TAI(P) − J2000_JD_TT) × 86400`. For the GPS
-/// epoch, `JD_UTC = 2_444_244.5` and `TAI − UTC = 19 s` (exact), giving:
+/// epoch, `JD_UTC = GPS_EPOCH_JD_UTC` and `TAI − UTC = 19 s` (exact), giving:
 ///
 ///   `(44_244.0 − 51_544.5) × 86400 + 19 = −630_763_181`.
 pub const GPS_EPOCH_TAI: Second = Second::new(-630_763_181.0);
@@ -100,6 +113,13 @@ mod tests {
         assert!((J2000_JD_TT - JD_MINUS_MJD - Day::new(51_544.5)).abs() < Day::new(1e-12));
         assert!((TT_MINUS_TAI - Second::new(32.184)).abs() < Second::new(1e-12));
         assert!((UTC_DEFINED_FROM_MJD - Day::new(37_300.0)).abs() < Day::new(1e-12));
+        assert!((GPS_EPOCH_JD_UTC - Day::new(2_444_244.5)).abs() < Day::new(1e-12));
+        assert!((GPS_EPOCH_TAI_MINUS_UTC - Second::new(19.0)).abs() < Second::new(1e-12));
+        assert!(
+            (GPS_EPOCH_JD_TAI - GPS_EPOCH_JD_UTC - GPS_EPOCH_TAI_MINUS_UTC.to::<qtty::unit::Day>())
+                .abs()
+                < Day::new(1e-9)
+        );
     }
 
     #[test]

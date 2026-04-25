@@ -41,7 +41,9 @@ mod serde_impl;
 #[cfg(feature = "serde")]
 pub mod tagged;
 
-pub use constats::UTC_DEFINED_FROM_MJD;
+pub use constats::{
+    GPS_EPOCH_JD_TAI, GPS_EPOCH_JD_UTC, GPS_EPOCH_TAI_MINUS_UTC, UTC_DEFINED_FROM_MJD,
+};
 pub use context::TimeContext;
 #[cfg(feature = "runtime-data-fetch")]
 pub use data::active::{
@@ -59,7 +61,6 @@ pub use interval::{
 };
 pub use scalar::{
     scalar_add_days, scalar_difference_in_days, time_tt_from_scalar, time_tt_to_scalar, ScaleKind,
-    GPS_EPOCH_JD_TAI,
 };
 pub use scale::{ContinuousScale, CoordinateScale, Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
 pub use target::{

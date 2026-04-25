@@ -16,19 +16,12 @@
 //! ([`scalar_difference_in_days`], [`scalar_add_days`]) handle the
 //! seconds-vs-days distinction for the [`ScaleKind::Unix`] encoding.
 
+use crate::constats::GPS_EPOCH_JD_TAI;
 use crate::context::TimeContext;
 use crate::error::ConversionError;
 use crate::scale::{TAI, TCB, TCG, TDB, TT, UT1, UTC};
 use crate::time::Time;
-use qtty::time::Seconds;
 use qtty::{Day, Second};
-
-/// GPS epoch expressed as a Julian Day on the TAI axis.
-///
-/// At the GPS epoch (1980-01-06T00:00:00 UTC), `TAI − UTC = 19 s` exactly,
-/// giving `JD(TAI) = 2_444_244.5 + 19 s` converted to days.
-pub const GPS_EPOCH_JD_TAI: f64 =
-    2_444_244.5 + Seconds::new(19.0).to_const::<qtty::unit::Day>().value();
 
 /// Identifies a time scale or scalar encoding for dispatch.
 ///
@@ -91,13 +84,14 @@ pub fn time_tt_from_scalar(
         ScaleKind::Tcb => {
             Time::<TCB>::from_julian_days(Day::new(value)).map(|t| t.to_scale::<TT>())
         }
-        ScaleKind::GpsDays => Time::<TAI>::from_julian_days(Day::new(value + GPS_EPOCH_JD_TAI))
+        ScaleKind::GpsDays => Time::<TAI>::from_julian_days(GPS_EPOCH_JD_TAI + Day::new(value))
             .map(|t| t.to_scale::<TT>()),
         ScaleKind::Ut1 => {
             Time::<UT1>::from_julian_days(Day::new(value)).and_then(|t| t.to_scale_with::<TT>(ctx))
         }
-        ScaleKind::Unix => Time::<UTC>::from_unix_seconds_with(Seconds::new(value), ctx)
-            .map(|t| t.to_scale::<TT>()),
+        ScaleKind::Unix => {
+            Time::<UTC>::from_unix_seconds_with(Second::new(value), ctx).map(|t| t.to_scale::<TT>())
+        }
     }
 }
 
@@ -121,7 +115,7 @@ pub fn time_tt_to_scalar(
         ScaleKind::Tcg => Ok(tt.to_scale::<TCG>().julian_days() / Day::new(1.0)),
         ScaleKind::Tcb => Ok(tt.to_scale::<TCB>().julian_days() / Day::new(1.0)),
         ScaleKind::GpsDays => {
-            Ok(tt.to_scale::<TAI>().julian_days() / Day::new(1.0) - GPS_EPOCH_JD_TAI)
+            Ok((tt.to_scale::<TAI>().julian_days() - GPS_EPOCH_JD_TAI) / Day::new(1.0))
         }
         ScaleKind::Ut1 => Ok(tt.to_scale_with::<UT1>(ctx)?.julian_days() / Day::new(1.0)),
         ScaleKind::Unix => tt
