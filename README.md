@@ -198,8 +198,8 @@ let utc_now = Time::<UTC>::from_chrono(Utc::now());
 let tt_now: Time<TT> = utc_now.to::<TT>();
 
 println!("UTC       : {}", utc_now.to_chrono().unwrap());
-println!("TT in JD  : {:.9}", tt_now.to::<JD>().value());
-println!("TT in MJD : {:.9}", tt_now.to::<MJD>().value());
+println!("TT in JD  : {:.9}", tt_now.to::<JD>());
+println!("TT in MJD : {:.9}", tt_now.to::<MJD>());
 ```
 
 ## Period Operations
@@ -278,8 +278,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let unix = Time::<UTC>::from_unix_seconds(1_700_000_000.0.into())?;
     let back = unix.try_to::<UnixSecs>()?;
 
-    println!("UT1 JD     : {:.9}", ut1.to::<JD>().value());
-    println!("Unix roundtrip: {:.3}", back.value());
+    println!("UT1 JD     : {:.9}", ut1.to::<JD>());
+    println!("Unix roundtrip: {:.3}", back);
     Ok(())
 }
 ```

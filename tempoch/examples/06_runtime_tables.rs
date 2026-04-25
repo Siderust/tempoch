@@ -11,9 +11,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .and_then(|e| e.to_time_with(&ctx))?;
     let back = unix.try_to::<Unix>()?;
 
-    println!("probe TT JD  : {:.9}", probe_tt.to::<JD>().raw());
-    println!("probe UT1 JD : {:.9}", probe_ut1.to::<JD>().raw());
-    println!("Unix roundtrip: {:.3}", back.raw());
+    println!("probe TT JD  : {:.9}", probe_tt.to::<JD>());
+    println!("probe UT1 JD : {:.9}", probe_ut1.to::<JD>());
+    println!("Unix roundtrip: {:.3}", back);
     let _ = Time::<UTC>::from_chrono(chrono::Utc::now());
     Ok(())
 }

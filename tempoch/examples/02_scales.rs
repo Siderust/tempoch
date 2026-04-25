@@ -15,12 +15,12 @@ fn main() {
     let tcg: Time<TCG> = tt.to::<TCG>();
     let tcb: Time<TCB> = tt.to::<TCB>();
 
-    println!("TT  JD  : {:.9}", tt.to::<JD>().raw());
-    println!("TAI JD  : {:.9}", tai.to::<JD>().raw());
-    println!("UT1 JD  : {:.9}", ut1.to::<JD>().raw());
-    println!("TDB JD  : {:.9}", tdb.to::<JD>().raw());
-    println!("TCG JD  : {:.9}", tcg.to::<JD>().raw());
-    println!("TCB JD  : {:.9}", tcb.to::<JD>().raw());
+    println!("TT  JD  : {:.9}", tt.to::<JD>());
+    println!("TAI JD  : {:.9}", tai.to::<JD>());
+    println!("UT1 JD  : {:.9}", ut1.to::<JD>());
+    println!("TDB JD  : {:.9}", tdb.to::<JD>());
+    println!("TCG JD  : {:.9}", tcg.to::<JD>());
+    println!("TCB JD  : {:.9}", tcb.to::<JD>());
     println!("UTC     : {}", utc.to_chrono().unwrap());
     println!(
         "TT-TAI  : {:.6}",

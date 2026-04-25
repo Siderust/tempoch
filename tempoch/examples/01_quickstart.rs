@@ -6,7 +6,7 @@ fn main() {
     let tt_now: Time<TT> = utc_now.to::<TT>();
 
     println!("UTC chrono : {}", utc_now.to_chrono().unwrap());
-    println!("TT seconds : {:.6}", tt_now.to::<J2000s>().raw());
-    println!("TT JD      : {:.9}", tt_now.to::<JD>().raw());
-    println!("TT MJD     : {:.9}", tt_now.to::<MJD>().raw());
+    println!("TT seconds : {:.6}", tt_now.to::<J2000s>());
+    println!("TT JD      : {:.9}", tt_now.to::<JD>());
+    println!("TT MJD     : {:.9}", tt_now.to::<MJD>());
 }

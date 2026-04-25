@@ -124,7 +124,25 @@ where
     qtty::Quantity<R::Unit>: fmt::Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}({}) {}", R::NAME, S::NAME, self.raw)
+        fmt::Display::fmt(&self.raw, f)
+    }
+}
+
+impl<S: Scale, R: TimeRepresentation> fmt::LowerExp for EncodedTime<S, R>
+where
+    qtty::Quantity<R::Unit>: fmt::LowerExp,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::LowerExp::fmt(&self.raw, f)
+    }
+}
+
+impl<S: Scale, R: TimeRepresentation> fmt::UpperExp for EncodedTime<S, R>
+where
+    qtty::Quantity<R::Unit>: fmt::UpperExp,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::UpperExp::fmt(&self.raw, f)
     }
 }
 
@@ -488,5 +506,27 @@ where
     fn convert_with(src: Time<S>, ctx: &TimeContext) -> Result<Self::Output, ConversionError> {
         let tai = src.to_scale_with::<TAI>(ctx)?;
         Ok(EncodedTime::from_time_infallible(tai))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::scale::TT;
+
+    #[test]
+    fn encoded_time_display_delegates_to_quantity() {
+        let jd = JulianDate::<TT>::try_new(Day::new(2_451_545.123_456_789)).unwrap();
+
+        assert_eq!(format!("{jd:.9}"), "2451545.123456789 d");
+    }
+
+    #[test]
+    fn encoded_time_lower_exp_delegates_to_quantity() {
+        let seconds = J2000Seconds::<TT>::try_new(Second::new(1_234.5)).unwrap();
+        let formatted = format!("{seconds:.2e}");
+
+        assert!(formatted.contains("e"));
+        assert!(formatted.ends_with(" s"));
     }
 }

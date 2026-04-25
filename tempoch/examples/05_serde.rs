@@ -38,19 +38,19 @@ fn main() {
     println!("Period JSON : {window_json}");
     println!("Tagged Time JSON   : {tagged_tt_json}");
     println!("Tagged Period JSON : {tagged_window_json}");
-    println!("TT round-trip     : {:.1}", tt_back.to::<J2000s>().raw());
+    println!("TT round-trip     : {:.1}", tt_back.to::<J2000s>());
     println!(
         "Window round-trip : {:.1} → {:.1}",
-        window_back.start.to::<J2000s>().raw(),
-        window_back.end.to::<J2000s>().raw()
+        window_back.start.to::<J2000s>(),
+        window_back.end.to::<J2000s>()
     );
     println!(
         "Tagged TT round-trip     : {:.1}",
-        tagged_tt_back.to::<J2000s>().raw()
+        tagged_tt_back.to::<J2000s>()
     );
     println!(
         "Tagged Window round-trip : {:.1} → {:.1}",
-        tagged_window_back.start.to::<J2000s>().raw(),
-        tagged_window_back.end.to::<J2000s>().raw()
+        tagged_window_back.start.to::<J2000s>(),
+        tagged_window_back.end.to::<J2000s>()
     );
 }
