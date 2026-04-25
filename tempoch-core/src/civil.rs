@@ -30,12 +30,6 @@ impl Time<UTC> {
         Self::try_new(tai_secs, Second::new(0.0))
     }
 
-    /// Build a UTC instant from a `chrono::DateTime<Utc>`.
-    #[inline]
-    pub fn try_from_chrono(dt: DateTime<Utc>) -> Result<Self, ConversionError> {
-        Self::try_from_chrono_with(dt, &TimeContext::new())
-    }
-
     /// Convenience panicking wrapper over
     /// [`try_from_chrono_with`](Self::try_from_chrono_with).
     #[track_caller]
@@ -43,13 +37,6 @@ impl Time<UTC> {
     pub fn from_chrono_with(dt: DateTime<Utc>, ctx: &TimeContext) -> Self {
         Self::try_from_chrono_with(dt, ctx)
             .expect("UTC conversion failed; use try_from_chrono_with")
-    }
-
-    /// Convenience panicking wrapper over [`try_from_chrono`](Self::try_from_chrono).
-    #[track_caller]
-    #[inline]
-    pub fn from_chrono(dt: DateTime<Utc>) -> Self {
-        Self::try_from_chrono(dt).expect("UTC conversion failed; use try_from_chrono")
     }
 
     /// Convert to a `chrono::DateTime<Utc>`, preserving leap-second labels,
@@ -63,23 +50,11 @@ impl Time<UTC> {
         )
     }
 
-    /// Convert to a `chrono::DateTime<Utc>`, preserving leap-second labels.
-    #[inline]
-    pub fn try_to_chrono(self) -> Result<DateTime<Utc>, ConversionError> {
-        self.try_to_chrono_with(&TimeContext::new())
-    }
-
     /// Convenience non-fallible wrapper (returns `None` on error) using the
     /// context's captured time-data bundle.
     #[inline]
     pub fn to_chrono_with(self, ctx: &TimeContext) -> Option<DateTime<Utc>> {
         self.try_to_chrono_with(ctx).ok()
-    }
-
-    /// Convenience non-fallible wrapper (returns `None` on error).
-    #[inline]
-    pub fn to_chrono(self) -> Option<DateTime<Utc>> {
-        self.try_to_chrono().ok()
     }
 
     /// Build a UTC instant from a POSIX timestamp in seconds using the
@@ -119,13 +94,6 @@ impl Time<UTC> {
     #[inline]
     pub fn is_leap_second_with(self, ctx: &TimeContext) -> bool {
         time_data_tai_seconds_is_in_leap_window(ctx.time_data(), self.total_seconds())
-    }
-
-    /// Returns `true` if this instant falls inside a positive leap second
-    /// in UTC (e.g. 23:59:60).
-    #[inline]
-    pub fn is_leap_second(self) -> bool {
-        self.is_leap_second_with(&TimeContext::new())
     }
 }
 

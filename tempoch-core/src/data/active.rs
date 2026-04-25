@@ -668,8 +668,8 @@ mod tests {
             assert!((overridden_value - compiled_value).abs() > 0.1);
             let roundtrip = overridden.raw_unix_seconds_with(&TimeContext::new()).unwrap();
             assert!((roundtrip - unix).abs() < Second::new(1e-3));
-            let chrono = overridden.try_to_chrono().unwrap();
-            let from_chrono = Time::<UTC>::try_from_chrono(chrono).unwrap();
+            let chrono = overridden.try_to_chrono_with(&TimeContext::new()).unwrap();
+            let from_chrono = Time::<UTC>::try_from_chrono_with(chrono, &TimeContext::new()).unwrap();
             let drift = ((from_chrono.raw_seconds_pair().0.value()
                 + from_chrono.raw_seconds_pair().1.value())
                 - overridden_value)
@@ -721,7 +721,7 @@ mod tests {
 
         // Default: must return UtcBeforeDefinition.
         assert!(matches!(
-            Time::<UTC>::try_from_chrono(dt),
+            Time::<UTC>::try_from_chrono_with(dt, &TimeContext::new()),
             Err(ConversionError::UtcBeforeDefinition)
         ));
 

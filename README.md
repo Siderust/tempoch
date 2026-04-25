@@ -25,10 +25,9 @@ Typed astronomical time primitives for Rust.
   `TAI`, `UTC`, `UT1`, `TDB`, `TCG`, `TCB`).
 - Unified target-based conversions:
   - `.to::<TT>()`, `.to::<UTC>()`, `.to::<TDB>()` for infallible scale routes
-  - `.try_to::<UT1>()` for the default monthly-ΔT UT1 route
-  - `.to_with::<UT1>(&ctx)` for context-backed UT1 routes
+  - `.to_with::<UT1>(&ctx)` for context-backed UT1 routes (all data-dependent routes require an explicit `TimeContext`)
   - `.to::<JD>()`, `.to::<MJD>()`, `.to::<J2000s>()` for coordinate views
-  - `.try_to::<UnixSecs>()` and `.to::<GpsSecs>()` for transport encodings
+  - `.to_with::<Unix>(&ctx)` and `.to::<GPS>()` for transport encodings
 - UTC conversion through `chrono`, leap-second aware over the official history
   (1961-01-01 onward). Requests for dates before the UTC standard was defined
   return `ConversionError::UtcBeforeDefinition` by default; opt in to the
@@ -52,9 +51,8 @@ Typed astronomical time primitives for Rust.
 - Julian Day, Modified Julian Day, and SI-second views via `JD`, `MJD`, and
   `J2000s` conversion targets on every built-in scale, including UTC's stored
   instant axis.
-- Unix/POSIX timestamps via `Time::<UTC>::from_unix_seconds` and
-  `.try_to::<UnixSecs>()`.
-- GPS transport values via `Time::<TAI>::from_gps_seconds` and `.to::<GpsSecs>()`.
+- Unix/POSIX timestamps via `UnixTime::try_new(sec).and_then(|e| e.to_time_with(&ctx))` and `.to_with::<Unix>(&ctx)`.
+- GPS transport values via `GpsTime::try_new(sec).map(|e| e.to_time())` and `.to::<GPS>()`.
 - Compiled time-data tables generated from official UTC-TAI and Delta T
   sources.
 - Optional `serde` support for `Time<S>` as `{"hi","lo"}` and
@@ -69,8 +67,8 @@ Typed astronomical time primitives for Rust.
   with intersection, normalization, validation, and complement helpers.
 
 **Storage model:** `Time<S>` stores a compensated `(hi, lo)` pair of seconds
-since J2000 TT on the target axis. Tags such as `JD`, `MJD`, `UnixSecs`, and
-`GpsSecs` are conversion targets, not storage types.
+since J2000 TT on the target axis. Tags such as `JD`, `MJD`, `Unix`, and
+`GPS` are conversion targets, not storage types.
 
 ## Design Decisions
 
@@ -194,12 +192,13 @@ assert_eq!(
 
 ```rust
 use chrono::Utc;
-use tempoch::{JD, MJD, Time, TT, UTC};
+use tempoch::{JD, MJD, Time, TimeContext, TT, UTC};
 
-let utc_now = Time::<UTC>::from_chrono(Utc::now());
+let ctx = TimeContext::new();
+let utc_now = Time::<UTC>::try_from_chrono_with(Utc::now(), &ctx).unwrap();
 let tt_now: Time<TT> = utc_now.to::<TT>();
 
-println!("UTC       : {}", utc_now.to_chrono().unwrap());
+println!("UTC       : {}", utc_now.to_chrono_with(&ctx).unwrap());
 println!("TT in JD  : {:.9}", tt_now.to::<JD>());
 println!("TT in MJD : {:.9}", tt_now.to::<MJD>());
 ```
@@ -208,30 +207,30 @@ println!("TT in MJD : {:.9}", tt_now.to::<MJD>());
 
 ```rust
 use qtty::Day;
-use tempoch::{complement_within, intersect_periods, Period, Time, TT};
+use tempoch::{complement_within, intersect_periods, ModifiedJulianDate, Period, TT};
 
 let day = Period::<TT>::new(
-  Time::<TT>::from_modified_julian_days(Day::new(61_000.0)).unwrap(),
-  Time::<TT>::from_modified_julian_days(Day::new(61_001.0)).unwrap(),
+  ModifiedJulianDate::<TT>::try_new(Day::new(61_000.0)).unwrap().to_time(),
+  ModifiedJulianDate::<TT>::try_new(Day::new(61_001.0)).unwrap().to_time(),
 );
 let a = vec![
   Period::<TT>::new(
-    Time::<TT>::from_modified_julian_days(Day::new(61_000.1)).unwrap(),
-    Time::<TT>::from_modified_julian_days(Day::new(61_000.4)).unwrap(),
+    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.1)).unwrap().to_time(),
+    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.4)).unwrap().to_time(),
   ),
   Period::<TT>::new(
-    Time::<TT>::from_modified_julian_days(Day::new(61_000.6)).unwrap(),
-    Time::<TT>::from_modified_julian_days(Day::new(61_000.9)).unwrap(),
+    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.6)).unwrap().to_time(),
+    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.9)).unwrap().to_time(),
   ),
 ];
 let b = vec![
   Period::<TT>::new(
-    Time::<TT>::from_modified_julian_days(Day::new(61_000.2)).unwrap(),
-    Time::<TT>::from_modified_julian_days(Day::new(61_000.3)).unwrap(),
+    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.2)).unwrap().to_time(),
+    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.3)).unwrap().to_time(),
   ),
   Period::<TT>::new(
-    Time::<TT>::from_modified_julian_days(Day::new(61_000.7)).unwrap(),
-    Time::<TT>::from_modified_julian_days(Day::new(61_000.8)).unwrap(),
+    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.7)).unwrap().to_time(),
+    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.8)).unwrap().to_time(),
   ),
 ];
 
@@ -256,10 +255,11 @@ assert_eq!(gaps.len(), 3);
 
 `tempoch` automatically prefers a cached runtime bundle for fresher UTC-TAI
 history, modern Delta T, and daily IERS EOP while keeping the public API
-unchanged. `TimeContext`, `Time::try_to::<UT1>()`, `Time::to_with`, and the
-normal UTC civil helpers consult a cached bundle in `~/.tempoch/data`,
-refreshing it once on first use when the cache is missing, invalid, or older
-than 24 hours.
+unchanged. `TimeContext` and `Time::to_with` consult a cached bundle in
+`~/.tempoch/data`, refreshing it once on first use when the cache is missing,
+invalid, or older than 24 hours. All data-dependent conversions (UT1, Unix,
+UTC civil) require an explicit `TimeContext` so that pipeline reproducibility
+is always visible at the call site.
 
 Set `TEMPOCH_DATA_DIR` to override the cache location.
 
@@ -270,15 +270,17 @@ cargo run -p tempoch --example 06_runtime_tables
 ```
 
 ```rust,no_run
-use tempoch::{JD, UnixSecs, Time, TimeContext, TT, UT1, UTC};
+use qtty::Second;
+use tempoch::{JD, JulianDate, Time, TimeContext, UnixTime, Unix, TT, UT1, UTC};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ctx = TimeContext::with_builtin_eop();
-    let tt = Time::<TT>::from_julian_days(2_460_000.25.into())?;
+    let tt = JulianDate::<TT>::try_new(Day::new(2_460_000.25))?.to_time();
     let ut1: Time<UT1> = tt.to_with::<UT1>(&ctx)?;
 
-    let unix = Time::<UTC>::from_unix_seconds(1_700_000_000.0.into())?;
-    let back = unix.try_to::<UnixSecs>()?;
+    let unix = UnixTime::try_new(Second::new(1_700_000_000.0))
+        .and_then(|e| e.to_time_with(&ctx))?;
+    let back = unix.to_with::<Unix>(&ctx)?;
 
     println!("UT1 JD     : {:.9}", ut1.to::<JD>());
     println!("Unix roundtrip: {:.3}", back);

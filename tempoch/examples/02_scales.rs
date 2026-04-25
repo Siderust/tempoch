@@ -21,7 +21,7 @@ fn main() {
     println!("TDB JD  : {:.9}", tdb.to::<JD>());
     println!("TCG JD  : {:.9}", tcg.to::<JD>());
     println!("TCB JD  : {:.9}", tcb.to::<JD>());
-    println!("UTC     : {}", utc.to_chrono().unwrap());
+    println!("UTC     : {}", utc.to_chrono_with(&ctx).unwrap());
     println!(
         "TT-TAI  : {:.6}",
         tt.to::<J2000s>().raw() - tai.to::<J2000s>().raw()

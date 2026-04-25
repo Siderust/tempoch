@@ -98,7 +98,7 @@ impl TimeContext {
 
     /// Allow UTC conversions for dates before 1961-01-01.
     ///
-    /// By default, [`Time::<UTC>::try_from_chrono`] and related conversions
+    /// By default, [`Time::<UTC>::try_from_chrono_with`] and related conversions
     /// return [`crate::ConversionError::UtcBeforeDefinition`] for any date
     /// before MJD 37 300 (1961-01-01), because UTC was not an international
     /// standard before that date and the back-extrapolated offset is

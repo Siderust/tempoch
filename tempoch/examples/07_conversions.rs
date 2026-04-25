@@ -20,14 +20,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let gps: GpsTime = tai.to::<GPS>();
     let tai_from_gps: Time<TAI> = gps.to_time();
 
-    println!("UTC chrono   : {}", utc.to_chrono().unwrap());
-    println!("UTC unix     : {:.3}", utc.try_to::<Unix>()?);
+    println!("UTC chrono   : {}", utc.to_chrono_with(&ctx).unwrap());
+    println!("UTC unix     : {:.3}", utc.to_with::<Unix>(&ctx)?);
     println!("TAI J2000 s  : {:.9}", tai.to::<J2000s>());
     println!("TT JD        : {:.9}", tt.to::<JD>());
     println!("TDB JD       : {:.9}", tdb.to::<JD>());
     println!("UT1 MJD      : {:.9}", ut1.to::<MJD>());
     println!("GPS seconds  : {:.3}", gps);
-    println!("Leap second? : {}", utc.is_leap_second());
+    println!("Leap second? : {}", utc.is_leap_second_with(&ctx));
 
     assert!(
         (tai_from_gps.to::<J2000s>().raw() - tai.to::<J2000s>().raw()).abs() < Second::new(1e-9)

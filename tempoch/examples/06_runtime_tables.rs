@@ -9,11 +9,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let unix = UnixTime::try_new(Second::new(1_700_000_000.0))
         .and_then(|e| e.to_time_with(&ctx))?;
-    let back = unix.try_to::<Unix>()?;
+    let back = unix.to_with::<Unix>(&ctx)?;
 
     println!("probe TT JD  : {:.9}", probe_tt.to::<JD>());
     println!("probe UT1 JD : {:.9}", probe_ut1.to::<JD>());
     println!("Unix roundtrip: {:.3}", back);
-    let _ = Time::<UTC>::from_chrono(chrono::Utc::now());
+    let _ = Time::<UTC>::try_from_chrono_with(chrono::Utc::now(), &ctx);
     Ok(())
 }

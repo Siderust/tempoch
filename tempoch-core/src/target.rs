@@ -10,7 +10,7 @@
 use crate::context::TimeContext;
 use crate::error::ConversionError;
 use crate::scale::conversion::{ContextScaleConvert, InfallibleScaleConvert};
-use crate::scale::{Scale, TCB, TCG, TDB, TT, UT1, UTC, TAI};
+use crate::scale::Scale;
 use crate::sealed::Sealed;
 use crate::time::Time;
 
@@ -73,32 +73,6 @@ where
     }
 }
 
-macro_rules! default_context_scale_target {
-    ($src:ty => $dst:ty) => {
-        impl ConversionTarget<$src> for $dst {
-            type Output = Time<$dst>;
-
-            #[inline]
-            fn try_convert(src: Time<$src>) -> Result<Self::Output, ConversionError> {
-                src.to_scale_with::<$dst>(&TimeContext::new())
-            }
-        }
-    };
-}
-
-default_context_scale_target!(TT => UT1);
-default_context_scale_target!(TAI => UT1);
-default_context_scale_target!(TDB => UT1);
-default_context_scale_target!(TCG => UT1);
-default_context_scale_target!(TCB => UT1);
-default_context_scale_target!(UTC => UT1);
-default_context_scale_target!(UT1 => TT);
-default_context_scale_target!(UT1 => TAI);
-default_context_scale_target!(UT1 => TDB);
-default_context_scale_target!(UT1 => TCG);
-default_context_scale_target!(UT1 => TCB);
-default_context_scale_target!(UT1 => UTC);
-
 #[cfg(test)]
 mod tests {
     use crate::representation::{J2000s, JD, MJD, Unix, GPS};
@@ -116,13 +90,14 @@ mod tests {
 
     #[test]
     fn unix_and_gps_targets_use_expected_axes() {
+        let ctx = crate::context::TimeContext::new();
         let utc = crate::time::Time::<UTC>::from_raw_unix_seconds_with(
             Second::new(946_728_000.0),
-            &crate::context::TimeContext::new(),
+            &ctx,
         )
         .unwrap();
-        let unix = utc.try_to::<Unix>().unwrap();
-        assert!((unix.raw() - utc.raw_unix_seconds_with(&crate::context::TimeContext::new()).unwrap()).abs() < Second::new(1e-12));
+        let unix = utc.to_with::<Unix>(&ctx).unwrap();
+        assert!((unix.raw() - utc.raw_unix_seconds_with(&ctx).unwrap()).abs() < Second::new(1e-12));
 
         let tai = utc.to::<TAI>();
         let gps = tai.to::<GPS>();
@@ -130,20 +105,8 @@ mod tests {
 
         let gps_from_tt = crate::time::Time::<TT>::from_raw_j2000_seconds(Second::new(0.0))
             .unwrap()
-            .try_to::<GPS>()
-            .unwrap();
+            .to::<GPS>();
         assert!(gps_from_tt.raw().is_finite());
-    }
-
-    #[test]
-    fn default_context_ut1_routes_are_reachable() {
-        let tt = crate::time::Time::<TT>::from_raw_j2000_seconds(Second::new(0.0)).unwrap();
-        let ut1 = tt.try_to::<UT1>().unwrap();
-        let tt_back = ut1.try_to::<TT>().unwrap();
-        let utc_back = ut1.try_to::<UTC>().unwrap();
-
-        assert!(tt_back.raw_j2000_seconds().is_finite());
-        assert!(utc_back.raw_j2000_seconds().is_finite());
     }
 
     #[test]
