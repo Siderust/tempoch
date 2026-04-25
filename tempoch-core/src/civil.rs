@@ -25,7 +25,8 @@ impl Time<UTC> {
         dt: DateTime<Utc>,
         ctx: &TimeContext,
     ) -> Result<Self, ConversionError> {
-        let tai_secs = time_data_tai_seconds_from_utc(ctx.time_data(), dt)?;
+        let tai_secs =
+            time_data_tai_seconds_from_utc(ctx.time_data(), dt, ctx.allows_pre_definition_utc())?;
         Self::try_new(tai_secs, Second::new(0.0))
     }
 
@@ -55,7 +56,11 @@ impl Time<UTC> {
     /// using the context's captured time-data bundle.
     #[inline]
     pub fn try_to_chrono_with(self, ctx: &TimeContext) -> Result<DateTime<Utc>, ConversionError> {
-        time_data_utc_from_tai_seconds(ctx.time_data(), self.total_seconds())
+        time_data_utc_from_tai_seconds(
+            ctx.time_data(),
+            self.total_seconds(),
+            ctx.allows_pre_definition_utc(),
+        )
     }
 
     /// Convert to a `chrono::DateTime<Utc>`, preserving leap-second labels.
@@ -88,8 +93,8 @@ impl Time<UTC> {
             return Err(ConversionError::NonFinite);
         }
         let mjd_utc = unix_seconds_to_mjd(seconds);
-        let tai_minus_utc = time_data_try_tai_minus_utc_mjd(ctx.time_data(), mjd_utc)
-            .ok_or(ConversionError::UtcHistoryUnsupported)?;
+        let tai_minus_utc =
+            time_data_try_tai_minus_utc_mjd(ctx.time_data(), mjd_utc, ctx.allows_pre_definition_utc())?;
         let tai_secs = mjd_to_j2000_seconds(mjd_utc) + tai_minus_utc;
         Self::try_new(tai_secs, Second::new(0.0))
     }

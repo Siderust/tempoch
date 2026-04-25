@@ -269,7 +269,9 @@ fn context_delta_t(jd_ut1: JdDay, ctx: &TimeContext) -> Result<Second, Conversio
     }
 
     if let Some(eop) = ctx.eop_at(mjd_utc) {
-        if let Some(tai_minus_utc) = time_data_try_tai_minus_utc_mjd(data.as_ref(), mjd_utc) {
+        if let Ok(tai_minus_utc) =
+            time_data_try_tai_minus_utc_mjd(data.as_ref(), mjd_utc, true)
+        {
             return Ok(TT_MINUS_TAI + tai_minus_utc - eop.ut1_minus_utc);
         }
     }

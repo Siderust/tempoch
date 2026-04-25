@@ -800,7 +800,7 @@ mod tests {
     }
 
     #[test]
-    fn jd_from_utc_pre_1961_roundtrips_with_approximate_extension() {
+    fn jd_from_utc_pre_1961_is_rejected() {
         let before_history = TempochUtc {
             year: 1960,
             month: 12,
@@ -810,28 +810,10 @@ mod tests {
             second: 59,
             nanosecond: 0,
         };
-        let original = before_history.into_chrono().unwrap();
         let mut jd = 0.0;
-        let from_status = unsafe { tempoch_jd_from_utc(before_history, &mut jd) };
-        assert_eq!(from_status, TempochStatus::Ok);
-
-        let mut roundtrip = TempochUtc {
-            year: 0,
-            month: 0,
-            day: 0,
-            hour: 0,
-            minute: 0,
-            second: 0,
-            nanosecond: 0,
-        };
-        let to_status = unsafe { tempoch_jd_to_utc(jd, &mut roundtrip) };
-        assert_eq!(to_status, TempochStatus::Ok);
-
-        let roundtrip = roundtrip.into_chrono().unwrap();
-        let drift = (roundtrip.timestamp_nanos_opt().unwrap()
-            - original.timestamp_nanos_opt().unwrap())
-        .abs();
-        assert!(drift < 50_000, "pre-1961 UTC round-trip drift = {drift} ns");
+        let status = unsafe { tempoch_jd_from_utc(before_history, &mut jd) };
+        // Pre-1961 dates are not valid UTC; the default context rejects them.
+        assert_eq!(status, TempochStatus::UtcConversionFailed);
     }
 
     #[test]

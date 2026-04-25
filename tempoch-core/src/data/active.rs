@@ -186,9 +186,12 @@ pub(crate) fn time_data_eop_at(data: &TimeDataBundle, mjd_utc: DayQuantity) -> O
     };
 
     let ut1_minus_utc = {
-        let lo_offset = time_data_try_tai_minus_utc_mjd(data, DayQuantity::new(lo_i as f64));
-        let hi_offset = time_data_try_tai_minus_utc_mjd(data, DayQuantity::new(hi_i as f64));
-        let query_offset = time_data_try_tai_minus_utc_mjd(data, mjd_utc);
+        // Allow extrapolation here: these calls are for internal ΔT bookkeeping
+        // (correcting EOP-derived UT1-UTC to the actual UTC-TAI offset), not for
+        // validating UTC representations. Pre-1961 EOP data is rare but valid.
+        let lo_offset = time_data_tai_minus_utc_mjd_extrapolated(data, DayQuantity::new(lo_i as f64));
+        let hi_offset = time_data_tai_minus_utc_mjd_extrapolated(data, DayQuantity::new(hi_i as f64));
+        let query_offset = time_data_tai_minus_utc_mjd_extrapolated(data, mjd_utc);
         match (lo_offset, hi_offset, query_offset) {
             (Some(lo_tmu), Some(hi_tmu), Some(query_tmu)) => {
                 let lo_cont = lo.ut1_minus_utc_seconds - lo_tmu.value();
@@ -217,45 +220,53 @@ fn find_eop_point(points: &[EopPoint], mjd: i32) -> Option<EopPoint> {
     (point.mjd == mjd).then_some(point)
 }
 
-/// Return TAI − UTC in seconds at the given UTC date as a Modified Julian Day.
+/// Return TAI − UTC in seconds at the given UTC MJD.
 ///
-/// # Pre-history extrapolation
-///
-/// The UTC-TAI segment table starts at MJD 37 300 (1961-01-01). For any query
-/// date **before** that boundary, this function extrapolates the first table
-/// segment backwards and returns `Some(offset)`. The extrapolated value is
-/// internally consistent — a UTC↔TAI round-trip will close — but it does not
-/// represent a historically defined UTC-TAI value. UTC as an international
-/// standard was not defined before 1961.
-///
-/// Callers that require historically accurate UTC values should compare the
-/// query MJD against [`crate::constats::UTC_DEFINED_FROM_MJD`] and reject
-/// or warn on pre-history dates themselves.
+/// Returns `Err(ConversionError::UtcBeforeDefinition)` for dates before
+/// MJD 37 300 (1961-01-01) when `allow_extrapolation` is `false`. When
+/// `true`, extrapolates the first official UTC-TAI segment backwards; the
+/// result is internally consistent (round-trips close) but is not
+/// historically defined UTC.
 pub(crate) fn time_data_try_tai_minus_utc_mjd(
     data: &TimeDataBundle,
     mjd_utc: DayQuantity,
-) -> Option<Second> {
+    allow_extrapolation: bool,
+) -> Result<Second, ConversionError> {
     let segments = data.utc_tai_segments();
     let first = segments[0];
     if mjd_utc < DayQuantity::new(first.start_mjd as f64) {
-        return Some(utc_offset_seconds_in_segment(mjd_utc, first));
+        if !allow_extrapolation {
+            return Err(ConversionError::UtcBeforeDefinition);
+        }
+        return Ok(utc_offset_seconds_in_segment(mjd_utc, first));
     }
     let idx =
         segments.partition_point(|segment| DayQuantity::new(segment.start_mjd as f64) <= mjd_utc);
     let segment = segments[idx - 1];
-    Some(utc_offset_seconds_in_segment(mjd_utc, segment))
+    Ok(utc_offset_seconds_in_segment(mjd_utc, segment))
+}
+
+/// Like [`time_data_try_tai_minus_utc_mjd`] but always extrapolates; used
+/// for internal ΔT / EOP bookkeeping that must not surface the pre-definition
+/// policy to callers.
+fn time_data_tai_minus_utc_mjd_extrapolated(
+    data: &TimeDataBundle,
+    mjd_utc: DayQuantity,
+) -> Option<Second> {
+    time_data_try_tai_minus_utc_mjd(data, mjd_utc, true).ok()
 }
 
 pub(crate) fn time_data_utc_from_tai_seconds(
     data: &TimeDataBundle,
     tai_secs: Second,
+    allow_extrapolation: bool,
 ) -> Result<DateTime<Utc>, ConversionError> {
     if !tai_secs.is_finite() {
         return Err(ConversionError::NonFinite);
     }
     let jd_tt = j2000_seconds_to_jd(tai_secs + TT_MINUS_TAI);
     let mjd_tt = jd_to_mjd(jd_tt);
-    match locate_utc_region_from_tt_mjd(data.utc_tai_segments(), mjd_tt)? {
+    match locate_utc_region_from_tt_mjd(data.utc_tai_segments(), mjd_tt, allow_extrapolation)? {
         UtcTaiRegion::Segment(segment) => {
             let mjd_utc = tt_mjd_to_utc_mjd_in_segment(mjd_tt, segment);
             datetime_from_utc_mjd(mjd_utc).ok_or(ConversionError::OutOfRange)
@@ -285,17 +296,19 @@ pub(crate) fn time_data_utc_from_tai_seconds(
 pub(crate) fn time_data_tai_seconds_from_utc(
     data: &TimeDataBundle,
     dt: DateTime<Utc>,
+    allow_extrapolation: bool,
 ) -> Result<Second, ConversionError> {
     let base_jd_utc = unix_seconds_to_jd(Second::new(dt.timestamp() as f64));
-    let tai_minus_utc = time_data_try_tai_minus_utc_mjd(data, jd_to_mjd(base_jd_utc))
-        .ok_or(ConversionError::UtcHistoryUnsupported)?;
+    let tai_minus_utc =
+        time_data_try_tai_minus_utc_mjd(data, jd_to_mjd(base_jd_utc), allow_extrapolation)?;
     let subsec_nanos = dt.timestamp_subsec_nanos();
     if subsec_nanos >= 1_000_000_000 {
         let next = time_data_try_tai_minus_utc_mjd(
             data,
             jd_to_mjd(base_jd_utc) + Second::new(1.0).to::<Day>(),
+            allow_extrapolation,
         )
-        .ok_or(ConversionError::InvalidLeapSecond)?;
+        .map_err(|_| ConversionError::InvalidLeapSecond)?;
         if next - tai_minus_utc < Second::new(0.5) {
             return Err(ConversionError::InvalidLeapSecond);
         }
@@ -311,8 +324,9 @@ pub(crate) fn time_data_tai_seconds_is_in_leap_window(
 ) -> bool {
     let jd_tt = j2000_seconds_to_jd(tai_secs + TT_MINUS_TAI);
     let mjd_tt = jd_to_mjd(jd_tt);
+    // Pre-1961 times are never in a leap-second window; passing false is safe.
     matches!(
-        locate_utc_region_from_tt_mjd(data.utc_tai_segments(), mjd_tt),
+        locate_utc_region_from_tt_mjd(data.utc_tai_segments(), mjd_tt, false),
         Ok(UtcTaiRegion::Leap { .. })
     )
 }
@@ -394,9 +408,13 @@ fn segment_start_tt(segment: UtcTaiSegment) -> DayQuantity {
 fn locate_utc_region_from_tt_mjd(
     segments: &[UtcTaiSegment],
     mjd_tt: DayQuantity,
+    allow_extrapolation: bool,
 ) -> Result<UtcTaiRegion, ConversionError> {
     let idx =
         segments.partition_point(|segment| segment_start_tt(*segment) <= mjd_tt + UTC_INTERVAL_EPS);
+    if idx == 0 && !allow_extrapolation {
+        return Err(ConversionError::UtcBeforeDefinition);
+    }
     let segment = segments[idx.saturating_sub(1)];
     if let Some(end_mjd) = segment.end_mjd {
         let end_tt = utc_mjd_to_tt_mjd_in_segment(DayQuantity::new(end_mjd as f64), segment);
@@ -698,16 +716,34 @@ mod tests {
     }
 
     #[test]
-    fn pre_1961_utc_roundtrips_with_approximate_segment_extension() {
+    fn pre_1961_utc_errors_by_default_and_roundtrips_with_opt_in() {
         let dt = DateTime::from_timestamp(-631_152_000, 250_000_000).unwrap();
-        let utc = Time::<UTC>::try_from_chrono(dt).unwrap();
-        let back = utc.try_to_chrono().unwrap();
+
+        // Default: must return UtcBeforeDefinition.
+        assert!(matches!(
+            Time::<UTC>::try_from_chrono(dt),
+            Err(ConversionError::UtcBeforeDefinition)
+        ));
+
+        // Opt-in round-trip must close.
+        let ctx = TimeContext::new().allow_pre_definition_utc();
+        let utc = Time::<UTC>::try_from_chrono_with(dt, &ctx).unwrap();
+        let back = utc.try_to_chrono_with(&ctx).unwrap();
         let drift = (back.timestamp_nanos_opt().unwrap() - dt.timestamp_nanos_opt().unwrap()).abs();
         assert!(drift < 50_000, "pre-1961 UTC round-trip drift = {drift} ns");
 
+        // Unix path also blocked by default.
         let unix = Second::new(-631_152_000.75);
-        let utc_from_unix = UnixTime::try_new(unix).and_then(|e| e.to_time_with(&TimeContext::new())).unwrap();
-        let unix_back = utc_from_unix.raw_unix_seconds_with(&TimeContext::new()).unwrap();
+        assert!(matches!(
+            UnixTime::try_new(unix).and_then(|e| e.to_time_with(&TimeContext::new())),
+            Err(ConversionError::UtcBeforeDefinition)
+        ));
+
+        // Unix path works with opt-in.
+        let utc_from_unix = UnixTime::try_new(unix)
+            .and_then(|e| e.to_time_with(&ctx))
+            .unwrap();
+        let unix_back = utc_from_unix.raw_unix_seconds_with(&ctx).unwrap();
         assert!((unix_back - unix).abs() < Second::new(1e-3));
     }
 

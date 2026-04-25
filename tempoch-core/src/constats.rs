@@ -77,17 +77,12 @@ pub const GPS_EPOCH_TAI: Second = Second::new(-630_763_181.0);
 /// First MJD covered by the compiled UTC-TAI segment table.
 ///
 /// This corresponds to 1961-01-01. UTC was defined starting from this date.
-/// For queries before this boundary, `Time<UTC>` conversions silently
-/// extrapolate the first table segment backwards. The extrapolated offset is
+/// For queries before this boundary, `Time<UTC>` conversions return
+/// [`crate::ConversionError::UtcBeforeDefinition`] by default. Back-extrapolation
+/// of the first segment can be enabled by building the conversion context with
+/// [`crate::TimeContext::allow_pre_definition_utc`]. The extrapolated offset is
 /// internally consistent (round-trips close) but is not a historically defined
 /// UTC-TAI value; no standard UTC existed before 1961.
-///
-/// Call sites that require historically accurate UTC values should guard
-/// against this boundary:
-/// ```no_run
-/// use tempoch_core::constats::UTC_DEFINED_FROM_MJD;
-/// // reject MJDs below UTC_DEFINED_FROM_MJD
-/// ```
 pub const UTC_DEFINED_FROM_MJD: Day = Day::new(37_300.0);
 
 /// One Julian century in days (36 525 d), used for the Fairhead–Bretagnon

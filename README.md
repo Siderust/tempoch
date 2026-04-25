@@ -29,9 +29,11 @@ Typed astronomical time primitives for Rust.
   - `.to_with::<UT1>(&ctx)` for context-backed UT1 routes
   - `.to::<JD>()`, `.to::<MJD>()`, `.to::<J2000s>()` for coordinate views
   - `.try_to::<UnixSecs>()` and `.to::<GpsSecs>()` for transport encodings
-- UTC conversion through `chrono`, leap-second aware over the official history,
-  with an approximate pre-1961 continuation of the first official UTC segment
-  for older civil labels.
+- UTC conversion through `chrono`, leap-second aware over the official history
+  (1961-01-01 onward). Requests for dates before the UTC standard was defined
+  return `ConversionError::UtcBeforeDefinition` by default; opt in to the
+  approximate segment back-extrapolation by building your context with
+  `TimeContext::new().allow_pre_definition_utc()`.
 - Automatic `ΔT = TT - UT1` handling for `UT1` conversions via an explicit
   `TimeContext`. For the currently compiled bundle fetched 2026-04-18, the
   default monthly-ΔT path stays within 10 ms of the bundled daily IERS-derived

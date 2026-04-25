@@ -4,8 +4,8 @@ use qtty::{Day, Second};
 use serde_json::json;
 use tempoch::{
     constats::{J2000_JD_TT, TT_MINUS_TAI},
-    CoordinateScale, J2000Seconds, J2000s, JulianDate, ModifiedJulianDate, Period, Time,
-    TimeContext, Unix, JD, MJD, TAI, TT, UT1, UTC,
+    ConversionError, CoordinateScale, J2000Seconds, J2000s, JulianDate, ModifiedJulianDate,
+    Period, Time, TimeContext, Unix, JD, MJD, TAI, TT, UT1, UTC,
 };
 
 #[test]
@@ -90,8 +90,17 @@ fn utc_supports_coordinate_views_and_pre_1961_roundtrips() {
     assert_eq!(needs_coordinate_scale(utc), utc.to::<MJD>().raw());
 
     let pre_1961 = DateTime::from_timestamp(-631_152_000, 500_000_000).unwrap();
-    let encoded = Time::<UTC>::try_from_chrono(pre_1961).unwrap();
-    let back = encoded.try_to_chrono().unwrap();
+
+    // Default: pre-1961 dates must be rejected.
+    assert!(matches!(
+        Time::<UTC>::try_from_chrono(pre_1961),
+        Err(ConversionError::UtcBeforeDefinition)
+    ));
+
+    // Opt-in: round-trip must close.
+    let ctx = TimeContext::new().allow_pre_definition_utc();
+    let encoded = Time::<UTC>::try_from_chrono_with(pre_1961, &ctx).unwrap();
+    let back = encoded.try_to_chrono_with(&ctx).unwrap();
     let delta_ns = back.timestamp_nanos_opt().unwrap() - pre_1961.timestamp_nanos_opt().unwrap();
     assert!(delta_ns.abs() < 50_000);
 }
