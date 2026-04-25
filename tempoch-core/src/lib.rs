@@ -42,6 +42,7 @@ pub mod eop;
 pub mod error;
 pub(crate) mod generated;
 mod interval;
+pub mod representation;
 pub mod scalar;
 mod scale;
 mod sealed;
@@ -75,8 +76,12 @@ pub use scalar::{
 };
 pub use scale::{ContinuousScale, CoordinateScale, Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
 pub use target::{
-    ContextConversionTarget, ConversionTarget, GpsSecs, InfallibleConversionTarget, J2000s,
-    UnixSecs, JD, MJD,
+    ContextConversionTarget, ConversionTarget, InfallibleConversionTarget,
+};
+pub use representation::{
+    EncodedTime, GPS, GpsTime, J2000Seconds, J2000s, JD, JulianDate, MJD,
+    ModifiedJulianDate, TimeRepresentation, Unix, UnixTime,
+    InfallibleRepresentationForScale, RepresentationForScale,
 };
 pub use time::Time;
 

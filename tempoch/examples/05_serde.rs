@@ -3,12 +3,21 @@
 use qtty::Second;
 use tempoch::{
     tagged::{TaggedPeriod, TaggedTime},
-    Period, Time, TT,
+    J2000Seconds, J2000s, Period, Time, TT,
 };
 
 fn main() {
-    let tt = Time::<TT>::from_j2000_seconds(Second::new(42.5)).unwrap();
-    let window = Period::<TT>::new(61_000.0, 61_001.0);
+    let tt = J2000Seconds::<TT>::try_new(Second::new(42.5))
+        .unwrap()
+        .to_time();
+    let window = Period::<TT>::new(
+        J2000Seconds::<TT>::try_new(Second::new(61_000.0))
+            .unwrap()
+            .to_time(),
+        J2000Seconds::<TT>::try_new(Second::new(61_001.0))
+            .unwrap()
+            .to_time(),
+    );
 
     let tt_json = serde_json::to_string(&tt).unwrap();
     let window_json = serde_json::to_string(&window).unwrap();
@@ -29,19 +38,19 @@ fn main() {
     println!("Period JSON : {window_json}");
     println!("Tagged Time JSON   : {tagged_tt_json}");
     println!("Tagged Period JSON : {tagged_window_json}");
-    println!("TT round-trip     : {:.1}", tt_back.j2000_seconds());
+    println!("TT round-trip     : {:.1}", tt_back.to::<J2000s>().raw());
     println!(
         "Window round-trip : {:.1} → {:.1}",
-        window_back.start.j2000_seconds(),
-        window_back.end.j2000_seconds()
+        window_back.start.to::<J2000s>().raw(),
+        window_back.end.to::<J2000s>().raw()
     );
     println!(
         "Tagged TT round-trip     : {:.1}",
-        tagged_tt_back.j2000_seconds()
+        tagged_tt_back.to::<J2000s>().raw()
     );
     println!(
         "Tagged Window round-trip : {:.1} → {:.1}",
-        tagged_window_back.start.j2000_seconds(),
-        tagged_window_back.end.j2000_seconds()
+        tagged_window_back.start.to::<J2000s>().raw(),
+        tagged_window_back.end.to::<J2000s>().raw()
     );
 }

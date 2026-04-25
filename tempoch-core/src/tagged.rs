@@ -168,7 +168,7 @@ mod tests {
 
     #[test]
     fn tagged_time_roundtrips_with_scale_field() {
-        let tt = Time::<TT>::from_j2000_seconds(Second::new(42.5)).unwrap();
+        let tt = Time::<TT>::from_raw_j2000_seconds(Second::new(42.5)).unwrap();
         let payload = TaggedTime(tt);
         assert_eq!(
             serde_json::to_value(payload).unwrap(),
@@ -198,7 +198,10 @@ mod tests {
 
     #[test]
     fn tagged_period_roundtrips() {
-        let period = Period::<TT>::new(1.25, 2.5);
+        let period = Period::<TT>::new(
+            Time::<TT>::from_raw_j2000_seconds(Second::new(1.25)).unwrap(),
+            Time::<TT>::from_raw_j2000_seconds(Second::new(2.5)).unwrap(),
+        );
         let payload = TaggedPeriod(period);
         assert_eq!(
             serde_json::to_value(payload).unwrap(),

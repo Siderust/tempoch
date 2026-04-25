@@ -18,12 +18,15 @@ pub use tempoch_core::scalar::{
 pub use tempoch_core::{
     constats, delta_t_seconds, delta_t_seconds_extrapolated, eop,
     ContextConversionTarget, ContinuousScale, ConversionError,
-    ConversionTarget, CoordinateScale, GpsSecs, InfallibleConversionTarget, Interval,
-    InvalidIntervalError, InvalidPeriodError, J2000s, Period, PeriodListError, Scale, ScaleKind,
-    Time, TimeContext, TimeDataError, UnixSecs, DELTA_T_PREDICTION_HORIZON_MJD, EOP_END_MJD,
+    ConversionTarget, CoordinateScale, InfallibleConversionTarget, Interval,
+    InvalidIntervalError, InvalidPeriodError, Period, PeriodListError, Scale, ScaleKind,
+    Time, TimeContext, TimeDataError, DELTA_T_PREDICTION_HORIZON_MJD, EOP_END_MJD,
     EOP_OBSERVED_END_MJD, EOP_START_MJD, GPS_EPOCH_JD_TAI, GPS_EPOCH_JD_UTC,
-    GPS_EPOCH_TAI_MINUS_UTC, JD, MJD, MODERN_DELTA_T_OBSERVED_END_MJD, TAI, TCB, TCG, TDB, TT, UT1,
+    GPS_EPOCH_TAI_MINUS_UTC, MODERN_DELTA_T_OBSERVED_END_MJD, TAI, TCB, TCG, TDB, TT, UT1,
     UTC, UTC_DEFINED_FROM_MJD,
+    EncodedTime, GPS, GpsTime, J2000Seconds, J2000s, JD, JulianDate, MJD,
+    ModifiedJulianDate, TimeRepresentation, Unix, UnixTime,
+    InfallibleRepresentationForScale, RepresentationForScale,
 };
 #[cfg(feature = "runtime-data-fetch")]
 pub use tempoch_core::{

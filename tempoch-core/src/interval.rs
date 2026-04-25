@@ -319,6 +319,8 @@ impl<T: Copy + PartialOrd> Interval<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::representation::{JulianDate, ModifiedJulianDate, MJD};
+    use crate::target::ConversionTarget;
     use crate::{Time, TT};
     use qtty::Day;
     #[cfg(feature = "serde")]
@@ -406,11 +408,11 @@ mod tests {
     #[test]
     fn period_accepts_typed_times() {
         let p = Period::<TT>::new(
-            Time::<TT>::from_modified_julian_days(51_544.5.into()).unwrap(),
-            Time::<TT>::from_modified_julian_days(51_545.25.into()).unwrap(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(51_544.5)).unwrap().to_time(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(51_545.25)).unwrap().to_time(),
         );
-        assert_eq!(p.start.modified_julian_days(), Day::new(51_544.5));
-        assert_eq!(p.end.modified_julian_days(), Day::new(51_545.25));
+        assert_eq!(p.start.to::<MJD>().raw(), Day::new(51_544.5));
+        assert_eq!(p.end.to::<MJD>().raw(), Day::new(51_545.25));
     }
 
     #[test]
@@ -524,8 +526,8 @@ mod tests {
     #[test]
     fn display_formats_periods_via_endpoint_display() {
         let mjd = Period::<TT>::new(
-            Time::<TT>::from_modified_julian_days(51_544.5.into()).unwrap(),
-            Time::<TT>::from_modified_julian_days(51_545.25.into()).unwrap(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(51_544.5)).unwrap().to_time(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(51_545.25)).unwrap().to_time(),
         );
 
         assert!(mjd.to_string().contains("TT"));
@@ -535,14 +537,17 @@ mod tests {
     #[test]
     fn serde_roundtrips_period_shapes() {
         let mjd = Period::<TT>::new(
-            Time::<TT>::from_modified_julian_days(51_544.5.into()).unwrap(),
-            Time::<TT>::from_modified_julian_days(51_545.25.into()).unwrap(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(51_544.5)).unwrap().to_time(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(51_545.25)).unwrap().to_time(),
         );
         let jd = Period::<TT>::new(
-            Time::<TT>::from_julian_days(2_451_545.0.into()).unwrap(),
-            Time::<TT>::from_julian_days(2_451_546.0.into()).unwrap(),
+            JulianDate::<TT>::try_new(Day::new(2_451_545.0)).unwrap().to_time(),
+            JulianDate::<TT>::try_new(Day::new(2_451_546.0)).unwrap().to_time(),
         );
-        let native = Period::<TT>::new(100.0, 200.0);
+        let native = Period::<TT>::new(
+            Time::<TT>::from_raw_j2000_seconds(qtty::Second::new(100.0)).unwrap(),
+            Time::<TT>::from_raw_j2000_seconds(qtty::Second::new(200.0)).unwrap(),
+        );
 
         assert_eq!(
             serde_json::to_value(mjd).unwrap(),

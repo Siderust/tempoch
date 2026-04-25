@@ -80,7 +80,7 @@ impl Time<UTC> {
     /// Build a UTC instant from a POSIX timestamp in seconds using the
     /// context's captured time-data bundle.
     #[inline]
-    pub fn from_unix_seconds_with(
+    pub(crate) fn from_raw_unix_seconds_with(
         seconds: Second,
         ctx: &TimeContext,
     ) -> Result<Self, ConversionError> {
@@ -94,28 +94,19 @@ impl Time<UTC> {
         Self::try_new(tai_secs, Second::new(0.0))
     }
 
-    /// Build a UTC instant from a POSIX timestamp in seconds.
-    #[inline]
-    pub fn from_unix_seconds(seconds: Second) -> Result<Self, ConversionError> {
-        Self::from_unix_seconds_with(seconds, &TimeContext::new())
-    }
-
     /// Return the POSIX timestamp in seconds for this UTC instant using the
     /// context's captured time-data bundle.
     #[inline]
-    pub fn unix_seconds_with(self, ctx: &TimeContext) -> Result<Second, ConversionError> {
+    pub(crate) fn raw_unix_seconds_with(
+        self,
+        ctx: &TimeContext,
+    ) -> Result<Second, ConversionError> {
         if self.is_leap_second_with(ctx) {
             return Err(ConversionError::InvalidLeapSecond);
         }
         let dt = self.try_to_chrono_with(ctx)?;
         let nanos = dt.timestamp_subsec_nanos();
         Ok(Second::new(dt.timestamp() as f64 + nanos as f64 / 1e9))
-    }
-
-    /// Return the POSIX timestamp in seconds for this UTC instant.
-    #[inline]
-    pub fn unix_seconds(self) -> Result<Second, ConversionError> {
-        self.unix_seconds_with(&TimeContext::new())
     }
 
     /// Returns `true` if this instant falls inside a positive leap second in
@@ -136,7 +127,7 @@ impl Time<UTC> {
 impl Time<TAI> {
     /// Build a TAI instant from GPS seconds since the GPS epoch.
     #[inline]
-    pub fn from_gps_seconds(seconds: Second) -> Result<Self, ConversionError> {
+    pub(crate) fn from_raw_gps_seconds(seconds: Second) -> Result<Self, ConversionError> {
         if !seconds.is_finite() {
             return Err(ConversionError::NonFinite);
         }
@@ -145,7 +136,7 @@ impl Time<TAI> {
 
     /// Return GPS seconds since the GPS epoch for this instant.
     #[inline]
-    pub fn gps_seconds(self) -> Second {
+    pub(crate) fn raw_gps_seconds(self) -> Second {
         self.total_seconds() - GPS_EPOCH_TAI
     }
 }

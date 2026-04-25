@@ -14,7 +14,7 @@ use qtty::Second;
 use qtty::Day;
 use tempoch::{
     scalar::{scalar_add_days, scalar_difference_in_days, time_tt_from_scalar, time_tt_to_scalar},
-    ConversionError, ScaleKind, Time, TimeContext, TT, UTC,
+    ConversionError, ScaleKind, Time, TimeContext, TT, UTC, UnixTime,
 };
 
 /// Time scale identifier for generic dispatch functions.
@@ -139,10 +139,11 @@ pub(crate) fn time_to_utc_value(value: f64, scale: TempochScaleId) -> Option<Dat
         // Route through the civil API so that out-of-history-range Unix
         // timestamps and non-finite values are rejected consistently with
         // all other scales.
-        return Time::<UTC>::from_unix_seconds_with(Second::new(value), &ctx)
-            .ok()?
-            .try_to_chrono_with(&ctx)
-            .ok();
+        return UnixTime::try_new(Second::new(value))
+                .and_then(|e| e.to_time_with(&ctx))
+                .ok()?
+                .try_to_chrono_with(&ctx)
+                .ok();
     }
 
     time_tt_from_scalar(value, kind, &ctx)

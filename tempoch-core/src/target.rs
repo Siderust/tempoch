@@ -3,16 +3,16 @@
 
 //! Conversion-target markers for the unified `Time::to::<T>()` API.
 //!
-//! These tags are no longer storage parameters. They are request markers for
-//! views and transport encodings over a canonical `Time<S>` value.
+//! Format-encoding targets (`JD`, `MJD`, `J2000s`, `Unix`, `GPS`) live in
+//! [`crate::representation`]. This module provides the trait definitions and
+//! scale-to-scale conversion impls.
 
 use crate::context::TimeContext;
 use crate::error::ConversionError;
 use crate::scale::conversion::{ContextScaleConvert, InfallibleScaleConvert};
-use crate::scale::{CoordinateScale, Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
+use crate::scale::{Scale, TCB, TCG, TDB, TT, UT1, UTC, TAI};
 use crate::sealed::Sealed;
 use crate::time::Time;
-use qtty::{Day, Second};
 
 /// Unified conversion target for `Time<S>::try_to::<T>()`.
 #[allow(private_bounds)]
@@ -35,32 +35,6 @@ pub trait ContextConversionTarget<S: Scale>: Sealed {
 
     fn convert_with(src: Time<S>, ctx: &TimeContext) -> Result<Self::Output, ConversionError>;
 }
-
-/// J2000 seconds on the source scale's coordinate axis.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct J2000s;
-
-/// Julian Day on the source scale's coordinate axis.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct JD;
-
-/// Modified Julian Day on the source scale's coordinate axis.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct MJD;
-
-/// POSIX seconds on the UTC civil axis.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct UnixSecs;
-
-/// GPS seconds since the GPS epoch on the TAI/GPS continuous axis.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct GpsSecs;
-
-impl Sealed for J2000s {}
-impl Sealed for JD {}
-impl Sealed for MJD {}
-impl Sealed for UnixSecs {}
-impl Sealed for GpsSecs {}
 
 impl<S1, S2> ConversionTarget<S1> for S2
 where
@@ -99,112 +73,6 @@ where
     }
 }
 
-impl<S: CoordinateScale> ConversionTarget<S> for J2000s {
-    type Output = Second;
-
-    #[inline]
-    fn try_convert(src: Time<S>) -> Result<Self::Output, ConversionError> {
-        Ok(Self::convert(src))
-    }
-}
-
-impl<S: CoordinateScale> InfallibleConversionTarget<S> for J2000s {
-    #[inline]
-    fn convert(src: Time<S>) -> Self::Output {
-        src.j2000_seconds()
-    }
-}
-
-impl<S: CoordinateScale> ConversionTarget<S> for JD {
-    type Output = Day;
-
-    #[inline]
-    fn try_convert(src: Time<S>) -> Result<Self::Output, ConversionError> {
-        Ok(Self::convert(src))
-    }
-}
-
-impl<S: CoordinateScale> InfallibleConversionTarget<S> for JD {
-    #[inline]
-    fn convert(src: Time<S>) -> Self::Output {
-        src.julian_days()
-    }
-}
-
-impl<S: CoordinateScale> ConversionTarget<S> for MJD {
-    type Output = Day;
-
-    #[inline]
-    fn try_convert(src: Time<S>) -> Result<Self::Output, ConversionError> {
-        Ok(Self::convert(src))
-    }
-}
-
-impl<S: CoordinateScale> InfallibleConversionTarget<S> for MJD {
-    #[inline]
-    fn convert(src: Time<S>) -> Self::Output {
-        src.modified_julian_days()
-    }
-}
-
-impl<S> ConversionTarget<S> for UnixSecs
-where
-    S: Scale + InfallibleScaleConvert<UTC>,
-{
-    type Output = Second;
-
-    #[inline]
-    fn try_convert(src: Time<S>) -> Result<Self::Output, ConversionError> {
-        src.to_scale::<UTC>().unix_seconds()
-    }
-}
-
-impl<S> ContextConversionTarget<S> for UnixSecs
-where
-    S: Scale + ContextScaleConvert<UTC>,
-{
-    type Output = Second;
-
-    #[inline]
-    fn convert_with(src: Time<S>, ctx: &TimeContext) -> Result<Self::Output, ConversionError> {
-        src.to_scale_with::<UTC>(ctx)?.unix_seconds_with(ctx)
-    }
-}
-
-impl<S> ConversionTarget<S> for GpsSecs
-where
-    S: Scale + InfallibleScaleConvert<TAI>,
-{
-    type Output = Second;
-
-    #[inline]
-    fn try_convert(src: Time<S>) -> Result<Self::Output, ConversionError> {
-        Ok(Self::convert(src))
-    }
-}
-
-impl<S> InfallibleConversionTarget<S> for GpsSecs
-where
-    S: Scale + InfallibleScaleConvert<TAI>,
-{
-    #[inline]
-    fn convert(src: Time<S>) -> Self::Output {
-        src.to_scale::<TAI>().gps_seconds()
-    }
-}
-
-impl<S> ContextConversionTarget<S> for GpsSecs
-where
-    S: Scale + ContextScaleConvert<TAI>,
-{
-    type Output = Second;
-
-    #[inline]
-    fn convert_with(src: Time<S>, ctx: &TimeContext) -> Result<Self::Output, ConversionError> {
-        Ok(src.to_scale_with::<TAI>(ctx)?.gps_seconds())
-    }
-}
-
 macro_rules! default_context_scale_target {
     ($src:ty => $dst:ty) => {
         impl ConversionTarget<$src> for $dst {
@@ -233,58 +101,61 @@ default_context_scale_target!(UT1 => UTC);
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
+    use crate::representation::{J2000s, JD, MJD, Unix, GPS};
     use crate::scale::{TAI, TT, UT1, UTC};
     use qtty::Second;
 
     #[test]
     fn scalar_targets_match_coordinate_helpers() {
-        let tt = crate::time::Time::<TT>::from_j2000_seconds(Second::new(12_345.678)).unwrap();
+        let tt = crate::time::Time::<TT>::from_raw_j2000_seconds(Second::new(12_345.678)).unwrap();
 
-        assert!((tt.to::<J2000s>() - tt.j2000_seconds()).abs() < Second::new(1e-12));
-        assert!((tt.to::<JD>() - tt.julian_days()).abs() < qtty::Day::new(1e-15));
-        assert!((tt.to::<MJD>() - tt.modified_julian_days()).abs() < qtty::Day::new(1e-15));
+        assert_eq!(tt.to::<J2000s>().raw(), tt.raw_j2000_seconds());
+        assert_eq!(tt.to::<JD>().raw(), crate::encoding::j2000_seconds_to_jd(tt.raw_j2000_seconds()));
+        assert_eq!(tt.to::<MJD>().raw(), crate::encoding::j2000_seconds_to_mjd(tt.raw_j2000_seconds()));
     }
 
     #[test]
     fn unix_and_gps_targets_use_expected_axes() {
-        let utc = crate::time::Time::<UTC>::from_unix_seconds(Second::new(946_728_000.0)).unwrap();
-        let unix = utc.try_to::<UnixSecs>().unwrap();
-        assert!((unix - utc.unix_seconds().unwrap()).abs() < Second::new(1e-12));
+        let utc = crate::time::Time::<UTC>::from_raw_unix_seconds_with(
+            Second::new(946_728_000.0),
+            &crate::context::TimeContext::new(),
+        )
+        .unwrap();
+        let unix = utc.try_to::<Unix>().unwrap();
+        assert!((unix.raw() - utc.raw_unix_seconds_with(&crate::context::TimeContext::new()).unwrap()).abs() < Second::new(1e-12));
 
         let tai = utc.to::<TAI>();
-        let gps = tai.to::<GpsSecs>();
-        assert!((gps - tai.gps_seconds()).abs() < Second::new(1e-12));
+        let gps = tai.to::<GPS>();
+        assert!((gps.raw() - tai.raw_gps_seconds()).abs() < Second::new(1e-12));
 
-        let gps_from_tt = crate::time::Time::<TT>::from_j2000_seconds(Second::new(0.0))
+        let gps_from_tt = crate::time::Time::<TT>::from_raw_j2000_seconds(Second::new(0.0))
             .unwrap()
-            .try_to::<GpsSecs>()
+            .try_to::<GPS>()
             .unwrap();
-        assert!(gps_from_tt.is_finite());
+        assert!(gps_from_tt.raw().is_finite());
     }
 
     #[test]
     fn default_context_ut1_routes_are_reachable() {
-        let tt = crate::time::Time::<TT>::from_j2000_seconds(Second::new(0.0)).unwrap();
+        let tt = crate::time::Time::<TT>::from_raw_j2000_seconds(Second::new(0.0)).unwrap();
         let ut1 = tt.try_to::<UT1>().unwrap();
         let tt_back = ut1.try_to::<TT>().unwrap();
         let utc_back = ut1.try_to::<UTC>().unwrap();
 
-        assert!(tt_back.j2000_seconds().is_finite());
-        assert!(utc_back.j2000_seconds().is_finite());
+        assert!(tt_back.raw_j2000_seconds().is_finite());
+        assert!(utc_back.raw_j2000_seconds().is_finite());
     }
 
     #[test]
     fn context_targets_support_ut1_sources() {
-        let tt = crate::time::Time::<TT>::from_j2000_seconds(Second::new(0.0)).unwrap();
+        let tt = crate::time::Time::<TT>::from_raw_j2000_seconds(Second::new(0.0)).unwrap();
         let ctx = crate::context::TimeContext::new();
         let ut1 = tt.to_with::<UT1>(&ctx).unwrap();
 
-        let unix = ut1.to_with::<UnixSecs>(&ctx).unwrap();
-        let gps = ut1.to_with::<GpsSecs>(&ctx).unwrap();
+        let unix = ut1.to_with::<Unix>(&ctx).unwrap();
+        let gps = ut1.to_with::<GPS>(&ctx).unwrap();
 
-        assert!(unix.is_finite());
-        assert!(gps.is_finite());
+        assert!(unix.raw().is_finite());
+        assert!(gps.raw().is_finite());
     }
 }
