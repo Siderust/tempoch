@@ -15,15 +15,17 @@ use qtty::time::{Days, Nanoseconds, Seconds};
 use qtty::unit::{Day, Nanosecond, Second as SecondUnit};
 use qtty::{Day as DayQuantity, Second};
 use std::sync::{Arc, OnceLock, RwLock};
-use tempoch_time_data::{
-    EopPoint, TimeDataBundle, TimeDataError as InternalDataError, TimeDataManager,
-    TimeDataProvenance, UtcTaiSegment,
-};
+#[cfg(any(test, feature = "runtime-data-fetch"))]
+use tempoch_time_data::TimeDataError as InternalDataError;
+#[cfg(feature = "runtime-data-fetch")]
+use tempoch_time_data::TimeDataManager;
+use tempoch_time_data::{EopPoint, TimeDataBundle, TimeDataProvenance, UtcTaiSegment};
 
 #[cfg(test)]
 use std::sync::Mutex;
 
 const NANOS_PER_SECOND: Nanoseconds = Nanoseconds::new(1_000_000_000.0);
+#[cfg(test)]
 const RUNTIME_DATA_MAX_AGE_SECONDS: i64 = 24 * 60 * 60;
 
 #[derive(Clone, Copy)]
@@ -38,7 +40,6 @@ enum UtcTaiRegion {
 
 static COMPILED_TIME_DATA: OnceLock<Arc<TimeDataBundle>> = OnceLock::new();
 static ACTIVE_TIME_DATA: OnceLock<RwLock<Arc<TimeDataBundle>>> = OnceLock::new();
-static AUTO_RUNTIME_DATA_INIT: OnceLock<()> = OnceLock::new();
 
 #[cfg(test)]
 static TEST_TIME_DATA_GUARD: Mutex<()> = Mutex::new(());
@@ -49,6 +50,7 @@ fn active_time_data_slot() -> &'static RwLock<Arc<TimeDataBundle>> {
     ACTIVE_TIME_DATA.get_or_init(|| RwLock::new(compiled_time_data()))
 }
 
+#[cfg(any(test, feature = "runtime-data-fetch"))]
 fn set_active_time_data(bundle: TimeDataBundle) {
     let mut slot = active_time_data_slot()
         .write()
@@ -66,8 +68,6 @@ pub(crate) fn active_time_data() -> Arc<TimeDataBundle> {
         return bundle;
     }
 
-    auto_activate_runtime_time_data();
-
     active_time_data_slot()
         .read()
         .unwrap_or_else(|err| err.into_inner())
@@ -78,15 +78,25 @@ pub(crate) fn active_time_data() -> Arc<TimeDataBundle> {
 ///
 /// This is cache-first: it uses the current cached bundle if present,
 /// falling back to a refresh when no valid cache is available.
+#[cfg(feature = "runtime-data-fetch")]
 pub fn update_runtime_time_data() -> Result<(), crate::error::TimeDataError> {
     load_and_activate_runtime_time_data(false).map_err(Into::into)
 }
 
 /// Force-refresh runtime time data and load it into the active bundle.
+#[cfg(feature = "runtime-data-fetch")]
 pub fn refresh_runtime_time_data() -> Result<(), crate::error::TimeDataError> {
     load_and_activate_runtime_time_data(true).map_err(Into::into)
 }
 
+/// Explicitly fetch the latest runtime time data and load it into the active
+/// bundle.
+#[cfg(feature = "runtime-data-fetch")]
+pub fn fetch_latest_time_data() -> Result<(), crate::error::TimeDataError> {
+    refresh_runtime_time_data()
+}
+
+#[cfg(feature = "runtime-data-fetch")]
 fn load_and_activate_runtime_time_data(force_refresh: bool) -> Result<(), InternalDataError> {
     let manager = TimeDataManager::new()?;
     let bundle = select_time_data(
@@ -98,6 +108,7 @@ fn load_and_activate_runtime_time_data(force_refresh: bool) -> Result<(), Intern
     Ok(())
 }
 
+#[cfg(any(test, feature = "runtime-data-fetch"))]
 fn select_time_data(
     cached: Result<TimeDataBundle, InternalDataError>,
     refresh: impl FnOnce() -> Result<TimeDataBundle, InternalDataError>,
@@ -113,6 +124,7 @@ fn select_time_data(
     }
 }
 
+#[cfg(test)]
 fn bundle_is_stale(bundle: &TimeDataBundle, now: DateTime<Utc>) -> bool {
     match bundle.provenance().fetched_at() {
         Some(fetched_at) => {
@@ -122,6 +134,7 @@ fn bundle_is_stale(bundle: &TimeDataBundle, now: DateTime<Utc>) -> bool {
     }
 }
 
+#[cfg(test)]
 fn select_time_data_for_auto_refresh(
     cached: Result<TimeDataBundle, InternalDataError>,
     refresh: impl FnOnce() -> Result<TimeDataBundle, InternalDataError>,
@@ -134,22 +147,6 @@ fn select_time_data_for_auto_refresh(
     }
 }
 
-fn auto_activate_runtime_time_data() {
-    AUTO_RUNTIME_DATA_INIT.get_or_init(|| {
-        let Ok(manager) = TimeDataManager::new() else {
-            return;
-        };
-        let Ok(bundle) = select_time_data_for_auto_refresh(
-            manager.load_cached(),
-            || manager.refresh_and_load(),
-            Utc::now(),
-        ) else {
-            return;
-        };
-        set_active_time_data(bundle);
-    });
-}
-
 pub(crate) fn time_data_delta_t(
     data: &TimeDataBundle,
     jd_ut: DayQuantity,
@@ -159,24 +156,22 @@ pub(crate) fn time_data_delta_t(
 
 pub(crate) fn time_data_eop_at(data: &TimeDataBundle, mjd_utc: DayQuantity) -> Option<EopValues> {
     let points = data.eop_points();
+    let first = points.first()?.mjd;
+    let last = points.last()?.mjd;
     let mjd_f = mjd_utc.value();
     let lo_i = mjd_f.floor() as i32;
     let hi_i = lo_i + 1;
-    let first = points[0].mjd;
-    let last = points[points.len() - 1].mjd;
     if lo_i < first || lo_i > last {
         return None;
     }
-    let lo_idx = (lo_i - first) as usize;
-    let hi_idx = if hi_i > last {
-        lo_idx
+    let lo = find_eop_point(points, lo_i)?;
+    let hi = if hi_i > last {
+        lo
     } else {
-        (hi_i - first) as usize
+        find_eop_point(points, hi_i)?
     };
-    let lo = points[lo_idx];
-    let hi = points[hi_idx];
 
-    let frac = if lo_idx == hi_idx {
+    let frac = if lo.mjd == hi.mjd {
         0.0
     } else {
         mjd_f - lo_i as f64
@@ -215,6 +210,12 @@ pub(crate) fn time_data_eop_at(data: &TimeDataBundle, mjd_utc: DayQuantity) -> O
         dy_milliarcsec: lerp_opt(lo.dy_milliarcsec, hi.dy_milliarcsec),
         ut1_observed: lo.ut1_observed && hi.ut1_observed,
     })
+}
+
+fn find_eop_point(points: &[EopPoint], mjd: i32) -> Option<EopPoint> {
+    let idx = points.partition_point(|point| point.mjd < mjd);
+    let point = *points.get(idx)?;
+    (point.mjd == mjd).then_some(point)
 }
 
 /// Return TAI − UTC in seconds at the given UTC date as a Modified Julian Day.
@@ -734,6 +735,29 @@ mod tests {
             let ut1 = tt.to_scale_with::<UT1>(&TimeContext::new()).unwrap();
             assert!(ut1.julian_days().is_finite());
         });
+    }
+
+    #[test]
+    fn eop_lookup_returns_none_when_bundle_has_gap() {
+        let bundle = compiled_bundle_owned();
+        let mut eop_points = bundle.eop_points().to_vec();
+        let gap_idx = eop_points
+            .windows(2)
+            .position(|window| window[1].mjd == window[0].mjd + 1)
+            .expect("compiled EOP series should contain adjacent rows")
+            + 1;
+        let gap_after = eop_points[gap_idx - 1].mjd;
+        eop_points.remove(gap_idx);
+        let bundle = TimeDataBundle::new(
+            bundle.utc_tai_segments().to_vec(),
+            bundle.modern_delta_t_points().to_vec(),
+            bundle.modern_delta_t_observed_end_mjd(),
+            eop_points,
+            bundle.provenance().clone(),
+        );
+
+        assert!(time_data_eop_at(&bundle, DayQuantity::new(gap_after as f64 + 0.5)).is_none());
+        assert!(time_data_eop_at(&bundle, DayQuantity::new((gap_after + 1) as f64)).is_none());
     }
 
     #[test]

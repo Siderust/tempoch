@@ -5,8 +5,8 @@ use serde_json::json;
 use tempoch::{
     complement_within,
     constats::{J2000_JD_TT, TT_MINUS_TAI},
-    intersect_periods, CoordinateScale, J2000s, Period, Time, TimeContext, JD, MJD, TAI, TT, UT1,
-    UTC,
+    intersect_periods, CoordinateScale, J2000s, Period, Time, TimeContext, UnixSecs, JD, MJD, TAI,
+    TT, UT1, UTC,
 };
 
 #[test]
@@ -62,6 +62,7 @@ fn utc_leap_second_roundtrip_is_preserved() {
     let back = utc.try_to_chrono().unwrap();
 
     assert!(utc.is_leap_second());
+    assert!(utc.try_to::<UnixSecs>().is_err());
     assert_eq!(back.timestamp(), leap.timestamp());
     assert!(
         (back.timestamp_subsec_nanos() as i64 - leap.timestamp_subsec_nanos() as i64).abs()

@@ -100,7 +100,11 @@ impl<S: Scale> core::fmt::Display for Time<S> {
 impl<S: Scale> Time<S> {
     #[inline]
     pub(crate) fn new_unchecked(hi: Second, lo: Second) -> Self {
+        debug_assert!(hi.is_finite());
+        debug_assert!(lo.is_finite());
         let (hi, lo) = normalize_pair(hi.value(), lo.value());
+        debug_assert!(hi.is_finite());
+        debug_assert!(lo.is_finite());
         Self {
             hi: Second::new(hi),
             lo: Second::new(lo),
@@ -187,14 +191,14 @@ impl<S: CoordinateScale> Time<S> {
 impl<S: CoordinateScale> From<Second> for Time<S> {
     #[inline]
     fn from(value: Second) -> Self {
-        Self::new_unchecked(value, Second::new(0.0))
+        Self::from_j2000_seconds(value).expect("time value must be finite")
     }
 }
 
 impl<S: CoordinateScale> From<f64> for Time<S> {
     #[inline]
     fn from(value: f64) -> Self {
-        Self::new_unchecked(Second::new(value), Second::new(0.0))
+        Self::from_j2000_seconds(Second::new(value)).expect("time value must be finite")
     }
 }
 
@@ -327,7 +331,8 @@ mod tests {
 
     #[test]
     fn tt_tcg_offset_is_finite() {
-        let tt = Time::<TT>::from_j2000_seconds(Second::new(86_400.0)).unwrap();
+        let tt =
+            Time::<TT>::from_j2000_seconds(qtty::Day::new(1.0).to::<qtty::unit::Second>()).unwrap();
         let tcg = tt.to_scale::<TCG>();
         assert!(tcg.j2000_seconds().is_finite());
     }
@@ -338,5 +343,11 @@ mod tests {
         let shifted = utc + Second::new(10.0);
         assert_eq!(utc.modified_julian_days(), Day::new(51_544.5));
         assert!((shifted - utc - Second::new(10.0)).abs() < Second::new(1e-12));
+    }
+
+    #[test]
+    #[should_panic(expected = "time value must be finite")]
+    fn from_f64_rejects_nonfinite() {
+        let _ = Time::<TT>::from(f64::NAN);
     }
 }

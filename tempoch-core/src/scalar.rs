@@ -23,13 +23,12 @@ use crate::time::Time;
 use qtty::time::Seconds;
 use qtty::{Day, Second};
 
-const SECONDS_PER_DAY: f64 = 86_400.0;
-
 /// GPS epoch expressed as a Julian Day on the TAI axis.
 ///
 /// At the GPS epoch (1980-01-06T00:00:00 UTC), `TAI − UTC = 19 s` exactly,
-/// giving `JD(TAI) = 2_444_244.5 + 19 / 86_400`.
-pub const GPS_EPOCH_JD_TAI: f64 = 2_444_244.5 + 19.0 / SECONDS_PER_DAY;
+/// giving `JD(TAI) = 2_444_244.5 + 19 s` converted to days.
+pub const GPS_EPOCH_JD_TAI: f64 =
+    2_444_244.5 + Seconds::new(19.0).to_const::<qtty::unit::Day>().value();
 
 /// Identifies a time scale or scalar encoding for dispatch.
 ///
@@ -97,9 +96,8 @@ pub fn time_tt_from_scalar(
         ScaleKind::Ut1 => {
             Time::<UT1>::from_julian_days(Day::new(value)).and_then(|t| t.to_scale_with::<TT>(ctx))
         }
-        ScaleKind::Unix => {
-            Time::<UTC>::from_unix_seconds(Seconds::new(value)).map(|t| t.to_scale::<TT>())
-        }
+        ScaleKind::Unix => Time::<UTC>::from_unix_seconds_with(Seconds::new(value), ctx)
+            .map(|t| t.to_scale::<TT>()),
     }
 }
 
@@ -135,12 +133,12 @@ pub fn time_tt_to_scalar(
 
 /// Compute the difference between two scalar values in the same scale, in days.
 ///
-/// For [`ScaleKind::Unix`] (seconds), the raw difference is divided by 86 400.
+/// For [`ScaleKind::Unix`] (seconds), the raw difference is converted to days.
 /// For all other scales the raw difference already represents days.
 #[inline]
 pub fn scalar_difference_in_days(lhs: f64, rhs: f64, kind: ScaleKind) -> f64 {
     match kind {
-        ScaleKind::Unix => (lhs - rhs) / SECONDS_PER_DAY,
+        ScaleKind::Unix => Second::new(lhs - rhs).to::<qtty::unit::Day>() / Day::new(1.0),
         _ => lhs - rhs,
     }
 }

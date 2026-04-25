@@ -16,7 +16,7 @@ use crate::error::TempochStatus;
 use chrono::{NaiveDate, Utc};
 use qtty::Day;
 use qtty_ffi::{QttyQuantity, UnitId};
-use tempoch::{delta_t_seconds_extrapolated, ConversionError};
+use tempoch::{delta_t_seconds, delta_t_seconds_extrapolated, ConversionError};
 
 const J2000_JD_TT: f64 = 2_451_545.0;
 const JULIAN_CENTURY_DAYS: f64 = 36_525.0;
@@ -464,6 +464,30 @@ pub extern "C" fn tempoch_delta_t_seconds(jd: f64) -> f64 {
         return 0.0;
     }
     delta_t_seconds_extrapolated(Day::new(jd)) / qtty::Second::new(1.0)
+}
+
+/// Return ΔT = TT − UT1 in seconds for a Julian Date, without unsupported
+/// extrapolation.
+///
+/// # Safety
+/// `out` must be a valid, writable pointer to `double`.
+#[no_mangle]
+pub unsafe extern "C" fn tempoch_delta_t_seconds_checked(jd: f64, out: *mut f64) -> TempochStatus {
+    catch_panic!(TempochStatus::InternalPanic, {
+        if out.is_null() {
+            return TempochStatus::NullPointer;
+        }
+        if !jd.is_finite() {
+            return TempochStatus::UtcConversionFailed;
+        }
+        match delta_t_seconds(Day::new(jd)) {
+            Ok(delta_t) => {
+                unsafe { *out = delta_t / qtty::Second::new(1.0) };
+                TempochStatus::Ok
+            }
+            Err(err) => conversion_error_to_status(err),
+        }
+    })
 }
 
 /// Map a `ConversionError` to the appropriate `TempochStatus` code.
@@ -1224,5 +1248,29 @@ mod tests {
     fn delta_t_seconds_past_horizon_is_finite() {
         let dt = tempoch_delta_t_seconds(2_465_000.0);
         assert!(dt.is_finite(), "expected finite ΔT past horizon, got {dt}");
+    }
+
+    #[test]
+    fn delta_t_seconds_checked_rejects_nonfinite() {
+        let mut out = -999.0;
+        let status = unsafe { tempoch_delta_t_seconds_checked(f64::NAN, &mut out) };
+        assert_eq!(status, TempochStatus::UtcConversionFailed);
+        assert_eq!(out, -999.0);
+    }
+
+    #[test]
+    fn delta_t_seconds_checked_reports_horizon() {
+        let mut out = -999.0;
+        let status = unsafe { tempoch_delta_t_seconds_checked(2_465_000.0, &mut out) };
+        assert_eq!(status, TempochStatus::Ut1HorizonExceeded);
+        assert_eq!(out, -999.0);
+    }
+
+    #[test]
+    fn delta_t_seconds_checked_returns_in_range_value() {
+        let mut out = 0.0;
+        let status = unsafe { tempoch_delta_t_seconds_checked(2_451_545.0, &mut out) };
+        assert_eq!(status, TempochStatus::Ok);
+        assert!(out.is_finite());
     }
 }

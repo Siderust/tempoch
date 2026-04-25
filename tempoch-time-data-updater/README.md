@@ -42,8 +42,8 @@ That design has a few concrete benefits:
   conversions.
 - The crate can expose typed time conversions without depending on live remote
   services.
-- CI can verify whether committed generated data is stale with a simple
-  reproducible check.
+- Maintainers can verify whether committed generated data is stale with a
+  simple reproducible check.
 
 Separately, `tempoch` also offers runtime freshness through its ordinary UTC,
 UT1, and context-backed conversion APIs. The updater exists to refresh the
@@ -117,8 +117,11 @@ cd tempoch
 cargo test
 ```
 
-If the generated data is supposed to be current in CI, `--check` is the mode
-that should be enforced.
+If you need an explicit freshness verification outside the scheduled refresh,
+`--check` is the maintainer-facing mode to run manually. Repository freshness
+is maintained by the scheduled Monday GitHub Actions refresh, which runs at
+05:23 UTC and pushes changes directly to `main` when the upstream datasets
+change.
 
 ## Notes
 
@@ -130,5 +133,7 @@ that should be enforced.
   cache placement.
 - Network access is required when running the updater because it pulls current
   upstream datasets.
+- GitHub cron schedules are defined in UTC; the repository's automatic refresh
+  therefore guarantees a Monday run in UTC, not in every local timezone.
 - If upstream formats change, parsing will fail rather than silently generating
   incorrect tables.

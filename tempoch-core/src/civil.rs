@@ -104,8 +104,11 @@ impl Time<UTC> {
     /// context's captured time-data bundle.
     #[inline]
     pub fn unix_seconds_with(self, ctx: &TimeContext) -> Result<Second, ConversionError> {
+        if self.is_leap_second_with(ctx) {
+            return Err(ConversionError::InvalidLeapSecond);
+        }
         let dt = self.try_to_chrono_with(ctx)?;
-        let nanos = dt.timestamp_subsec_nanos().min(999_999_999);
+        let nanos = dt.timestamp_subsec_nanos();
         Ok(Second::new(dt.timestamp() as f64 + nanos as f64 / 1e9))
     }
 

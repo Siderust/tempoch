@@ -17,13 +17,17 @@ pub use tempoch_core::scalar::{
 };
 pub use tempoch_core::{
     complement_within, constats, delta_t_seconds, delta_t_seconds_extrapolated, eop,
-    intersect_periods, normalize_periods, refresh_runtime_time_data, update_runtime_time_data,
+    intersect_periods, normalize_periods, try_complement_within, try_intersect_periods,
     validate_period_list, ContextConversionTarget, ContinuousScale, ConversionError,
     ConversionTarget, CoordinateScale, GpsSecs, InfallibleConversionTarget, Interval,
     InvalidIntervalError, InvalidPeriodError, J2000s, Period, PeriodListError, Scale, ScaleKind,
     Time, TimeContext, TimeDataError, UnixSecs, DELTA_T_PREDICTION_HORIZON_MJD, EOP_END_MJD,
     EOP_OBSERVED_END_MJD, EOP_START_MJD, GPS_EPOCH_JD_TAI, JD, MJD,
     MODERN_DELTA_T_OBSERVED_END_MJD, TAI, TCB, TCG, TDB, TT, UT1, UTC, UTC_DEFINED_FROM_MJD,
+};
+#[cfg(feature = "runtime-data-fetch")]
+pub use tempoch_core::{
+    fetch_latest_time_data, refresh_runtime_time_data, update_runtime_time_data,
 };
 
 #[cfg(feature = "serde")]

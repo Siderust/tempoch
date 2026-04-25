@@ -230,16 +230,17 @@ cargo run -p tempoch-time-data-updater
 cargo test --all-features
 ```
 
-To verify that the committed generated files are still in sync with upstream
-(this is also enforced in CI):
+To verify manually that the committed generated files are still in sync with
+upstream:
 
 ```bash
 cargo run -p tempoch-time-data-updater -- --check
 ```
 
-A scheduled GitHub Actions workflow runs the refresh automatically and pushes
-the resulting commit directly to `main` when the generated tables or their
-source hashes change.
+A scheduled GitHub Actions workflow runs the refresh automatically every
+Monday at 05:23 UTC and pushes the resulting commit directly to `main` when
+the generated tables or their source hashes change. GitHub cron schedules are
+defined in UTC.
 
 ## Tests and Coverage
 

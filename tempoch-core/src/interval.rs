@@ -158,6 +158,25 @@ pub fn complement_within<T: Copy + PartialOrd>(
     gaps
 }
 
+/// Checked variant of [`complement_within`].
+///
+/// Validates that `outer` is well ordered and that `periods` is sorted,
+/// non-overlapping, and internally valid before computing the complement.
+pub fn try_complement_within<T: Copy + PartialOrd>(
+    outer: Interval<T>,
+    periods: &[Interval<T>],
+) -> Result<Vec<Interval<T>>, PeriodListError> {
+    if outer
+        .start
+        .partial_cmp(&outer.end)
+        .is_none_or(|ordering| ordering == core::cmp::Ordering::Greater)
+    {
+        return Err(PeriodListError::InvalidInterval { index: 0 });
+    }
+    validate_period_list(periods)?;
+    Ok(complement_within(outer, periods))
+}
+
 /// Intersection of two sorted, non-overlapping period lists. `O(n + m)`.
 pub fn intersect_periods<T: Copy + PartialOrd>(
     a: &[Interval<T>],
@@ -178,6 +197,18 @@ pub fn intersect_periods<T: Copy + PartialOrd>(
         }
     }
     result
+}
+
+/// Checked variant of [`intersect_periods`].
+///
+/// Validates both input lists before computing their intersection.
+pub fn try_intersect_periods<T: Copy + PartialOrd>(
+    a: &[Interval<T>],
+    b: &[Interval<T>],
+) -> Result<Vec<Interval<T>>, PeriodListError> {
+    validate_period_list(a)?;
+    validate_period_list(b)?;
+    Ok(intersect_periods(a, b))
 }
 
 /// Check that a list is sorted, non-overlapping, and each `start <= end`.
@@ -381,6 +412,35 @@ mod tests {
         assert_eq!(
             validate_period_list(&periods),
             Err(PeriodListError::Unsorted { index: 1 })
+        );
+    }
+
+    #[test]
+    fn checked_complement_rejects_invalid_inputs() {
+        let outer = Interval::<f64>::new(0.0_f64, 10.0);
+        let periods = vec![
+            Interval::<f64>::new(5.0_f64, 8.0),
+            Interval::<f64>::new(1.0_f64, 4.0),
+        ];
+        assert_eq!(
+            try_complement_within(outer, &periods),
+            Err(PeriodListError::Unsorted { index: 1 })
+        );
+
+        let invalid_outer = Interval::<f64>::new(10.0_f64, 0.0);
+        assert_eq!(
+            try_complement_within(invalid_outer, &[]),
+            Err(PeriodListError::InvalidInterval { index: 0 })
+        );
+    }
+
+    #[test]
+    fn checked_intersection_matches_unchecked_for_valid_inputs() {
+        let a = vec![Interval::<f64>::new(0.0_f64, 5.0)];
+        let b = vec![Interval::<f64>::new(3.0_f64, 7.0)];
+        assert_eq!(
+            try_intersect_periods(&a, &b).unwrap(),
+            intersect_periods(&a, &b)
         );
     }
 
