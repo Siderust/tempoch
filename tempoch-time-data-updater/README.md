@@ -123,6 +123,57 @@ is maintained by the scheduled Monday GitHub Actions refresh, which runs at
 05:23 UTC and pushes changes directly to `main` when the upstream datasets
 change.
 
+## Automated weekly publish
+
+When the Monday refresh commits new generated files to `main`, a second
+GitHub Actions job (`publish`) automatically:
+
+1. Runs a **WIP guard** — checks for any commits on `main` since the last
+   version tag that touch files outside `tempoch-core/src/generated/`.  If
+   such commits exist, the publish is skipped with a warning so that
+   unreviewed feature work is not shipped inadvertently.
+2. **Bumps the patch version** across all four publishable crates
+   (`tempoch-time-data`, `tempoch-core`, `tempoch`, `tempoch-ffi`) using
+   `.github/scripts/bump-versions.sh`.  Dependency version constraints between
+   crates are updated at the same time.
+3. **Updates `CHANGELOG.md`** using `.github/scripts/update-changelog.sh`,
+   which diffs the provenance SHA256 fields in `time_data.provenance.json`
+   against the last tagged version to describe exactly which upstream datasets
+   changed (UTC-TAI history, ΔT observed/predicted, EOP finals).
+4. **Commits, tags, and pushes** the version bump as
+   `chore(release): bump to vX.Y.Z` with an annotated tag `vX.Y.Z`.
+5. **Publishes** the four crates to crates.io in dependency order with 30-second
+   waits between each step to allow index propagation.
+
+### Required repository secret
+
+The publish job requires a `CARGO_REGISTRY_TOKEN` secret set in
+**Settings → Secrets and variables → Actions**.  Without this secret the
+publish steps will fail; the data-refresh commit will still land on `main`.
+
+### Maintenance scripts
+
+The two helper scripts are self-documented:
+
+| Script | Purpose |
+|--------|---------|
+| `.github/scripts/bump-versions.sh` | Read and increment patch version in all Cargo.toml files |
+| `.github/scripts/update-changelog.sh` | Generate a CHANGELOG entry from provenance diffs |
+
+Both scripts can be run locally from the workspace root for testing or manual
+releases:
+
+```bash
+bash .github/scripts/bump-versions.sh
+bash .github/scripts/update-changelog.sh 0.4.3
+```
+
+### Manual trigger
+
+The `update-time-data` workflow can be triggered manually from the Actions tab
+(`workflow_dispatch`), which will run both the refresh and, if data changed,
+the publish job.
+
 ## Notes
 
 - The tool is a maintenance utility for repository authors, not a runtime

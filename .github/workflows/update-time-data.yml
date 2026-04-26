@@ -1,9 +1,21 @@
 name: Update Time Data
 
+# Runs every Monday at 05:23 UTC and, if upstream timekeeping data changed:
+#   1. refresh job  — regenerates compiled tables, validates, commits to main.
+#   2. publish job  — bumps patch version, updates CHANGELOG, tags, publishes to crates.io.
+#
+# The publish job requires a CARGO_REGISTRY_TOKEN secret set in the repository
+# settings (Settings → Secrets and variables → Actions → New repository secret).
+#
+# WIP protection: if any commit exists on main since the last version tag that
+# touches files outside tempoch-core/src/generated/**, the publish job skips
+# publication and prints a warning.  This prevents unreviewed feature work from
+# being inadvertently shipped as part of a data-refresh patch release.
+
 on:
   workflow_dispatch:
   schedule:
-    # GitHub cron uses UTC; this runs every Monday at 05:23 UTC and pushes changes directly to main.
+    # GitHub cron uses UTC; this runs every Monday at 05:23 UTC.
     - cron: "23 5 * * 1"
 
 permissions:
@@ -17,6 +29,11 @@ jobs:
   refresh:
     name: Refresh generated time data
     runs-on: ubuntu-latest
+
+    outputs:
+      # true when the generated files changed and were committed; false otherwise.
+      # The publish job uses this to skip unnecessary publish runs.
+      data_changed: ${{ steps.commit.outputs.data_changed }}
 
     steps:
       - uses: actions/checkout@v4
@@ -35,6 +52,7 @@ jobs:
         run: cargo test --all-features
 
       - name: Commit and push if changed
+        id: commit
         env:
           GIT_AUTHOR_NAME: github-actions[bot]
           GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
@@ -58,7 +76,144 @@ jobs:
             tempoch-core/src/generated/time_data.provenance.json
           if git diff --cached --quiet; then
             echo "No time-data changes; skipping commit."
+            echo "data_changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git commit -m "chore: refresh generated time data"
           git push origin HEAD:main
+          echo "data_changed=true" >> "$GITHUB_OUTPUT"
+
+  publish:
+    name: Publish patch release to crates.io
+    runs-on: ubuntu-latest
+    needs: refresh
+    # Only runs when the generated tables actually changed this week.
+    if: needs.refresh.outputs.data_changed == 'true'
+
+    steps:
+      - name: Checkout main with full history
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # -----------------------------------------------------------------------
+      # WIP guard
+      # Protects against accidentally publishing unreviewed feature commits that
+      # landed on main since the last version tag.  The data-refresh commit
+      # itself only touches tempoch-core/src/generated/**, so it is excluded by
+      # the pathspec and will not trigger a false positive.
+      # -----------------------------------------------------------------------
+      - name: WIP guard — check for non-data commits since last tag
+        id: wip
+        run: |
+          set -euo pipefail
+          LAST_TAG=$(git describe --tags --abbrev=0 --match "v[0-9]*.[0-9]*.[0-9]*" 2>/dev/null || echo "")
+          if [ -z "$LAST_TAG" ]; then
+            echo "No version tag found; skipping WIP check."
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Last version tag: $LAST_TAG"
+          # List commits since the last tag that touch files outside the generated directory.
+          # The data-refresh commit only touches generated/** so it will not appear here.
+          NON_GEN=$(git log "$LAST_TAG"..HEAD --oneline -- ':!tempoch-core/src/generated/**' || true)
+          if [ -n "$NON_GEN" ]; then
+            echo "::warning::WIP detected — non-generated commits exist since $LAST_TAG."
+            echo "Skipping auto-publish to avoid shipping unreviewed work."
+            echo "Commits found:"
+            echo "$NON_GEN"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No WIP commits detected since $LAST_TAG. Proceeding."
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # -----------------------------------------------------------------------
+      # Version bump
+      # Increments the patch component of all four publishable crates and
+      # rewrites dependency version constraints between them.
+      # -----------------------------------------------------------------------
+      - name: Set up Rust (stable)
+        if: steps.wip.outputs.skip != 'true'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Bump patch versions
+        id: versions
+        if: steps.wip.outputs.skip != 'true'
+        run: bash .github/scripts/bump-versions.sh
+
+      # -----------------------------------------------------------------------
+      # CHANGELOG update
+      # Diffs provenance SHA256s against the last tag to list which upstream
+      # datasets changed, then splices a new section into CHANGELOG.md.
+      # -----------------------------------------------------------------------
+      - name: Update CHANGELOG
+        if: steps.wip.outputs.skip != 'true'
+        run: bash .github/scripts/update-changelog.sh "${{ steps.versions.outputs.main_version }}"
+
+      # -----------------------------------------------------------------------
+      # Commit, tag, push
+      # -----------------------------------------------------------------------
+      - name: Commit version bump, tag, and push
+        if: steps.wip.outputs.skip != 'true'
+        env:
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.versions.outputs.main_version }}"
+          git add \
+            tempoch-time-data/Cargo.toml \
+            tempoch-core/Cargo.toml \
+            tempoch/Cargo.toml \
+            tempoch-ffi/Cargo.toml \
+            CHANGELOG.md
+          git commit -m "chore(release): bump to v${VERSION}"
+          git tag -a "v${VERSION}" -m "Release ${VERSION} (automated data-refresh patch)"
+          git push origin HEAD:main --tags
+
+      # -----------------------------------------------------------------------
+      # Publish to crates.io in dependency order
+      # 30-second sleeps between each publish allow crates.io index propagation
+      # so downstream crates can resolve the freshly published dependency.
+      # -----------------------------------------------------------------------
+      - name: Publish tempoch-time-data
+        if: steps.wip.outputs.skip != 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish -p tempoch-time-data
+
+      - name: Wait for crates.io index propagation
+        if: steps.wip.outputs.skip != 'true'
+        run: sleep 30
+
+      - name: Publish tempoch-core
+        if: steps.wip.outputs.skip != 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish -p tempoch-core
+
+      - name: Wait for crates.io index propagation
+        if: steps.wip.outputs.skip != 'true'
+        run: sleep 30
+
+      - name: Publish tempoch
+        if: steps.wip.outputs.skip != 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish -p tempoch
+
+      - name: Wait for crates.io index propagation
+        if: steps.wip.outputs.skip != 'true'
+        run: sleep 30
+
+      - name: Publish tempoch-ffi
+        if: steps.wip.outputs.skip != 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish -p tempoch-ffi
