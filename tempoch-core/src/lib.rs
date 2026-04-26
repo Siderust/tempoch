@@ -6,6 +6,19 @@
 //! The central type is [`Time<S>`], where `S` is a [`Scale`] marker
 //! (`TT`, `TAI`, `UTC`, `UT1`, `TDB`, `TCG`, `TCB`).
 //!
+//! `tempoch` makes a few explicit modeling decisions:
+//!
+//! - [`Time<S>`] is an instant on a scale-specific axis, not a bare scalar.
+//! - Time arithmetic follows affine rules: instant minus instant yields a
+//!   duration; shifting an instant by a duration yields another instant.
+//! - Internal storage is a compensated `(hi, lo)` pair of J2000-based seconds
+//!   so large epoch values can retain small corrections and sub-second detail.
+//! - `JD`, `MJD`, `J2000s`, `Unix`, and `GPS` are conversion targets,
+//!   not independent storage models.
+//! - `UTC` keeps special civil semantics: it is stored as a continuous instant
+//!   and interpreted through the active UTC-TAI table when civil labels are
+//!   needed.
+//!
 //! The old format-generic storage model has been replaced with explicit
 //! constructors and accessors:
 //!
@@ -29,6 +42,7 @@ pub mod eop;
 pub mod error;
 pub(crate) mod generated;
 mod interval;
+pub mod representation;
 pub mod scalar;
 mod scale;
 mod sealed;
@@ -41,27 +55,29 @@ mod serde_impl;
 #[cfg(feature = "serde")]
 pub mod tagged;
 
-pub use constats::UTC_DEFINED_FROM_MJD;
+pub use constats::{
+    GPS_EPOCH_JD_TAI, GPS_EPOCH_JD_UTC, GPS_EPOCH_TAI_MINUS_UTC, UTC_DEFINED_FROM_MJD,
+};
 pub use context::TimeContext;
-pub use data::active::{refresh_runtime_time_data, update_runtime_time_data};
+#[cfg(feature = "runtime-data-fetch")]
+pub use data::active::{
+    fetch_latest_time_data, refresh_runtime_time_data, update_runtime_time_data,
+};
 pub use delta_t::{delta_t_seconds, delta_t_seconds_extrapolated, DELTA_T_PREDICTION_HORIZON_MJD};
 pub use error::{ConversionError, TimeDataError};
 pub use generated::{
     EOP_END_MJD, EOP_OBSERVED_END_MJD, EOP_START_MJD, MODERN_DELTA_T_OBSERVED_END_MJD,
 };
-pub use interval::{
-    complement_within, intersect_periods, normalize_periods, validate_period_list, Interval,
-    InvalidIntervalError, InvalidPeriodError, Period, PeriodListError,
+pub use interval::{Interval, InvalidIntervalError, InvalidPeriodError, Period, PeriodListError};
+pub use representation::{
+    EncodedTime, GpsTime, InfallibleRepresentationForScale, J2000Seconds, J2000s, JulianDate,
+    ModifiedJulianDate, RepresentationForScale, TimeRepresentation, Unix, UnixTime, GPS, JD, MJD,
 };
 pub use scalar::{
     scalar_add_days, scalar_difference_in_days, time_tt_from_scalar, time_tt_to_scalar, ScaleKind,
-    GPS_EPOCH_JD_TAI,
 };
 pub use scale::{ContinuousScale, CoordinateScale, Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
-pub use target::{
-    ContextConversionTarget, ConversionTarget, GpsSecs, InfallibleConversionTarget, J2000s,
-    UnixSecs, JD, MJD,
-};
+pub use target::{ContextConversionTarget, ConversionTarget, InfallibleConversionTarget};
 pub use time::Time;
 
 #[cfg(test)]

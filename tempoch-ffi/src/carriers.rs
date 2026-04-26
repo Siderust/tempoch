@@ -10,11 +10,11 @@
 //! Rust [`ScaleKind`] and provides thin wrappers for the FFI entry points.
 
 use chrono::{DateTime, Utc};
-use qtty::time::Seconds;
 use qtty::Day;
+use qtty::Second;
 use tempoch::{
     scalar::{scalar_add_days, scalar_difference_in_days, time_tt_from_scalar, time_tt_to_scalar},
-    ConversionError, ScaleKind, Time, TimeContext, TT, UTC,
+    ConversionError, ScaleKind, Time, TimeContext, UnixTime, TT, UTC,
 };
 
 /// Time scale identifier for generic dispatch functions.
@@ -118,7 +118,10 @@ pub(crate) fn time_from_utc_value(datetime: DateTime<Utc>, scale: TempochScaleId
         // ~10 µs of error because
         // TT_MINUS_TAI (32.184 s) is not exactly representable in f64.
         Time::<UTC>::try_from_chrono_with(datetime, &ctx).ok()?;
-        let nanos = datetime.timestamp_subsec_nanos().min(999_999_999);
+        if datetime.timestamp_subsec_nanos() >= 1_000_000_000 {
+            return None;
+        }
+        let nanos = datetime.timestamp_subsec_nanos();
         return Some(datetime.timestamp() as f64 + nanos as f64 / 1e9);
     }
 
@@ -136,7 +139,8 @@ pub(crate) fn time_to_utc_value(value: f64, scale: TempochScaleId) -> Option<Dat
         // Route through the civil API so that out-of-history-range Unix
         // timestamps and non-finite values are rejected consistently with
         // all other scales.
-        return Time::<UTC>::from_unix_seconds_with(Seconds::new(value), &ctx)
+        return UnixTime::try_new(Second::new(value))
+            .and_then(|e| e.to_time_with(&ctx))
             .ok()?
             .try_to_chrono_with(&ctx)
             .ok();
@@ -202,9 +206,8 @@ mod tests {
     #[test]
     fn gps_scale_uses_days_since_epoch() {
         // JD(TT) at the GPS epoch: JD(UTC) = 2_444_244.5, TT-UTC = 51.184 s
-        const SECONDS_PER_DAY: f64 = 86_400.0;
-        const TT_MINUS_UTC_AT_GPS_EPOCH_SECS: f64 = 51.184;
-        let jd_tt_at_gps_epoch = 2_444_244.5 + TT_MINUS_UTC_AT_GPS_EPOCH_SECS / SECONDS_PER_DAY;
+        let jd_tt_at_gps_epoch =
+            2_444_244.5 + qtty::Second::new(51.184).to::<qtty::unit::Day>().value();
         let gps = jd_to_scale_value(jd_tt_at_gps_epoch, TempochScaleId::GPS).unwrap();
         assert!(gps.abs() < 1e-9);
     }

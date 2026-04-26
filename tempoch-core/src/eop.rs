@@ -44,19 +44,11 @@ pub struct EopValues {
     pub ut1_observed: bool,
 }
 
-fn covered_range() -> (Day, Day) {
-    let data = active_time_data();
-    (
-        Day::new(data.eop_points()[0].mjd as f64),
-        Day::new(data.eop_points()[data.eop_points().len() - 1].mjd as f64),
-    )
-}
-
 /// Returns `true` when [`builtin_eop_at`] would return `Some` for `mjd_utc`.
 #[inline]
 pub fn builtin_eop_covers(mjd_utc: Day) -> bool {
-    let (lo, hi) = covered_range();
-    (lo..=hi).contains(&mjd_utc)
+    let data = active_time_data();
+    time_data_eop_at(data.as_ref(), mjd_utc).is_some()
 }
 
 /// Linearly interpolate compiled EOP at a UTC MJD.

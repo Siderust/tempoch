@@ -16,14 +16,19 @@ pub use tempoch_core::scalar::{
     scalar_add_days, scalar_difference_in_days, time_tt_from_scalar, time_tt_to_scalar,
 };
 pub use tempoch_core::{
-    complement_within, constats, delta_t_seconds, delta_t_seconds_extrapolated, eop,
-    intersect_periods, normalize_periods, refresh_runtime_time_data, update_runtime_time_data,
-    validate_period_list, ContextConversionTarget, ContinuousScale, ConversionError,
-    ConversionTarget, CoordinateScale, GpsSecs, InfallibleConversionTarget, Interval,
-    InvalidIntervalError, InvalidPeriodError, J2000s, Period, PeriodListError, Scale, ScaleKind,
-    Time, TimeContext, TimeDataError, UnixSecs, DELTA_T_PREDICTION_HORIZON_MJD, EOP_END_MJD,
-    EOP_OBSERVED_END_MJD, EOP_START_MJD, GPS_EPOCH_JD_TAI, JD, MJD,
-    MODERN_DELTA_T_OBSERVED_END_MJD, TAI, TCB, TCG, TDB, TT, UT1, UTC, UTC_DEFINED_FROM_MJD,
+    constats, delta_t_seconds, delta_t_seconds_extrapolated, eop, ContextConversionTarget,
+    ContinuousScale, ConversionError, ConversionTarget, CoordinateScale, EncodedTime, GpsTime,
+    InfallibleConversionTarget, InfallibleRepresentationForScale, Interval, InvalidIntervalError,
+    InvalidPeriodError, J2000Seconds, J2000s, JulianDate, ModifiedJulianDate, Period,
+    PeriodListError, RepresentationForScale, Scale, ScaleKind, Time, TimeContext, TimeDataError,
+    TimeRepresentation, Unix, UnixTime, DELTA_T_PREDICTION_HORIZON_MJD, EOP_END_MJD,
+    EOP_OBSERVED_END_MJD, EOP_START_MJD, GPS, GPS_EPOCH_JD_TAI, GPS_EPOCH_JD_UTC,
+    GPS_EPOCH_TAI_MINUS_UTC, JD, MJD, MODERN_DELTA_T_OBSERVED_END_MJD, TAI, TCB, TCG, TDB, TT, UT1,
+    UTC, UTC_DEFINED_FROM_MJD,
+};
+#[cfg(feature = "runtime-data-fetch")]
+pub use tempoch_core::{
+    fetch_latest_time_data, refresh_runtime_time_data, update_runtime_time_data,
 };
 
 #[cfg(feature = "serde")]

@@ -1,6 +1,6 @@
 [package]
 name = "tempoch"
-version = "0.4.1"
+version = "0.4.2"
 edition = "2021"
 authors = ["VPRamon <vallespuigramon@gmail.com>"]
 description = "Astronomical time primitives: typed time scales, Julian dates, UTC conversion, and interval operations."
@@ -17,13 +17,14 @@ path = "src/lib.rs"
 [features]
 default = []
 serde = ["tempoch-core/serde"]
+runtime-data-fetch = ["tempoch-core/runtime-data-fetch"]
 
 [dependencies]
-tempoch-core = { path = "../tempoch-core", version = "0.4.1" }
+tempoch-core = { path = "../tempoch-core", version = "0.4.2" }
 
 [dev-dependencies]
 chrono = "0.4.44"
-qtty = "0.5.0"
+qtty = "0.6.1"
 serde_json = "1"
 
 [[example]]

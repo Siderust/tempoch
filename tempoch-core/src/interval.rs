@@ -75,9 +75,14 @@ impl fmt::Display for PeriodListError {
 impl std::error::Error for PeriodListError {}
 
 /// Half-open time interval `[start, end)`.
+///
+/// Half-open intervals are convenient for period arithmetic because adjacent
+/// intervals such as `[a, b)` and `[b, c)` touch without overlapping.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Interval<T: Copy + PartialOrd> {
+    /// Inclusive lower bound.
     pub start: T,
+    /// Exclusive upper bound.
     pub end: T,
 }
 
@@ -100,8 +105,11 @@ pub type Period<S> = Interval<Time<S>>;
 pub type InvalidPeriodError = InvalidIntervalError;
 
 impl<T: Copy + PartialOrd> Interval<T> {
-    /// Construct without validation. Prefer [`try_new`](Self::try_new) for
-    /// computed inputs.
+    /// Construct without validation.
+    ///
+    /// This accepts any `start`/`end` pair, including reversed or NaN-like
+    /// endpoints. Prefer [`try_new`](Self::try_new) when the bounds come from
+    /// computation or external input.
     #[inline]
     pub fn new<S: Into<T>, E: Into<T>>(start: S, end: E) -> Self {
         Self {
@@ -111,6 +119,8 @@ impl<T: Copy + PartialOrd> Interval<T> {
     }
 
     /// Validating constructor: rejects `start > end` and NaN endpoints.
+    ///
+    /// Zero-length intervals where `start == end` are allowed.
     #[inline]
     pub fn try_new<S: Into<T>, E: Into<T>>(start: S, end: E) -> Result<Self, InvalidIntervalError> {
         let start = start.into();
@@ -121,6 +131,8 @@ impl<T: Copy + PartialOrd> Interval<T> {
             Err(InvalidIntervalError::StartAfterEnd)
         }
     }
+
+    // ── Pair operations ──────────────────────────────────────────────────────
 
     /// Overlap as a half-open range. Returns `None` if the intervals touch
     /// only at a point or do not overlap.
@@ -134,112 +146,187 @@ impl<T: Copy + PartialOrd> Interval<T> {
             None
         }
     }
-}
 
-/// Gaps (complement) of `periods` within `outer`. `periods` must be sorted
-/// and non-overlapping (see [`validate_period_list`]).
-pub fn complement_within<T: Copy + PartialOrd>(
-    outer: Interval<T>,
-    periods: &[Interval<T>],
-) -> Vec<Interval<T>> {
-    let mut gaps = Vec::with_capacity(periods.len().saturating_add(1));
-    let mut cursor = outer.start;
-    for p in periods {
-        if p.start > cursor {
-            gaps.push(Interval::new(cursor, p.start));
+    /// Smallest interval covering both `self` and `other`, together with any
+    /// gap between them.
+    ///
+    /// Returns one interval when they overlap or touch, two when they are
+    /// strictly disjoint (sorted by start time).
+    ///
+    /// This pairwise API preserves disjointness instead of forcing a merged
+    /// interval that would invent coverage through the gap.
+    #[inline]
+    pub fn union(&self, other: &Self) -> Vec<Self> {
+        if self.start <= other.end && other.start <= self.end {
+            vec![Self::new(
+                partial_min(self.start, other.start),
+                partial_max(self.end, other.end),
+            )]
+        } else if self.start <= other.start {
+            vec![*self, *other]
+        } else {
+            vec![*other, *self]
         }
-        if p.end > cursor {
+    }
+
+    // ── Self-as-outer complement ─────────────────────────────────────────────
+
+    /// Gaps inside `self` that are not covered by any interval in `periods`.
+    ///
+    /// `periods` must be sorted and non-overlapping
+    /// (see [`Interval::validate`]). Intervals outside `self` are effectively
+    /// ignored except for how they advance the internal cursor.
+    #[inline]
+    pub fn complement(&self, periods: &[Self]) -> Vec<Self> {
+        let mut gaps = Vec::with_capacity(periods.len().saturating_add(1));
+        let mut cursor = self.start;
+        for p in periods {
+            if p.end <= cursor {
+                continue;
+            }
+            if p.start >= self.end {
+                break;
+            }
+            if p.start > cursor {
+                gaps.push(Self::new(cursor, p.start));
+            }
+            if p.end >= self.end {
+                return gaps;
+            }
             cursor = p.end;
         }
-    }
-    if cursor < outer.end {
-        gaps.push(Interval::new(cursor, outer.end));
-    }
-    gaps
-}
-
-/// Intersection of two sorted, non-overlapping period lists. `O(n + m)`.
-pub fn intersect_periods<T: Copy + PartialOrd>(
-    a: &[Interval<T>],
-    b: &[Interval<T>],
-) -> Vec<Interval<T>> {
-    let mut result = Vec::with_capacity(a.len().min(b.len()));
-    let (mut i, mut j) = (0, 0);
-    while i < a.len() && j < b.len() {
-        let start = partial_max(a[i].start, b[j].start);
-        let end = partial_min(a[i].end, b[j].end);
-        if start < end {
-            result.push(Interval::new(start, end));
+        if cursor < self.end {
+            gaps.push(Self::new(cursor, self.end));
         }
-        if a[i].end <= b[j].end {
-            i += 1;
-        } else {
-            j += 1;
-        }
+        gaps
     }
-    result
-}
 
-/// Check that a list is sorted, non-overlapping, and each `start <= end`.
-pub fn validate_period_list<T: Copy + PartialOrd>(
-    periods: &[Interval<T>],
-) -> Result<(), PeriodListError> {
-    let mut prev: Option<Interval<T>> = None;
-    for (i, period) in periods.iter().copied().enumerate() {
-        if period
+    /// Checked variant of [`complement`](Self::complement).
+    ///
+    /// Validates that `self` is well ordered and that `periods` is sorted,
+    /// non-overlapping, and internally valid before computing the complement.
+    #[inline]
+    pub fn try_complement(&self, periods: &[Self]) -> Result<Vec<Self>, PeriodListError> {
+        if self
             .start
-            .partial_cmp(&period.end)
+            .partial_cmp(&self.end)
             .is_none_or(|ordering| ordering == core::cmp::Ordering::Greater)
         {
-            return Err(PeriodListError::InvalidInterval { index: i });
+            return Err(PeriodListError::InvalidInterval { index: 0 });
         }
-        if let Some(previous) = prev {
-            if previous
+        Self::validate(periods)?;
+        Ok(self.complement(periods))
+    }
+
+    // ── List operations (associated functions) ───────────────────────────────
+
+    /// Check that a list is sorted, non-overlapping, and each `start <= end`.
+    ///
+    /// Touching intervals such as `[a, b)` followed by `[b, c)` are valid.
+    pub fn validate(periods: &[Self]) -> Result<(), PeriodListError> {
+        let mut prev: Option<Interval<T>> = None;
+        for (i, period) in periods.iter().copied().enumerate() {
+            if period
                 .start
-                .partial_cmp(&period.start)
+                .partial_cmp(&period.end)
                 .is_none_or(|ordering| ordering == core::cmp::Ordering::Greater)
             {
-                return Err(PeriodListError::Unsorted { index: i });
+                return Err(PeriodListError::InvalidInterval { index: i });
             }
-            if previous.end > period.start {
-                return Err(PeriodListError::Overlapping { index: i });
-            }
-        }
-        prev = Some(period);
-    }
-    Ok(())
-}
-
-/// Sort and merge overlapping/adjacent intervals.
-pub fn normalize_periods<T: Copy + PartialOrd>(periods: &[Interval<T>]) -> Vec<Interval<T>> {
-    if periods.is_empty() {
-        return Vec::new();
-    }
-    let mut sorted: Vec<_> = periods.to_vec();
-    sorted.sort_unstable_by(|a, b| {
-        a.start
-            .partial_cmp(&b.start)
-            .unwrap_or(core::cmp::Ordering::Equal)
-    });
-    let mut merged = Vec::with_capacity(sorted.len());
-    merged.push(sorted[0]);
-    for period in sorted.into_iter().skip(1) {
-        if let Some(last) = merged.last_mut() {
-            if period.start <= last.end {
-                if period.end > last.end {
-                    last.end = period.end;
+            if let Some(previous) = prev {
+                if previous
+                    .start
+                    .partial_cmp(&period.start)
+                    .is_none_or(|ordering| ordering == core::cmp::Ordering::Greater)
+                {
+                    return Err(PeriodListError::Unsorted { index: i });
                 }
+                if previous.end > period.start {
+                    return Err(PeriodListError::Overlapping { index: i });
+                }
+            }
+            prev = Some(period);
+        }
+        Ok(())
+    }
+
+    /// Intersection of two sorted, non-overlapping period lists. `O(n + m)`.
+    pub fn intersect_many(a: &[Self], b: &[Self]) -> Vec<Self> {
+        let mut result = Vec::with_capacity(a.len().min(b.len()));
+        let (mut i, mut j) = (0, 0);
+        while i < a.len() && j < b.len() {
+            let start = partial_max(a[i].start, b[j].start);
+            let end = partial_min(a[i].end, b[j].end);
+            if start < end {
+                result.push(Self::new(start, end));
+            }
+            if a[i].end <= b[j].end {
+                i += 1;
             } else {
-                merged.push(period);
+                j += 1;
             }
         }
+        result
     }
-    merged
+
+    /// Checked variant of [`intersect_many`](Self::intersect_many).
+    ///
+    /// Validates both input lists before computing their intersection.
+    pub fn try_intersect_many(a: &[Self], b: &[Self]) -> Result<Vec<Self>, PeriodListError> {
+        Self::validate(a)?;
+        Self::validate(b)?;
+        Ok(Self::intersect_many(a, b))
+    }
+
+    /// Union of two sorted period lists.
+    ///
+    /// Overlapping and adjacent intervals are merged. The result is sorted and
+    /// non-overlapping.
+    pub fn union_many(a: &[Self], b: &[Self]) -> Vec<Self> {
+        let mut combined: Vec<Self> = a.iter().chain(b.iter()).copied().collect();
+        combined.sort_unstable_by(|x, y| {
+            x.start
+                .partial_cmp(&y.start)
+                .unwrap_or(core::cmp::Ordering::Equal)
+        });
+        Self::normalize(&combined)
+    }
+
+    /// Sort and merge overlapping or adjacent intervals.
+    ///
+    /// This is useful for normalizing hand-built or concatenated period lists
+    /// before later set operations.
+    pub fn normalize(periods: &[Self]) -> Vec<Self> {
+        if periods.is_empty() {
+            return Vec::new();
+        }
+        let mut sorted: Vec<_> = periods.to_vec();
+        sorted.sort_unstable_by(|a, b| {
+            a.start
+                .partial_cmp(&b.start)
+                .unwrap_or(core::cmp::Ordering::Equal)
+        });
+        let mut merged = Vec::with_capacity(sorted.len());
+        merged.push(sorted[0]);
+        for period in sorted.into_iter().skip(1) {
+            if let Some(last) = merged.last_mut() {
+                if period.start <= last.end {
+                    if period.end > last.end {
+                        last.end = period.end;
+                    }
+                } else {
+                    merged.push(period);
+                }
+            }
+        }
+        merged
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::representation::{JulianDate, ModifiedJulianDate, MJD};
     use crate::{Time, TT};
     use qtty::Day;
     #[cfg(feature = "serde")]
@@ -280,11 +367,33 @@ mod tests {
             Interval::<f64>::new(1.0_f64, 2.0),
             Interval::<f64>::new(4.0, 6.0),
         ];
-        let gaps = complement_within(outer, &inside);
+        let gaps = outer.complement(&inside);
         assert_eq!(gaps.len(), 3);
         assert_eq!(gaps[0], Interval::<f64>::new(0.0, 1.0));
         assert_eq!(gaps[1], Interval::<f64>::new(2.0, 4.0));
         assert_eq!(gaps[2], Interval::<f64>::new(6.0, 10.0));
+    }
+
+    #[test]
+    fn complement_ignores_periods_after_outer_interval() {
+        let outer = Interval::<f64>::new(10.0_f64, 20.0);
+        let inside = vec![Interval::<f64>::new(25.0_f64, 30.0)];
+
+        assert_eq!(
+            outer.complement(&inside),
+            vec![Interval::<f64>::new(10.0, 20.0)]
+        );
+    }
+
+    #[test]
+    fn complement_clips_periods_spanning_outer_end() {
+        let outer = Interval::<f64>::new(10.0_f64, 20.0);
+        let inside = vec![Interval::<f64>::new(12.0_f64, 30.0)];
+
+        assert_eq!(
+            outer.complement(&inside),
+            vec![Interval::<f64>::new(10.0, 12.0)]
+        );
     }
 
     #[test]
@@ -294,7 +403,7 @@ mod tests {
             Interval::<f64>::new(10.0, 15.0),
         ];
         let b = vec![Interval::<f64>::new(3.0_f64, 12.0)];
-        let ix = intersect_periods(&a, &b);
+        let ix = Interval::intersect_many(&a, &b);
         assert_eq!(ix.len(), 2);
         assert_eq!(ix[0], Interval::<f64>::new(3.0, 5.0));
         assert_eq!(ix[1], Interval::<f64>::new(10.0, 12.0));
@@ -307,7 +416,7 @@ mod tests {
             Interval::<f64>::new(0.0, 3.0),
             Interval::<f64>::new(2.0, 6.0),
         ];
-        let merged = normalize_periods(&input);
+        let merged = Interval::normalize(&input);
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0], Interval::<f64>::new(0.0, 8.0));
     }
@@ -319,7 +428,7 @@ mod tests {
             Interval::<f64>::new(3.0, 8.0),
         ];
         assert_eq!(
-            validate_period_list(&periods),
+            Interval::validate(&periods),
             Err(PeriodListError::Overlapping { index: 1 })
         );
     }
@@ -327,11 +436,15 @@ mod tests {
     #[test]
     fn period_accepts_typed_times() {
         let p = Period::<TT>::new(
-            Time::<TT>::from_modified_julian_days(51_544.5.into()).unwrap(),
-            Time::<TT>::from_modified_julian_days(51_545.25.into()).unwrap(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(51_544.5))
+                .unwrap()
+                .to_time(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(51_545.25))
+                .unwrap()
+                .to_time(),
         );
-        assert_eq!(p.start.modified_julian_days(), Day::new(51_544.5));
-        assert_eq!(p.end.modified_julian_days(), Day::new(51_545.25));
+        assert_eq!(p.start.to::<MJD>().raw(), Day::new(51_544.5));
+        assert_eq!(p.end.to::<MJD>().raw(), Day::new(51_545.25));
     }
 
     #[test]
@@ -355,7 +468,7 @@ mod tests {
 
     #[test]
     fn normalize_empty_returns_empty() {
-        let result = normalize_periods::<f64>(&[]);
+        let result = Interval::<f64>::normalize(&[]);
         assert!(result.is_empty());
     }
 
@@ -367,7 +480,7 @@ mod tests {
             end: 1.0,
         }];
         assert_eq!(
-            validate_period_list(&periods),
+            Interval::validate(&periods),
             Err(PeriodListError::InvalidInterval { index: 0 })
         );
     }
@@ -379,16 +492,81 @@ mod tests {
             Interval::<f64>::new(1.0_f64, 4.0),
         ];
         assert_eq!(
-            validate_period_list(&periods),
+            Interval::validate(&periods),
             Err(PeriodListError::Unsorted { index: 1 })
         );
     }
 
     #[test]
+    fn checked_complement_rejects_invalid_inputs() {
+        let outer = Interval::<f64>::new(0.0_f64, 10.0);
+        let periods = vec![
+            Interval::<f64>::new(5.0_f64, 8.0),
+            Interval::<f64>::new(1.0_f64, 4.0),
+        ];
+        assert_eq!(
+            outer.try_complement(&periods),
+            Err(PeriodListError::Unsorted { index: 1 })
+        );
+
+        let invalid_outer = Interval::<f64>::new(10.0_f64, 0.0);
+        assert_eq!(
+            invalid_outer.try_complement(&[]),
+            Err(PeriodListError::InvalidInterval { index: 0 })
+        );
+    }
+
+    #[test]
+    fn checked_intersection_matches_unchecked_for_valid_inputs() {
+        let a = vec![Interval::<f64>::new(0.0_f64, 5.0)];
+        let b = vec![Interval::<f64>::new(3.0_f64, 7.0)];
+        assert_eq!(
+            Interval::try_intersect_many(&a, &b).unwrap(),
+            Interval::intersect_many(&a, &b)
+        );
+    }
+
+    #[test]
+    fn union_pair_overlapping() {
+        let a = Interval::<f64>::new(0.0_f64, 5.0);
+        let b = Interval::<f64>::new(3.0_f64, 8.0);
+        let u = a.union(&b);
+        assert_eq!(u.len(), 1);
+        assert_eq!(u[0], Interval::<f64>::new(0.0, 8.0));
+    }
+
+    #[test]
+    fn union_pair_disjoint() {
+        let a = Interval::<f64>::new(0.0_f64, 3.0);
+        let b = Interval::<f64>::new(5.0_f64, 8.0);
+        let u = a.union(&b);
+        assert_eq!(u.len(), 2);
+        assert_eq!(u[0], Interval::<f64>::new(0.0, 3.0));
+        assert_eq!(u[1], Interval::<f64>::new(5.0, 8.0));
+    }
+
+    #[test]
+    fn union_many_merges_two_lists() {
+        let a = vec![
+            Interval::<f64>::new(0.0_f64, 3.0),
+            Interval::<f64>::new(7.0, 9.0),
+        ];
+        let b = vec![Interval::<f64>::new(2.0_f64, 5.0)];
+        let u = Interval::union_many(&a, &b);
+        assert_eq!(u.len(), 2);
+        assert_eq!(u[0], Interval::<f64>::new(0.0, 5.0));
+        assert_eq!(u[1], Interval::<f64>::new(7.0, 9.0));
+    }
+
+    #[test]
     fn display_formats_periods_via_endpoint_display() {
         let mjd = Period::<TT>::new(
-            Time::<TT>::from_modified_julian_days(51_544.5.into()).unwrap(),
-            Time::<TT>::from_modified_julian_days(51_545.25.into()).unwrap(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(51_544.5))
+                .unwrap()
+                .to_time(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(51_545.25))
+                .unwrap()
+                .to_time(),
         );
 
         assert!(mjd.to_string().contains("TT"));
@@ -398,14 +576,25 @@ mod tests {
     #[test]
     fn serde_roundtrips_period_shapes() {
         let mjd = Period::<TT>::new(
-            Time::<TT>::from_modified_julian_days(51_544.5.into()).unwrap(),
-            Time::<TT>::from_modified_julian_days(51_545.25.into()).unwrap(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(51_544.5))
+                .unwrap()
+                .to_time(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(51_545.25))
+                .unwrap()
+                .to_time(),
         );
         let jd = Period::<TT>::new(
-            Time::<TT>::from_julian_days(2_451_545.0.into()).unwrap(),
-            Time::<TT>::from_julian_days(2_451_546.0.into()).unwrap(),
+            JulianDate::<TT>::try_new(Day::new(2_451_545.0))
+                .unwrap()
+                .to_time(),
+            JulianDate::<TT>::try_new(Day::new(2_451_546.0))
+                .unwrap()
+                .to_time(),
         );
-        let native = Period::<TT>::new(100.0, 200.0);
+        let native = Period::<TT>::new(
+            Time::<TT>::from_raw_j2000_seconds(qtty::Second::new(100.0)).unwrap(),
+            Time::<TT>::from_raw_j2000_seconds(qtty::Second::new(200.0)).unwrap(),
+        );
 
         assert_eq!(
             serde_json::to_value(mjd).unwrap(),

@@ -336,6 +336,13 @@ tempoch_status_t tempoch_period_mjd_intersection(struct tempoch_period_mjd_t a,
 // (infinity or NaN) returns `0.0`.
  double tempoch_delta_t_seconds(double jd);
 
+// Return ΔT = TT − UT1 in seconds for a Julian Date, without unsupported
+// extrapolation.
+//
+// # Safety
+// `out` must be a valid, writable pointer to `double`.
+ tempoch_status_t tempoch_delta_t_seconds_checked(double jd, double *out);
+
 // Convert a `double` time value from one scale to another.
 //
 // # Safety

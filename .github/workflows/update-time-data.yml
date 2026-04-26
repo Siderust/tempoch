@@ -3,6 +3,7 @@ name: Update Time Data
 on:
   workflow_dispatch:
   schedule:
+    # GitHub cron uses UTC; this runs every Monday at 05:23 UTC and pushes changes directly to main.
     - cron: "23 5 * * 1"
 
 permissions:

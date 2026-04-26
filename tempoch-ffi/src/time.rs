@@ -16,7 +16,7 @@ use crate::error::TempochStatus;
 use chrono::{NaiveDate, Utc};
 use qtty::Day;
 use qtty_ffi::{QttyQuantity, UnitId};
-use tempoch::{delta_t_seconds_extrapolated, ConversionError};
+use tempoch::{delta_t_seconds, delta_t_seconds_extrapolated, ConversionError};
 
 const J2000_JD_TT: f64 = 2_451_545.0;
 const JULIAN_CENTURY_DAYS: f64 = 36_525.0;
@@ -466,6 +466,30 @@ pub extern "C" fn tempoch_delta_t_seconds(jd: f64) -> f64 {
     delta_t_seconds_extrapolated(Day::new(jd)) / qtty::Second::new(1.0)
 }
 
+/// Return ΔT = TT − UT1 in seconds for a Julian Date, without unsupported
+/// extrapolation.
+///
+/// # Safety
+/// `out` must be a valid, writable pointer to `double`.
+#[no_mangle]
+pub unsafe extern "C" fn tempoch_delta_t_seconds_checked(jd: f64, out: *mut f64) -> TempochStatus {
+    catch_panic!(TempochStatus::InternalPanic, {
+        if out.is_null() {
+            return TempochStatus::NullPointer;
+        }
+        if !jd.is_finite() {
+            return TempochStatus::UtcConversionFailed;
+        }
+        match delta_t_seconds(Day::new(jd)) {
+            Ok(delta_t) => {
+                unsafe { *out = delta_t / qtty::Second::new(1.0) };
+                TempochStatus::Ok
+            }
+            Err(err) => conversion_error_to_status(err),
+        }
+    })
+}
+
 /// Map a `ConversionError` to the appropriate `TempochStatus` code.
 #[inline]
 fn conversion_error_to_status(e: ConversionError) -> TempochStatus {
@@ -776,7 +800,7 @@ mod tests {
     }
 
     #[test]
-    fn jd_from_utc_pre_1961_roundtrips_with_approximate_extension() {
+    fn jd_from_utc_pre_1961_is_rejected() {
         let before_history = TempochUtc {
             year: 1960,
             month: 12,
@@ -786,28 +810,10 @@ mod tests {
             second: 59,
             nanosecond: 0,
         };
-        let original = before_history.into_chrono().unwrap();
         let mut jd = 0.0;
-        let from_status = unsafe { tempoch_jd_from_utc(before_history, &mut jd) };
-        assert_eq!(from_status, TempochStatus::Ok);
-
-        let mut roundtrip = TempochUtc {
-            year: 0,
-            month: 0,
-            day: 0,
-            hour: 0,
-            minute: 0,
-            second: 0,
-            nanosecond: 0,
-        };
-        let to_status = unsafe { tempoch_jd_to_utc(jd, &mut roundtrip) };
-        assert_eq!(to_status, TempochStatus::Ok);
-
-        let roundtrip = roundtrip.into_chrono().unwrap();
-        let drift = (roundtrip.timestamp_nanos_opt().unwrap()
-            - original.timestamp_nanos_opt().unwrap())
-        .abs();
-        assert!(drift < 50_000, "pre-1961 UTC round-trip drift = {drift} ns");
+        let status = unsafe { tempoch_jd_from_utc(before_history, &mut jd) };
+        // Pre-1961 dates are not valid UTC; the default context rejects them.
+        assert_eq!(status, TempochStatus::UtcConversionFailed);
     }
 
     #[test]
@@ -1224,5 +1230,29 @@ mod tests {
     fn delta_t_seconds_past_horizon_is_finite() {
         let dt = tempoch_delta_t_seconds(2_465_000.0);
         assert!(dt.is_finite(), "expected finite ΔT past horizon, got {dt}");
+    }
+
+    #[test]
+    fn delta_t_seconds_checked_rejects_nonfinite() {
+        let mut out = -999.0;
+        let status = unsafe { tempoch_delta_t_seconds_checked(f64::NAN, &mut out) };
+        assert_eq!(status, TempochStatus::UtcConversionFailed);
+        assert_eq!(out, -999.0);
+    }
+
+    #[test]
+    fn delta_t_seconds_checked_reports_horizon() {
+        let mut out = -999.0;
+        let status = unsafe { tempoch_delta_t_seconds_checked(2_465_000.0, &mut out) };
+        assert_eq!(status, TempochStatus::Ut1HorizonExceeded);
+        assert_eq!(out, -999.0);
+    }
+
+    #[test]
+    fn delta_t_seconds_checked_returns_in_range_value() {
+        let mut out = 0.0;
+        let status = unsafe { tempoch_delta_t_seconds_checked(2_451_545.0, &mut out) };
+        assert_eq!(status, TempochStatus::Ok);
+        assert!(out.is_finite());
     }
 }

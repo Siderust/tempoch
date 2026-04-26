@@ -6,35 +6,30 @@
 use core::marker::PhantomData;
 
 use super::context::TimeContext;
-use super::encoding::{
-    j2000_seconds_to_jd, j2000_seconds_to_mjd, jd_to_j2000_seconds, mjd_to_j2000_seconds,
-};
 use super::error::ConversionError;
 use super::scale::conversion::{ContextScaleConvert, InfallibleScaleConvert};
 use super::scale::{CoordinateScale, Scale};
 use super::target::{ContextConversionTarget, ConversionTarget, InfallibleConversionTarget};
-use qtty::time::Seconds;
-use qtty::{Day, Second};
-
-#[inline]
-fn two_sum(a: f64, b: f64) -> (f64, f64) {
-    let s = a + b;
-    let bb = s - a;
-    let err = (a - (s - bb)) + (b - bb);
-    (s, err)
-}
-
-#[inline]
-fn normalize_pair(hi: f64, lo: f64) -> (f64, f64) {
-    let (sum, err) = two_sum(hi, lo);
-    let (sum2, err2) = two_sum(sum, err);
-    (sum2, err2)
-}
+use affn::algebra::{Space, SplitPoint1};
+use qtty::unit::Second as SecondUnit;
+use qtty::Second;
 
 #[inline]
 fn is_finite_pair(hi: f64, lo: f64) -> bool {
     hi.is_finite() && lo.is_finite()
 }
+
+#[derive(Copy, Clone)]
+pub(crate) struct ScaleAxis<S: Scale>(PhantomData<fn() -> S>);
+
+impl<S: Scale> core::fmt::Debug for ScaleAxis<S> {
+    #[inline]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_tuple("ScaleAxis").field(&S::NAME).finish()
+    }
+}
+
+impl<S: Scale> Space for ScaleAxis<S> {}
 
 /// A point in time on scale `S`.
 ///
@@ -43,15 +38,25 @@ fn is_finite_pair(hi: f64, lo: f64) -> bool {
 /// represented by the instance, while keeping the low-order remainder small
 /// enough to retain much better precision than a single `f64`.
 ///
+/// `Time<S>` is intentionally modeled as an affine point, not as a raw scalar:
+/// subtracting two instants yields a duration, while adding or subtracting a
+/// duration shifts an instant. Internally this is represented with
+/// `affn::SplitPoint1`, which preserves the same point-vs-displacement
+/// semantics used elsewhere in the codebase.
+///
+/// The split representation exists because astronomical epochs are large
+/// values, while important corrections are often tiny. A single `f64` would
+/// discard low-order precision too aggressively once epoch-sized values are
+/// combined with sub-second or microsecond-scale offsets, so `Time<S>` keeps
+/// the large component in `hi` and the residual correction in `lo`.
+///
 /// `UTC` remains special: it stores a continuous instant on the same internal
 /// axis used by `TAI`, but its civil interpretation still comes from the
 /// active UTC-TAI table. Raw JD/MJD/J2000-second helpers and second-based
 /// arithmetic operate on that stored instant axis; use the civil API when you
 /// need leap-second-labelled UTC values.
 pub struct Time<S: Scale> {
-    hi: Second,
-    lo: Second,
-    _scale: PhantomData<S>,
+    instant: SplitPoint1<ScaleAxis<S>, SecondUnit>,
 }
 
 impl<S: Scale> Copy for Time<S> {}
@@ -65,15 +70,17 @@ impl<S: Scale> Clone for Time<S> {
 impl<S: Scale> PartialEq for Time<S> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.hi == other.hi && self.lo == other.lo
+        self.split_seconds() == other.split_seconds()
     }
 }
 
 impl<S: Scale> PartialOrd for Time<S> {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-        match self.hi.partial_cmp(&other.hi) {
-            Some(core::cmp::Ordering::Equal) => self.lo.partial_cmp(&other.lo),
+        let (self_hi, self_lo) = self.split_seconds();
+        let (other_hi, other_lo) = other.split_seconds();
+        match self_hi.partial_cmp(&other_hi) {
+            Some(core::cmp::Ordering::Equal) => self_lo.partial_cmp(&other_lo),
             ordering => ordering,
         }
     }
@@ -81,31 +88,27 @@ impl<S: Scale> PartialOrd for Time<S> {
 
 impl<S: Scale> core::fmt::Debug for Time<S> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(
-            f,
-            "Time<{}>({:.17e} s, {:.17e} s)",
-            S::NAME,
-            self.hi.value(),
-            self.lo.value()
-        )
+        let (hi, lo) = self.split_seconds();
+        write!(f, "Time<{}>({:.17e}, {:.17e})", S::NAME, hi, lo)
     }
 }
 
 impl<S: Scale> core::fmt::Display for Time<S> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{} {:.9} s", S::NAME, self.total_seconds().value())
+        write!(f, "{} {:.9}", S::NAME, self.total_seconds())
     }
 }
 
 impl<S: Scale> Time<S> {
     #[inline]
     pub(crate) fn new_unchecked(hi: Second, lo: Second) -> Self {
-        let (hi, lo) = normalize_pair(hi.value(), lo.value());
-        Self {
-            hi: Second::new(hi),
-            lo: Second::new(lo),
-            _scale: PhantomData,
-        }
+        debug_assert!(hi.is_finite());
+        debug_assert!(lo.is_finite());
+        let instant = SplitPoint1::new(hi, lo);
+        let (hi, lo) = instant.coordinate().pair();
+        debug_assert!(hi.is_finite());
+        debug_assert!(lo.is_finite());
+        Self { instant }
     }
 
     #[inline]
@@ -119,12 +122,12 @@ impl<S: Scale> Time<S> {
 
     #[inline]
     pub(crate) fn split_seconds(self) -> (Second, Second) {
-        (self.hi, self.lo)
+        self.instant.coordinate().pair()
     }
 
     #[inline]
     pub(crate) fn total_seconds(self) -> Second {
-        self.hi + self.lo
+        self.instant.coordinate().total()
     }
 
     /// Raw internal storage pair in J2000-TT seconds on the instance scale.
@@ -137,64 +140,24 @@ impl<S: Scale> Time<S> {
 impl<S: CoordinateScale> Time<S> {
     /// Build from J2000 TT seconds on the scale's coordinate axis.
     #[inline]
-    pub fn from_j2000_seconds(seconds: Seconds) -> Result<Self, ConversionError> {
+    pub(crate) fn from_raw_j2000_seconds(seconds: Second) -> Result<Self, ConversionError> {
         Self::try_new(seconds, Second::new(0.0))
     }
 
     /// Build from a split J2000-second pair.
     #[inline]
-    pub fn from_j2000_seconds_split(hi: Seconds, lo: Seconds) -> Result<Self, ConversionError> {
+    #[cfg(test)]
+    pub(crate) fn from_raw_j2000_seconds_split(
+        hi: Second,
+        lo: Second,
+    ) -> Result<Self, ConversionError> {
         Self::try_new(hi, lo)
-    }
-
-    /// Build from a Julian Day value on the scale's coordinate axis.
-    #[inline]
-    pub fn from_julian_days(jd: Day) -> Result<Self, ConversionError> {
-        if !jd.is_finite() {
-            return Err(ConversionError::NonFinite);
-        }
-        Self::from_j2000_seconds(jd_to_j2000_seconds(jd))
-    }
-
-    /// Build from a Modified Julian Day value on the scale's coordinate axis.
-    #[inline]
-    pub fn from_modified_julian_days(mjd: Day) -> Result<Self, ConversionError> {
-        if !mjd.is_finite() {
-            return Err(ConversionError::NonFinite);
-        }
-        Self::from_j2000_seconds(mjd_to_j2000_seconds(mjd))
     }
 
     /// Scale-coordinate seconds since J2000 TT.
     #[inline]
-    pub fn j2000_seconds(self) -> Seconds {
+    pub(crate) fn raw_j2000_seconds(self) -> Second {
         self.total_seconds()
-    }
-
-    /// Scale-coordinate Julian Day.
-    #[inline]
-    pub fn julian_days(self) -> Day {
-        j2000_seconds_to_jd(self.total_seconds())
-    }
-
-    /// Scale-coordinate Modified Julian Day.
-    #[inline]
-    pub fn modified_julian_days(self) -> Day {
-        j2000_seconds_to_mjd(self.total_seconds())
-    }
-}
-
-impl<S: CoordinateScale> From<Second> for Time<S> {
-    #[inline]
-    fn from(value: Second) -> Self {
-        Self::new_unchecked(value, Second::new(0.0))
-    }
-}
-
-impl<S: CoordinateScale> From<f64> for Time<S> {
-    #[inline]
-    fn from(value: f64) -> Self {
-        Self::new_unchecked(Second::new(value), Second::new(0.0))
     }
 }
 
@@ -260,7 +223,7 @@ impl<S: CoordinateScale> core::ops::Sub for Time<S> {
 
     #[inline]
     fn sub(self, rhs: Self) -> Second {
-        (self.hi - rhs.hi) + (self.lo - rhs.lo)
+        self.instant - rhs.instant
     }
 }
 
@@ -269,7 +232,9 @@ impl<S: CoordinateScale> core::ops::Add<Second> for Time<S> {
 
     #[inline]
     fn add(self, rhs: Second) -> Self {
-        Self::new_unchecked(self.hi, self.lo + rhs)
+        Self {
+            instant: self.instant + rhs,
+        }
     }
 }
 
@@ -278,7 +243,9 @@ impl<S: CoordinateScale> core::ops::Sub<Second> for Time<S> {
 
     #[inline]
     fn sub(self, rhs: Second) -> Self {
-        Self::new_unchecked(self.hi, self.lo - rhs)
+        Self {
+            instant: self.instant - rhs,
+        }
     }
 }
 
@@ -298,45 +265,54 @@ impl<S: CoordinateScale> core::ops::SubAssign<Second> for Time<S> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::encoding::{j2000_seconds_to_mjd, mjd_to_j2000_seconds};
     use super::super::scale::{TAI, TCG, TDB, TT, UTC};
     use super::*;
 
     #[test]
     fn normalized_constructor_keeps_sum() {
-        let time =
-            Time::<TT>::from_j2000_seconds_split(Second::new(1.0e9), Second::new(0.25)).unwrap();
-        assert!((time.j2000_seconds() - Second::new(1.0e9 + 0.25)).abs() < Second::new(1e-6));
+        let time = Time::<TT>::from_raw_j2000_seconds_split(Second::new(1.0e9), Second::new(0.25))
+            .unwrap();
+        assert!((time.raw_j2000_seconds() - Second::new(1.0e9 + 0.25)).abs() < Second::new(1e-6));
     }
 
     #[test]
     fn tt_tai_round_trip_exact_offset() {
-        let tt = Time::<TT>::from_j2000_seconds(Second::new(0.0)).unwrap();
+        let tt = Time::<TT>::from_raw_j2000_seconds(Second::new(0.0)).unwrap();
         let tai = tt.to_scale::<TAI>();
         let roundtrip = tai.to_scale::<TT>();
-        assert!((tt.j2000_seconds() - roundtrip.j2000_seconds()).abs() < Second::new(1e-12));
-        assert!((tai.j2000_seconds() - Second::new(-32.184)).abs() < Second::new(1e-12));
+        assert!(
+            (tt.raw_j2000_seconds() - roundtrip.raw_j2000_seconds()).abs() < Second::new(1e-12)
+        );
+        assert!((tai.raw_j2000_seconds() - Second::new(-32.184)).abs() < Second::new(1e-12));
     }
 
     #[test]
     fn tt_tdb_round_trip_model_error() {
-        let tt = Time::<TT>::from_j2000_seconds(Second::new(1_000_000.0)).unwrap();
+        let tt = Time::<TT>::from_raw_j2000_seconds(Second::new(1_000_000.0)).unwrap();
         let tdb = tt.to_scale::<TDB>();
         let tt2 = tdb.to_scale::<TT>();
-        assert!((tt.j2000_seconds() - tt2.j2000_seconds()).abs() < Second::new(1e-6));
+        assert!((tt.raw_j2000_seconds() - tt2.raw_j2000_seconds()).abs() < Second::new(1e-6));
     }
 
     #[test]
     fn tt_tcg_offset_is_finite() {
-        let tt = Time::<TT>::from_j2000_seconds(Second::new(86_400.0)).unwrap();
+        let tt = Time::<TT>::from_raw_j2000_seconds(qtty::Day::new(1.0).to::<qtty::unit::Second>())
+            .unwrap();
         let tcg = tt.to_scale::<TCG>();
-        assert!(tcg.j2000_seconds().is_finite());
+        assert!(tcg.raw_j2000_seconds().is_finite());
     }
 
     #[test]
     fn utc_exposes_raw_axis_helpers_and_arithmetic() {
-        let utc = Time::<UTC>::from_modified_julian_days(Day::new(51_544.5)).unwrap();
+        let utc =
+            Time::<UTC>::from_raw_j2000_seconds(mjd_to_j2000_seconds(qtty::Day::new(51_544.5)))
+                .unwrap();
         let shifted = utc + Second::new(10.0);
-        assert_eq!(utc.modified_julian_days(), Day::new(51_544.5));
+        assert_eq!(
+            j2000_seconds_to_mjd(utc.raw_j2000_seconds()),
+            qtty::Day::new(51_544.5)
+        );
         assert!((shifted - utc - Second::new(10.0)).abs() < Second::new(1e-12));
     }
 }

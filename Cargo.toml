@@ -7,7 +7,3 @@ members = [
     "tempoch-time-data",
     "tempoch-time-data-updater",
 ]
-
-[patch.crates-io]
-qtty = { git = "https://github.com/Siderust/qtty", branch = "main" }
-qtty-ffi = { git = "https://github.com/Siderust/qtty", branch = "main" }

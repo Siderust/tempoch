@@ -16,20 +16,13 @@
 //! ([`scalar_difference_in_days`], [`scalar_add_days`]) handle the
 //! seconds-vs-days distinction for the [`ScaleKind::Unix`] encoding.
 
+use crate::constats::GPS_EPOCH_JD_TAI;
 use crate::context::TimeContext;
 use crate::error::ConversionError;
+use crate::representation::{JulianDate, ModifiedJulianDate, UnixTime};
 use crate::scale::{TAI, TCB, TCG, TDB, TT, UT1, UTC};
 use crate::time::Time;
-use qtty::time::Seconds;
 use qtty::{Day, Second};
-
-const SECONDS_PER_DAY: f64 = 86_400.0;
-
-/// GPS epoch expressed as a Julian Day on the TAI axis.
-///
-/// At the GPS epoch (1980-01-06T00:00:00 UTC), `TAI − UTC = 19 s` exactly,
-/// giving `JD(TAI) = 2_444_244.5 + 19 / 86_400`.
-pub const GPS_EPOCH_JD_TAI: f64 = 2_444_244.5 + 19.0 / SECONDS_PER_DAY;
 
 /// Identifies a time scale or scalar encoding for dispatch.
 ///
@@ -78,28 +71,27 @@ pub fn time_tt_from_scalar(
     ctx: &TimeContext,
 ) -> Result<Time<TT>, ConversionError> {
     match kind {
-        ScaleKind::JdTt => Time::<TT>::from_julian_days(Day::new(value)),
-        ScaleKind::MjdTt => Time::<TT>::from_modified_julian_days(Day::new(value)),
+        ScaleKind::JdTt => JulianDate::<TT>::try_new(Day::new(value)).map(|e| e.to_time()),
+        ScaleKind::MjdTt => ModifiedJulianDate::<TT>::try_new(Day::new(value)).map(|e| e.to_time()),
         ScaleKind::Tdb => {
-            Time::<TDB>::from_julian_days(Day::new(value)).map(|t| t.to_scale::<TT>())
+            JulianDate::<TDB>::try_new(Day::new(value)).map(|e| e.to_time().to_scale::<TT>())
         }
         ScaleKind::Tai => {
-            Time::<TAI>::from_julian_days(Day::new(value)).map(|t| t.to_scale::<TT>())
+            JulianDate::<TAI>::try_new(Day::new(value)).map(|e| e.to_time().to_scale::<TT>())
         }
         ScaleKind::Tcg => {
-            Time::<TCG>::from_julian_days(Day::new(value)).map(|t| t.to_scale::<TT>())
+            JulianDate::<TCG>::try_new(Day::new(value)).map(|e| e.to_time().to_scale::<TT>())
         }
         ScaleKind::Tcb => {
-            Time::<TCB>::from_julian_days(Day::new(value)).map(|t| t.to_scale::<TT>())
+            JulianDate::<TCB>::try_new(Day::new(value)).map(|e| e.to_time().to_scale::<TT>())
         }
-        ScaleKind::GpsDays => Time::<TAI>::from_julian_days(Day::new(value + GPS_EPOCH_JD_TAI))
+        ScaleKind::GpsDays => JulianDate::<TAI>::try_new(GPS_EPOCH_JD_TAI + Day::new(value))
+            .map(|e| e.to_time().to_scale::<TT>()),
+        ScaleKind::Ut1 => JulianDate::<UT1>::try_new(Day::new(value))
+            .and_then(|e| e.to_time().to_scale_with::<TT>(ctx)),
+        ScaleKind::Unix => UnixTime::try_new(Second::new(value))
+            .and_then(|e| e.to_time_with(ctx))
             .map(|t| t.to_scale::<TT>()),
-        ScaleKind::Ut1 => {
-            Time::<UT1>::from_julian_days(Day::new(value)).and_then(|t| t.to_scale_with::<TT>(ctx))
-        }
-        ScaleKind::Unix => {
-            Time::<UTC>::from_unix_seconds(Seconds::new(value)).map(|t| t.to_scale::<TT>())
-        }
     }
 }
 
@@ -115,32 +107,33 @@ pub fn time_tt_to_scalar(
     kind: ScaleKind,
     ctx: &TimeContext,
 ) -> Result<f64, ConversionError> {
+    use crate::representation::{JD, MJD};
     match kind {
-        ScaleKind::JdTt => Ok(tt.julian_days() / Day::new(1.0)),
-        ScaleKind::MjdTt => Ok(tt.modified_julian_days() / Day::new(1.0)),
-        ScaleKind::Tdb => Ok(tt.to_scale::<TDB>().julian_days() / Day::new(1.0)),
-        ScaleKind::Tai => Ok(tt.to_scale::<TAI>().julian_days() / Day::new(1.0)),
-        ScaleKind::Tcg => Ok(tt.to_scale::<TCG>().julian_days() / Day::new(1.0)),
-        ScaleKind::Tcb => Ok(tt.to_scale::<TCB>().julian_days() / Day::new(1.0)),
+        ScaleKind::JdTt => Ok(tt.to::<JD>().raw() / Day::new(1.0)),
+        ScaleKind::MjdTt => Ok(tt.to::<MJD>().raw() / Day::new(1.0)),
+        ScaleKind::Tdb => Ok(tt.to_scale::<TDB>().to::<JD>().raw() / Day::new(1.0)),
+        ScaleKind::Tai => Ok(tt.to_scale::<TAI>().to::<JD>().raw() / Day::new(1.0)),
+        ScaleKind::Tcg => Ok(tt.to_scale::<TCG>().to::<JD>().raw() / Day::new(1.0)),
+        ScaleKind::Tcb => Ok(tt.to_scale::<TCB>().to::<JD>().raw() / Day::new(1.0)),
         ScaleKind::GpsDays => {
-            Ok(tt.to_scale::<TAI>().julian_days() / Day::new(1.0) - GPS_EPOCH_JD_TAI)
+            Ok((tt.to_scale::<TAI>().to::<JD>().raw() - GPS_EPOCH_JD_TAI) / Day::new(1.0))
         }
-        ScaleKind::Ut1 => Ok(tt.to_scale_with::<UT1>(ctx)?.julian_days() / Day::new(1.0)),
+        ScaleKind::Ut1 => Ok(tt.to_scale_with::<UT1>(ctx)?.to::<JD>().raw() / Day::new(1.0)),
         ScaleKind::Unix => tt
             .to_scale::<UTC>()
-            .unix_seconds_with(ctx)
+            .raw_unix_seconds_with(ctx)
             .map(|s| s / Second::new(1.0)),
     }
 }
 
 /// Compute the difference between two scalar values in the same scale, in days.
 ///
-/// For [`ScaleKind::Unix`] (seconds), the raw difference is divided by 86 400.
+/// For [`ScaleKind::Unix`] (seconds), the raw difference is converted to days.
 /// For all other scales the raw difference already represents days.
 #[inline]
 pub fn scalar_difference_in_days(lhs: f64, rhs: f64, kind: ScaleKind) -> f64 {
     match kind {
-        ScaleKind::Unix => (lhs - rhs) / SECONDS_PER_DAY,
+        ScaleKind::Unix => Second::new(lhs - rhs).to::<qtty::unit::Day>() / Day::new(1.0),
         _ => lhs - rhs,
     }
 }

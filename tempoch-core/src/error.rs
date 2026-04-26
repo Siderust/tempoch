@@ -19,6 +19,14 @@ pub enum ConversionError {
     Ut1HorizonExceeded,
     /// Input or arithmetic produced `NaN` or `±∞`.
     NonFinite,
+    /// The requested date precedes 1961-01-01, before which UTC was not
+    /// defined as an international standard.
+    ///
+    /// The crate can back-extrapolate the first official UTC-TAI segment to
+    /// cover older civil labels, but that extrapolation is not historically
+    /// defined UTC and is therefore opt-in. Pass a context built with
+    /// [`crate::TimeContext::allow_pre_definition_utc`] to enable it.
+    UtcBeforeDefinition,
 }
 
 impl core::fmt::Display for ConversionError {
@@ -35,6 +43,10 @@ impl core::fmt::Display for ConversionError {
                 f.write_str("UT1 conversion exceeds the ΔT model or data horizon")
             }
             Self::NonFinite => f.write_str("time value must be finite (not NaN or infinity)"),
+            Self::UtcBeforeDefinition => f.write_str(
+                "date precedes 1961-01-01, before which UTC was not defined; \
+                 use TimeContext::allow_pre_definition_utc() to permit extrapolation",
+            ),
         }
     }
 }
@@ -112,6 +124,7 @@ mod tests {
             (ConversionError::OutOfRange, "range"),
             (ConversionError::Ut1HorizonExceeded, "horizon"),
             (ConversionError::NonFinite, "finite"),
+            (ConversionError::UtcBeforeDefinition, "1961"),
         ];
         for (variant, fragment) in cases {
             let s = variant.to_string();

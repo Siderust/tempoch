@@ -3,10 +3,9 @@ use qtty::{Day, Second};
 #[cfg(feature = "serde")]
 use serde_json::json;
 use tempoch::{
-    complement_within,
     constats::{J2000_JD_TT, TT_MINUS_TAI},
-    intersect_periods, CoordinateScale, J2000s, Period, Time, TimeContext, JD, MJD, TAI, TT, UT1,
-    UTC,
+    ConversionError, CoordinateScale, J2000Seconds, J2000s, JulianDate, ModifiedJulianDate, Period,
+    Time, TimeContext, Unix, JD, MJD, TAI, TT, UT1, UTC,
 };
 
 #[test]
@@ -22,31 +21,39 @@ fn utc_roundtrip_j2000_is_stable() {
 #[test]
 fn ut1_context_roundtrip_near_j2000() {
     let ctx = TimeContext::new();
-    let tt = Time::<TT>::from_j2000_seconds(Second::new(0.0)).unwrap();
+    let tt = J2000Seconds::<TT>::try_new(Second::new(0.0))
+        .unwrap()
+        .to_time();
     let ut1 = tt.to_with::<UT1>(&ctx).unwrap();
     let tt_back = ut1.to_with::<TT>(&ctx).unwrap();
 
-    let offset_s = tt.to::<J2000s>() - ut1.to::<J2000s>();
+    let offset_s = tt.to::<J2000s>().raw() - ut1.to::<J2000s>().raw();
     assert!((offset_s - Second::new(63.83)).abs() < Second::new(1.0));
     assert!((tt - tt_back).abs() < Second::new(1e-9));
 }
 
 #[test]
 fn default_try_to_ut1_uses_default_context() {
-    let tt = Time::<TT>::from_j2000_seconds(Second::new(0.0)).unwrap();
+    let tt = J2000Seconds::<TT>::try_new(Second::new(0.0))
+        .unwrap()
+        .to_time();
     let via_default: Time<UT1> = tt.try_to::<UT1>().unwrap();
     let via_context: Time<UT1> = tt.to_with::<UT1>(&TimeContext::new()).unwrap();
-    assert!((via_default.to::<J2000s>() - via_context.to::<J2000s>()).abs() < Second::new(1e-12));
+    assert!(
+        (via_default.to::<J2000s>().raw() - via_context.to::<J2000s>().raw()).abs()
+            < Second::new(1e-12)
+    );
 }
 
 #[test]
 fn public_constats_epochs_are_usable() {
-    let j2000 = Time::<TT>::from_julian_days(J2000_JD_TT).unwrap();
+    let j2000 = JulianDate::<TT>::try_new(J2000_JD_TT).unwrap().to_time();
     let tai_s: Time<TAI> = j2000.to::<TAI>();
 
-    assert_eq!(j2000.to::<JD>(), J2000_JD_TT);
+    assert_eq!(j2000.to::<JD>().raw(), J2000_JD_TT);
     assert!(
-        ((j2000.to::<J2000s>() - tai_s.to::<J2000s>()) - TT_MINUS_TAI).abs() < Second::new(1e-12)
+        ((j2000.to::<J2000s>().raw() - tai_s.to::<J2000s>().raw()) - TT_MINUS_TAI).abs()
+            < Second::new(1e-12)
     );
 }
 
@@ -62,6 +69,7 @@ fn utc_leap_second_roundtrip_is_preserved() {
     let back = utc.try_to_chrono().unwrap();
 
     assert!(utc.is_leap_second());
+    assert!(utc.try_to::<Unix>().is_err());
     assert_eq!(back.timestamp(), leap.timestamp());
     assert!(
         (back.timestamp_subsec_nanos() as i64 - leap.timestamp_subsec_nanos() as i64).abs()
@@ -73,15 +81,26 @@ fn utc_leap_second_roundtrip_is_preserved() {
 #[test]
 fn utc_supports_coordinate_views_and_pre_1961_roundtrips() {
     fn needs_coordinate_scale<S: CoordinateScale>(time: Time<S>) -> Day {
-        time.to::<MJD>()
+        time.to::<MJD>().raw()
     }
 
-    let utc = Time::<UTC>::from_j2000_seconds(Second::new(0.0)).unwrap();
-    assert_eq!(needs_coordinate_scale(utc), utc.to::<MJD>());
+    let utc = J2000Seconds::<UTC>::try_new(Second::new(0.0))
+        .unwrap()
+        .to_time();
+    assert_eq!(needs_coordinate_scale(utc), utc.to::<MJD>().raw());
 
     let pre_1961 = DateTime::from_timestamp(-631_152_000, 500_000_000).unwrap();
-    let encoded = Time::<UTC>::try_from_chrono(pre_1961).unwrap();
-    let back = encoded.try_to_chrono().unwrap();
+
+    // Default: pre-1961 dates must be rejected.
+    assert!(matches!(
+        Time::<UTC>::try_from_chrono(pre_1961),
+        Err(ConversionError::UtcBeforeDefinition)
+    ));
+
+    // Opt-in: round-trip must close.
+    let ctx = TimeContext::new().allow_pre_definition_utc();
+    let encoded = Time::<UTC>::try_from_chrono_with(pre_1961, &ctx).unwrap();
+    let back = encoded.try_to_chrono_with(&ctx).unwrap();
     let delta_ns = back.timestamp_nanos_opt().unwrap() - pre_1961.timestamp_nanos_opt().unwrap();
     assert!(delta_ns.abs() < 50_000);
 }
@@ -89,50 +108,78 @@ fn utc_supports_coordinate_views_and_pre_1961_roundtrips() {
 #[test]
 fn interval_set_ops_match_expected_intervals() {
     let outer = Period::<TT>::new(
-        Time::<TT>::from_modified_julian_days(0.0.into()).unwrap(),
-        Time::<TT>::from_modified_julian_days(10.0.into()).unwrap(),
+        ModifiedJulianDate::<TT>::try_new(Day::new(0.0))
+            .unwrap()
+            .to_time(),
+        ModifiedJulianDate::<TT>::try_new(Day::new(10.0))
+            .unwrap()
+            .to_time(),
     );
     let a = vec![
         Period::<TT>::new(
-            Time::<TT>::from_modified_julian_days(1.0.into()).unwrap(),
-            Time::<TT>::from_modified_julian_days(3.0.into()).unwrap(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(1.0))
+                .unwrap()
+                .to_time(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(3.0))
+                .unwrap()
+                .to_time(),
         ),
         Period::<TT>::new(
-            Time::<TT>::from_modified_julian_days(5.0.into()).unwrap(),
-            Time::<TT>::from_modified_julian_days(9.0.into()).unwrap(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(5.0))
+                .unwrap()
+                .to_time(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(9.0))
+                .unwrap()
+                .to_time(),
         ),
     ];
     let b = vec![
         Period::<TT>::new(
-            Time::<TT>::from_modified_julian_days(2.0.into()).unwrap(),
-            Time::<TT>::from_modified_julian_days(4.0.into()).unwrap(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(2.0))
+                .unwrap()
+                .to_time(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(4.0))
+                .unwrap()
+                .to_time(),
         ),
         Period::<TT>::new(
-            Time::<TT>::from_modified_julian_days(7.0.into()).unwrap(),
-            Time::<TT>::from_modified_julian_days(8.0.into()).unwrap(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(7.0))
+                .unwrap()
+                .to_time(),
+            ModifiedJulianDate::<TT>::try_new(Day::new(8.0))
+                .unwrap()
+                .to_time(),
         ),
     ];
 
-    let below_b = complement_within(outer, &b);
-    let between = intersect_periods(&a, &below_b);
+    let below_b = outer.complement(&b);
+    let between = Period::intersect_many(&a, &below_b);
 
     assert_eq!(between.len(), 3);
-    assert_eq!(between[0].start.to::<MJD>(), Day::new(1.0));
-    assert_eq!(between[0].end.to::<MJD>(), Day::new(2.0));
-    assert_eq!(between[1].start.to::<MJD>(), Day::new(5.0));
-    assert_eq!(between[1].end.to::<MJD>(), Day::new(7.0));
-    assert_eq!(between[2].start.to::<MJD>(), Day::new(8.0));
-    assert_eq!(between[2].end.to::<MJD>(), Day::new(9.0));
+    assert_eq!(between[0].start.to::<MJD>().raw(), Day::new(1.0));
+    assert_eq!(between[0].end.to::<MJD>().raw(), Day::new(2.0));
+    assert_eq!(between[1].start.to::<MJD>().raw(), Day::new(5.0));
+    assert_eq!(between[1].end.to::<MJD>().raw(), Day::new(7.0));
+    assert_eq!(between[2].start.to::<MJD>().raw(), Day::new(8.0));
+    assert_eq!(between[2].end.to::<MJD>().raw(), Day::new(9.0));
 }
 
 #[cfg(feature = "serde")]
 #[test]
 fn public_serde_roundtrips_time_and_periods() {
-    let tt = Time::<TT>::from_j2000_seconds(Second::new(12.5)).unwrap();
-    let jd = Time::<TT>::from_julian_days(Day::new(2_451_545.25)).unwrap();
+    let tt = J2000Seconds::<TT>::try_new(Second::new(12.5))
+        .unwrap()
+        .to_time();
+    let jd = JulianDate::<TT>::try_new(Day::new(2_451_545.25))
+        .unwrap()
+        .to_time();
     let mjd_period = Period::<TT>::new(
-        Time::<TT>::from_modified_julian_days(61_000.0.into()).unwrap(),
-        Time::<TT>::from_modified_julian_days(61_001.0.into()).unwrap(),
+        ModifiedJulianDate::<TT>::try_new(Day::new(61_000.0))
+            .unwrap()
+            .to_time(),
+        ModifiedJulianDate::<TT>::try_new(Day::new(61_001.0))
+            .unwrap()
+            .to_time(),
     );
 
     assert_eq!(
@@ -172,8 +219,17 @@ fn public_serde_roundtrips_time_and_periods() {
 #[cfg(feature = "serde")]
 #[test]
 fn serde_still_works_with_current_shape() {
-    let tt = Time::<TT>::from_j2000_seconds(Second::new(1.25)).unwrap();
-    let period = Period::<TT>::new(1.25, 2.5);
+    let tt = J2000Seconds::<TT>::try_new(Second::new(1.25))
+        .unwrap()
+        .to_time();
+    let period = Period::<TT>::new(
+        J2000Seconds::<TT>::try_new(Second::new(1.25))
+            .unwrap()
+            .to_time(),
+        J2000Seconds::<TT>::try_new(Second::new(2.5))
+            .unwrap()
+            .to_time(),
+    );
 
     assert_eq!(
         serde_json::from_value::<Time<TT>>(json!({"hi": 1.25, "lo": 0.0})).unwrap(),
@@ -194,8 +250,17 @@ fn serde_still_works_with_current_shape() {
 fn tagged_serde_preserves_scale_in_payload() {
     use tempoch::tagged::{TaggedPeriod, TaggedTime};
 
-    let tt = Time::<TT>::from_j2000_seconds(Second::new(1.25)).unwrap();
-    let period = Period::<TT>::new(1.25, 2.5);
+    let tt = J2000Seconds::<TT>::try_new(Second::new(1.25))
+        .unwrap()
+        .to_time();
+    let period = Period::<TT>::new(
+        J2000Seconds::<TT>::try_new(Second::new(1.25))
+            .unwrap()
+            .to_time(),
+        J2000Seconds::<TT>::try_new(Second::new(2.5))
+            .unwrap()
+            .to_time(),
+    );
 
     assert_eq!(
         serde_json::to_value(TaggedTime(tt)).unwrap(),

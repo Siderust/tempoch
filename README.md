@@ -6,19 +6,33 @@
 
 Typed astronomical time primitives for Rust.
 
+`tempoch` is built around a few deliberate modeling choices:
+
+- A `Time<S>` value is an instant on a scale-specific axis, not a bare `f64`.
+- Time instants are modeled with affine semantics: `time_a - time_b` yields a
+  duration, while shifting an instant is `time + seconds`.
+- The canonical internal carrier is a split `(hi, lo)` pair of J2000-based
+  seconds so epoch-sized values can retain sub-second precision through
+  conversions and arithmetic.
+- `JD`, `MJD`, `J2000s`, `Unix`, and `GPS` are views or transport
+  encodings, not alternate storage backends.
+- `UTC` keeps its civil meaning, but internally it is stored on a continuous
+  instant axis and interpreted through the active UTC-TAI data tables.
+
 `tempoch` provides:
 
 - `Time<S>` instants parameterized by a physical or civil scale (`TT`,
   `TAI`, `UTC`, `UT1`, `TDB`, `TCG`, `TCB`).
 - Unified target-based conversions:
   - `.to::<TT>()`, `.to::<UTC>()`, `.to::<TDB>()` for infallible scale routes
-  - `.try_to::<UT1>()` for the default monthly-ΔT UT1 route
-  - `.to_with::<UT1>(&ctx)` for context-backed UT1 routes
+  - `.to_with::<UT1>(&ctx)` for context-backed UT1 routes, or `.try_to::<UT1>()` shorthand (snapshots active data at call time)
   - `.to::<JD>()`, `.to::<MJD>()`, `.to::<J2000s>()` for coordinate views
-  - `.try_to::<UnixSecs>()` and `.to::<GpsSecs>()` for transport encodings
-- UTC conversion through `chrono`, leap-second aware over the official history,
-  with an approximate pre-1961 continuation of the first official UTC segment
-  for older civil labels.
+  - `.try_to::<Unix>()` and `.to::<GPS>()` for transport encodings
+- UTC conversion through `chrono`, leap-second aware over the official history
+  (1961-01-01 onward). Requests for dates before the UTC standard was defined
+  return `ConversionError::UtcBeforeDefinition` by default; opt in to the
+  approximate segment back-extrapolation by building your context with
+  `TimeContext::new().allow_pre_definition_utc()`.
 - Automatic `ΔT = TT - UT1` handling for `UT1` conversions via an explicit
   `TimeContext`. For the currently compiled bundle fetched 2026-04-18, the
   default monthly-ΔT path stays within 10 ms of the bundled daily IERS-derived
@@ -37,9 +51,8 @@ Typed astronomical time primitives for Rust.
 - Julian Day, Modified Julian Day, and SI-second views via `JD`, `MJD`, and
   `J2000s` conversion targets on every built-in scale, including UTC's stored
   instant axis.
-- Unix/POSIX timestamps via `Time::<UTC>::from_unix_seconds` and
-  `.try_to::<UnixSecs>()`.
-- GPS transport values via `Time::<TAI>::from_gps_seconds` and `.to::<GpsSecs>()`.
+- Unix/POSIX timestamps via `UnixTime::try_new(sec).and_then(|e| e.to_time_with(&ctx))` and `.try_to::<Unix>()`.
+- GPS transport values via `GpsTime::try_new(sec).map(|e| e.to_time())` and `.to::<GPS>()`.
 - Compiled time-data tables generated from official UTC-TAI and Delta T
   sources.
 - Optional `serde` support for `Time<S>` as `{"hi","lo"}` and
@@ -54,8 +67,64 @@ Typed astronomical time primitives for Rust.
   with intersection, normalization, validation, and complement helpers.
 
 **Storage model:** `Time<S>` stores a compensated `(hi, lo)` pair of seconds
-since J2000 TT on the target axis. Tags such as `JD`, `MJD`, `UnixSecs`, and
-`GpsSecs` are conversion targets, not storage types.
+since J2000 TT on the target axis. Tags such as `JD`, `MJD`, `Unix`, and
+`GPS` are conversion targets, not storage types.
+
+## Design Decisions
+
+### `Time<S>` is an affine point, not a scalar
+
+`tempoch` treats an instant as a point on a time axis. That is why the API is
+deliberately shaped around:
+
+- `time_a - time_b -> duration`
+- `time + duration -> time`
+- `time - duration -> time`
+
+and does not model "adding two instants" as a meaningful operation.
+
+Internally, this is represented with `affn::SplitPoint1`, which keeps the
+affine semantics aligned with the rest of the geometry model instead of
+re-introducing scalar-like mistakes through ad hoc time arithmetic.
+
+### Why time uses split storage
+
+Astronomical epochs are large in absolute value, but many important corrections
+are tiny:
+
+- leap-second boundaries
+- TT-TAI offsets
+- TT-TDB corrections
+- UT1 adjustments
+- sub-second transport roundtrips
+
+Using one `f64` for "seconds since epoch" would lose low-order precision once a
+small correction is combined with a value on the order of `1e9` seconds.
+`tempoch` therefore stores every `Time<S>` as a normalized compensated pair
+`(hi, lo)` whose sum is the represented instant. The high part carries the
+epoch-sized component; the low part preserves the small remainder.
+
+This is why `Time<S>` serializes as `{"hi","lo"}` with `serde`, and why the
+crate reuses `affn::SplitQuantity` / `SplitPoint1` instead of a plain scalar
+field.
+
+### Why J2000 seconds are canonical
+
+The crate exposes Julian Day, Modified Julian Day, Unix, and GPS helpers, but
+those are public coordinate or transport views. The storage choice remains
+canonical J2000-based seconds because it gives one precise internal axis for
+arithmetic and scale conversion, while still allowing JD/MJD-style APIs at the
+boundary.
+
+### Why UTC is treated specially
+
+`UTC` is a civil scale with leap-second labeling, so it cannot be treated as a
+simple uniform scalar everywhere. `tempoch` keeps the internal instant storage
+continuous, then maps that stored instant to civil UTC through the active
+UTC-TAI table. That separation lets the crate support both:
+
+- precise instant arithmetic and transport encodings
+- leap-second-aware civil conversions
 
 The compiled modern ΔT series runs through MJD 63871 (`2033-10-01`). Beyond
 that date the built-in bundle stops and UT1 conversions fail with
@@ -67,21 +136,21 @@ the horizon. Use the exported `DELTA_T_PREDICTION_HORIZON_MJD` typed
 
 ```toml
 [dependencies]
-tempoch = "0.4"
+tempoch = "0.4.2"
 ```
 
 Enable `serde` if you want to serialize typed times and periods:
 
 ```toml
 [dependencies]
-tempoch = { version = "0.4", features = ["serde"] }
+tempoch = { version = "0.4.2", features = ["serde"] }
 ```
 
 The `serde` feature composes with the ordinary runtime refresh behavior:
 
 ```toml
 [dependencies]
-tempoch = { version = "0.4", features = ["serde"] }
+tempoch = { version = "0.4.2", features = ["serde", "runtime-data-fetch"] }
 ```
 
 ## Serde
@@ -98,11 +167,14 @@ With the `serde` feature enabled:
 use qtty::Second;
 use tempoch::{
     tagged::{TaggedPeriod, TaggedTime},
-    Period, Time, TT,
+    J2000Seconds, Period, TT,
 };
 
-let tt = Time::<TT>::from_j2000_seconds(Second::new(42.5)).unwrap();
-let period = Period::<TT>::new(42.5, 43.5);
+let tt = J2000Seconds::<TT>::try_new(Second::new(42.5)).unwrap().to_time();
+let period = Period::<TT>::new(
+    tt,
+    J2000Seconds::<TT>::try_new(Second::new(43.5)).unwrap().to_time(),
+);
 
 assert_eq!(serde_json::to_string(&tt).unwrap(), r#"{"hi":42.5,"lo":0.0}"#);
 assert_eq!(
@@ -129,43 +201,43 @@ let utc_now = Time::<UTC>::from_chrono(Utc::now());
 let tt_now: Time<TT> = utc_now.to::<TT>();
 
 println!("UTC       : {}", utc_now.to_chrono().unwrap());
-println!("TT in JD  : {:.9}", tt_now.to::<JD>().value());
-println!("TT in MJD : {:.9}", tt_now.to::<MJD>().value());
+println!("TT in JD  : {:.9}", tt_now.to::<JD>());
+println!("TT in MJD : {:.9}", tt_now.to::<MJD>());
 ```
 
 ## Period Operations
 
 ```rust
 use qtty::Day;
-use tempoch::{complement_within, intersect_periods, Period, Time, TT};
+use tempoch::{ModifiedJulianDate, Period, TT};
 
 let day = Period::<TT>::new(
-  Time::<TT>::from_modified_julian_days(Day::new(61_000.0)).unwrap(),
-  Time::<TT>::from_modified_julian_days(Day::new(61_001.0)).unwrap(),
+  ModifiedJulianDate::<TT>::try_new(Day::new(61_000.0)).unwrap().to_time(),
+  ModifiedJulianDate::<TT>::try_new(Day::new(61_001.0)).unwrap().to_time(),
 );
 let a = vec![
   Period::<TT>::new(
-    Time::<TT>::from_modified_julian_days(Day::new(61_000.1)).unwrap(),
-    Time::<TT>::from_modified_julian_days(Day::new(61_000.4)).unwrap(),
+    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.1)).unwrap().to_time(),
+    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.4)).unwrap().to_time(),
   ),
   Period::<TT>::new(
-    Time::<TT>::from_modified_julian_days(Day::new(61_000.6)).unwrap(),
-    Time::<TT>::from_modified_julian_days(Day::new(61_000.9)).unwrap(),
+    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.6)).unwrap().to_time(),
+    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.9)).unwrap().to_time(),
   ),
 ];
 let b = vec![
   Period::<TT>::new(
-    Time::<TT>::from_modified_julian_days(Day::new(61_000.2)).unwrap(),
-    Time::<TT>::from_modified_julian_days(Day::new(61_000.3)).unwrap(),
+    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.2)).unwrap().to_time(),
+    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.3)).unwrap().to_time(),
   ),
   Period::<TT>::new(
-    Time::<TT>::from_modified_julian_days(Day::new(61_000.7)).unwrap(),
-    Time::<TT>::from_modified_julian_days(Day::new(61_000.8)).unwrap(),
+    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.7)).unwrap().to_time(),
+    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.8)).unwrap().to_time(),
   ),
 ];
 
-let overlap = intersect_periods(&a, &b);
-let gaps = complement_within(day, &a);
+let overlap = Period::intersect_many(&a, &b);
+let gaps = day.complement(&a);
 
 assert_eq!(overlap.len(), 2);
 assert_eq!(gaps.len(), 3);
@@ -185,10 +257,12 @@ assert_eq!(gaps.len(), 3);
 
 `tempoch` automatically prefers a cached runtime bundle for fresher UTC-TAI
 history, modern Delta T, and daily IERS EOP while keeping the public API
-unchanged. `TimeContext`, `Time::try_to::<UT1>()`, `Time::to_with`, and the
-normal UTC civil helpers consult a cached bundle in `~/.tempoch/data`,
-refreshing it once on first use when the cache is missing, invalid, or older
-than 24 hours.
+unchanged. `TimeContext` and `Time::to_with` consult a cached bundle in
+`~/.tempoch/data`, refreshing it once on first use when the cache is missing,
+invalid, or older than 24 hours. Data-dependent shorthand methods (e.g.
+`try_to::<UT1>()`, `try_to::<Unix>()`, `try_to_chrono()`) snapshot a fresh
+`TimeContext` internally. For reproducible pipelines, use the `_with` variants
+with an explicit context.
 
 Set `TEMPOCH_DATA_DIR` to override the cache location.
 
@@ -199,18 +273,20 @@ cargo run -p tempoch --example 06_runtime_tables
 ```
 
 ```rust,no_run
-use tempoch::{JD, UnixSecs, Time, TimeContext, TT, UT1, UTC};
+use qtty::{Day, Second};
+use tempoch::{JD, JulianDate, Time, TimeContext, UnixTime, Unix, TT, UT1, UTC};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ctx = TimeContext::with_builtin_eop();
-    let tt = Time::<TT>::from_julian_days(2_460_000.25.into())?;
+    let tt = JulianDate::<TT>::try_new(Day::new(2_460_000.25))?.to_time();
     let ut1: Time<UT1> = tt.to_with::<UT1>(&ctx)?;
 
-    let unix = Time::<UTC>::from_unix_seconds(1_700_000_000.0.into())?;
-    let back = unix.try_to::<UnixSecs>()?;
+    let unix = UnixTime::try_new(Second::new(1_700_000_000.0))
+        .and_then(|e| e.to_time_with(&ctx))?;
+    let back = unix.try_to::<Unix>()?;
 
-    println!("UT1 JD     : {:.9}", ut1.to::<JD>().value());
-    println!("Unix roundtrip: {:.3}", back.value());
+    println!("UT1 JD     : {:.9}", ut1.to::<JD>());
+    println!("Unix roundtrip: {:.3}", back);
     Ok(())
 }
 ```
@@ -230,16 +306,17 @@ cargo run -p tempoch-time-data-updater
 cargo test --all-features
 ```
 
-To verify that the committed generated files are still in sync with upstream
-(this is also enforced in CI):
+To verify manually that the committed generated files are still in sync with
+upstream:
 
 ```bash
 cargo run -p tempoch-time-data-updater -- --check
 ```
 
-A scheduled GitHub Actions workflow runs the refresh automatically and pushes
-the resulting commit directly to `main` when the generated tables or their
-source hashes change.
+A scheduled GitHub Actions workflow runs the refresh automatically every
+Monday at 05:23 UTC and pushes the resulting commit directly to `main` when
+the generated tables or their source hashes change. GitHub cron schedules are
+defined in UTC.
 
 ## Tests and Coverage
 

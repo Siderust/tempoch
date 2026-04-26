@@ -144,6 +144,7 @@ impl TimeDataBundle {
             .unwrap_or_default()
     }
 
+    #[cfg(feature = "fetch")]
     fn from_raw_sources(
         utc_tai_history: &str,
         delta_t_observed: &str,
@@ -685,9 +686,7 @@ pub fn parse_utc_tai_segments(text: &str) -> Result<Vec<UtcTaiSegment>, String> 
         previous_slope = Some(slope_seconds_per_day);
     }
 
-    if segments.is_empty() {
-        return Err("UTC-TAI history parsing produced no segments".into());
-    }
+    validate_utc_tai_segments(&segments)?;
     Ok(segments)
 }
 
@@ -734,6 +733,97 @@ fn parse_end_and_formula(
     None
 }
 
+fn validate_utc_tai_segments(segments: &[UtcTaiSegment]) -> Result<(), String> {
+    if segments.is_empty() {
+        return Err("UTC-TAI history parsing produced no segments".into());
+    }
+    for (idx, segment) in segments.iter().enumerate() {
+        if let Some(end_mjd) = segment.end_mjd {
+            if end_mjd <= segment.start_mjd {
+                return Err(format!(
+                    "UTC-TAI segment ending at MJD {end_mjd} does not extend past start {}",
+                    segment.start_mjd
+                ));
+            }
+        }
+        let Some(next) = segments.get(idx + 1) else {
+            continue;
+        };
+        if next.start_mjd == segment.start_mjd {
+            return Err(format!(
+                "UTC-TAI segment list contains duplicate start MJD {}",
+                segment.start_mjd
+            ));
+        }
+        if next.start_mjd < segment.start_mjd {
+            return Err(format!(
+                "UTC-TAI segment list is not strictly increasing near {} -> {}",
+                segment.start_mjd, next.start_mjd
+            ));
+        }
+        match segment.end_mjd {
+            Some(end_mjd) if end_mjd == next.start_mjd => {}
+            Some(end_mjd) => {
+                return Err(format!(
+                    "UTC-TAI segment boundary mismatch near {} -> {}",
+                    end_mjd, next.start_mjd
+                ))
+            }
+            None => {
+                return Err(format!(
+                    "UTC-TAI segment starting at MJD {} is open-ended before the next segment {}",
+                    segment.start_mjd, next.start_mjd
+                ))
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_strictly_increasing_mjds(label: &str, points: &[(f64, f64)]) -> Result<(), String> {
+    for window in points.windows(2) {
+        let current = window[0].0;
+        let next = window[1].0;
+        if next == current {
+            return Err(format!(
+                "{label} MJD column contains duplicate entry at {current:.3}"
+            ));
+        }
+        if next < current {
+            return Err(format!(
+                "{label} MJD column is not strictly increasing near {current:.3} -> {next:.3}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_eop_points(points: &[EopPoint]) -> Result<(), String> {
+    if points.len() < 2 {
+        return Err("EOP finals parsing produced fewer than two usable rows".into());
+    }
+    for window in points.windows(2) {
+        let current = window[0].mjd;
+        let next = window[1].mjd;
+        if next == current {
+            return Err(format!(
+                "EOP finals MJD column contains duplicate entry at {current}"
+            ));
+        }
+        if next < current {
+            return Err(format!(
+                "EOP finals MJD column is not strictly increasing near {current} -> {next}"
+            ));
+        }
+        if next != current + 1 {
+            return Err(format!(
+                "EOP finals MJD column has a daily gap near {current} -> {next}"
+            ));
+        }
+    }
+    Ok(())
+}
+
 pub fn parse_delta_t_observed(text: &str) -> Result<Vec<(f64, f64)>, String> {
     let mut points = Vec::new();
     for raw_line in text.lines() {
@@ -763,6 +853,7 @@ pub fn parse_delta_t_observed(text: &str) -> Result<Vec<(f64, f64)>, String> {
     if points.is_empty() {
         return Err("observed Delta T parsing produced no points".into());
     }
+    validate_strictly_increasing_mjds("observed Delta T", &points)?;
     Ok(points)
 }
 
@@ -784,6 +875,7 @@ pub fn parse_delta_t_predictions(text: &str) -> Result<Vec<(f64, f64)>, String> 
     if points.is_empty() {
         return Err("predicted Delta T parsing produced no points".into());
     }
+    validate_strictly_increasing_mjds("predicted Delta T", &points)?;
     Ok(points)
 }
 
@@ -792,6 +884,8 @@ pub fn build_modern_delta_t_points(
     predicted_points: &[(f64, f64)],
 ) -> Result<(Vec<(f64, f64)>, f64), String> {
     let (last_obs_mjd, last_obs_dt) = *observed_points.last().ok_or("observed Delta T is empty")?;
+    validate_strictly_increasing_mjds("observed Delta T", observed_points)?;
+    validate_strictly_increasing_mjds("predicted Delta T", predicted_points)?;
     let mut future: Vec<(f64, f64)> = predicted_points
         .iter()
         .copied()
@@ -823,6 +917,7 @@ pub fn build_modern_delta_t_points(
     if combined.len() < 2 {
         return Err("modern Delta T series must contain at least two points".into());
     }
+    validate_strictly_increasing_mjds("modern Delta T", &combined)?;
     Ok((combined, last_obs_mjd))
 }
 
@@ -863,18 +958,7 @@ pub fn parse_eop_finals(text: &str) -> Result<Vec<EopPoint>, String> {
         });
     }
 
-    if points.len() < 2 {
-        return Err("EOP finals parsing produced fewer than two usable rows".into());
-    }
-    for window in points.windows(2) {
-        if window[1].mjd <= window[0].mjd {
-            return Err(format!(
-                "EOP finals MJD column is not strictly increasing near {} -> {}",
-                window[0].mjd, window[1].mjd
-            ));
-        }
-    }
-
+    validate_eop_points(&points)?;
     Ok(points)
 }
 
@@ -906,4 +990,193 @@ fn parse_f64(slice: &str) -> Option<f64> {
 
 fn parse_flag(slice: &str) -> Option<char> {
     slice.trim().chars().next()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_utc_tai_history() -> &'static str {
+        "1961 Jan. 1 - Aug. 1 1.4228180s + (MJD - 37300) x 0.001296s\n\
+         Aug. 1 - 1962 Jan. 1 1.3728180s + \"\"\n\
+         1962 Jan. 1 - 10s\n"
+    }
+
+    fn set_field(line: &mut [u8], start_1based: usize, end_1based_inclusive: usize, value: &str) {
+        let start = start_1based - 1;
+        let width = end_1based_inclusive - start_1based + 1;
+        let bytes = value.as_bytes();
+        assert!(
+            bytes.len() <= width,
+            "{value:?} does not fit in width {width}"
+        );
+        let offset = width - bytes.len();
+        line[start + offset..start + offset + bytes.len()].copy_from_slice(bytes);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn sample_eop_line(
+        mjd: i32,
+        ut1_flag: char,
+        ut1_minus_utc_seconds: f64,
+        pm_xp_arcsec: Option<f64>,
+        pm_yp_arcsec: Option<f64>,
+        lod_milliseconds: Option<f64>,
+        dx_milliarcsec: Option<f64>,
+        dy_milliarcsec: Option<f64>,
+    ) -> String {
+        let mut line = vec![b' '; 125];
+        set_field(&mut line, 8, 15, &format!("{:8.2}", mjd as f64));
+        line[16] = b'I';
+        if let Some(value) = pm_xp_arcsec {
+            set_field(&mut line, 19, 27, &format!("{value:>9.6}"));
+        }
+        if let Some(value) = pm_yp_arcsec {
+            set_field(&mut line, 38, 46, &format!("{value:>9.6}"));
+        }
+        line[57] = ut1_flag as u8;
+        set_field(&mut line, 59, 68, &format!("{ut1_minus_utc_seconds:>10.7}"));
+        if let Some(value) = lod_milliseconds {
+            set_field(&mut line, 80, 86, &format!("{value:>7.4}"));
+        }
+        line[95] = b'I';
+        if let Some(value) = dx_milliarcsec {
+            set_field(&mut line, 98, 106, &format!("{value:>9.3}"));
+        }
+        if let Some(value) = dy_milliarcsec {
+            set_field(&mut line, 117, 125, &format!("{value:>9.3}"));
+        }
+        String::from_utf8(line).expect("sample EOP line must stay ASCII")
+    }
+
+    #[test]
+    fn parse_utc_tai_segments_reads_piecewise_rules() {
+        let segments = parse_utc_tai_segments(sample_utc_tai_history()).unwrap();
+        assert_eq!(segments.len(), 3);
+        assert_eq!(segments[0].start_mjd, 37_300);
+        assert_eq!(segments[0].end_mjd, Some(37_512));
+        assert_eq!(segments[0].reference_mjd, 37_300.0);
+        assert_eq!(segments[0].slope_seconds_per_day, 0.001_296);
+        assert_eq!(segments[1].reference_mjd, segments[0].reference_mjd);
+        assert_eq!(
+            segments[1].slope_seconds_per_day,
+            segments[0].slope_seconds_per_day
+        );
+        assert_eq!(segments[2].end_mjd, None);
+        assert_eq!(segments[2].base_seconds, 10.0);
+    }
+
+    #[test]
+    fn parse_delta_t_observed_reads_representative_rows() {
+        let points = parse_delta_t_observed(
+            "2024 01 01 69.1000\n\
+             2024 02 01 69.2000\n",
+        )
+        .unwrap();
+        assert_eq!(points.len(), 2);
+        assert_eq!(
+            points[0].0,
+            mjd_from_date(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()) as f64
+        );
+        assert_eq!(points[1].1, 69.2);
+    }
+
+    #[test]
+    fn parse_delta_t_predictions_reads_representative_rows() {
+        let points = parse_delta_t_predictions(
+            "MJD YEAR DELTAT\n\
+             60310 2024.1 69.4000\n\
+             60341 2024.2 69.5000\n",
+        )
+        .unwrap();
+        assert_eq!(points, vec![(60_310.0, 69.4), (60_341.0, 69.5)]);
+    }
+
+    #[test]
+    fn build_modern_delta_t_points_applies_continuity_offset() {
+        let observed = [(60_000.0, 69.8), (60_030.0, 71.0)];
+        let predicted = [(60_040.0, 70.0), (60_050.0, 72.0)];
+        let (combined, observed_end_mjd) =
+            build_modern_delta_t_points(&observed, &predicted).unwrap();
+
+        assert_eq!(observed_end_mjd, 60_030.0);
+        assert_eq!(combined.len(), 4);
+        let (m0, d0) = combined[2];
+        let (m1, d1) = combined[3];
+        let frac = (observed_end_mjd - m0) / (m1 - m0);
+        let stitched_value = d0 + frac * (d1 - d0);
+        assert!((stitched_value - 71.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn build_modern_delta_t_points_rejects_duplicate_input_mjds() {
+        let observed = [(60_000.0, 69.8), (60_000.0, 69.9)];
+        let predicted = [(60_031.0, 70.0), (60_062.0, 70.2)];
+        let err = build_modern_delta_t_points(&observed, &predicted).unwrap_err();
+        assert!(err.contains("observed Delta T"));
+        assert!(err.contains("duplicate"));
+    }
+
+    #[test]
+    fn parse_delta_t_predictions_rejects_non_increasing_mjds() {
+        let err = parse_delta_t_predictions(
+            "MJD YEAR DELTAT\n\
+             60341 2024.2 69.5000\n\
+             60310 2024.1 69.4000\n",
+        )
+        .unwrap_err();
+        assert!(err.contains("predicted Delta T"));
+        assert!(err.contains("not strictly increasing"));
+    }
+
+    #[test]
+    fn parse_eop_finals_reads_representative_rows() {
+        let text = format!(
+            "{}\n{}\n",
+            sample_eop_line(
+                60_000,
+                'I',
+                -0.123_456_7,
+                Some(0.123_456),
+                Some(-0.234_567),
+                Some(1.2345),
+                Some(0.321),
+                Some(-0.111),
+            ),
+            sample_eop_line(60_001, 'P', -0.223_456_7, None, None, None, None, None,),
+        );
+        let points = parse_eop_finals(&text).unwrap();
+        assert_eq!(points.len(), 2);
+        assert_eq!(points[0].mjd, 60_000);
+        assert!(points[0].ut1_observed);
+        assert_eq!(points[0].pm_xp_arcsec, Some(0.123_456));
+        assert_eq!(points[0].lod_milliseconds, Some(1.2345));
+        assert_eq!(points[0].dx_milliarcsec, Some(0.321));
+        assert_eq!(points[1].mjd, 60_001);
+        assert!(!points[1].ut1_observed);
+        assert_eq!(points[1].pm_xp_arcsec, None);
+        assert_eq!(points[1].dx_milliarcsec, None);
+    }
+
+    #[test]
+    fn parse_eop_finals_rejects_duplicate_mjds() {
+        let text = format!(
+            "{}\n{}\n",
+            sample_eop_line(60_000, 'I', -0.1, Some(0.1), Some(0.2), None, None, None),
+            sample_eop_line(60_000, 'P', -0.2, Some(0.1), Some(0.2), None, None, None),
+        );
+        let err = parse_eop_finals(&text).unwrap_err();
+        assert!(err.contains("duplicate"));
+    }
+
+    #[test]
+    fn parse_eop_finals_rejects_daily_gaps() {
+        let text = format!(
+            "{}\n{}\n",
+            sample_eop_line(60_000, 'I', -0.1, Some(0.1), Some(0.2), None, None, None),
+            sample_eop_line(60_002, 'P', -0.2, Some(0.1), Some(0.2), None, None, None),
+        );
+        let err = parse_eop_finals(&text).unwrap_err();
+        assert!(err.contains("daily gap"));
+    }
 }
