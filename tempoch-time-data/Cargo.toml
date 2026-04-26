@@ -2,9 +2,10 @@
 name = "tempoch-time-data"
 version = "0.1.0"
 edition = "2021"
-publish = false
+authors = ["VPRamon <vallespuigramon@gmail.com>"]
 license = "AGPL-3.0-only"
 description = "Internal shared time-data support for tempoch."
+repository = "https://github.com/Siderust/tempoch"
 
 [features]
 default = []

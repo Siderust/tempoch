@@ -79,6 +79,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - `TCB` conversions now compose the linear `TCB <-> TDB` relation with the
   existing periodic `TDB <-> TT` correction, removing the previous
   millisecond-scale `TDB <-> TCB` round-trip drift.
+- `tempoch-time-data` is now publishable as the internal support crate used by
+  `tempoch-core`, so the `0.4.2` release graph can be dry-run and published
+  directly from crates.io-resolved dependencies.
 - `tempoch-ffi` now maps UT1 horizon failures to a dedicated status code and
   keeps its Unix and civil-time conversions aligned with the crate's leap-second
   and pre-1961 UTC semantics.
