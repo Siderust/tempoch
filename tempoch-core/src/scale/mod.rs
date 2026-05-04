@@ -151,11 +151,10 @@ define_continuous_scale!(
     ///   Houlden 1986; Meeus *Astronomical Algorithms*). Accuracy varies from
     ///   ±15 s (1620–1973) to ±hundreds of seconds (pre-948).
     /// * **Modern (1973 – horizon)**: USNO monthly determinations with linear
-    ///   interpolation. For the currently compiled bundle fetched 2026-04-18,
-    ///   the default monthly-ΔT path differs from the bundled daily
-    ///   IERS-derived path by less than 10 ms over the observed overlap
-    ///   through 2026-04-16, and by less than 0.2 s over the compiled
-    ///   short-range prediction overlap through 2027-04-24. See
+    ///   interpolation. The default monthly-ΔT path differs from the bundled daily
+    ///   IERS-derived path by less than 15 ms over the compiled observed
+    ///   overlap, and by less than 0.2 s over the compiled short-range
+    ///   prediction overlap. See
     ///   [`DELTA_T_PREDICTION_HORIZON_MJD`] for the hard stop.
     ///
     /// This model is suitable for archival astronomy and telescope scheduling,

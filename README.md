@@ -35,9 +35,9 @@ Typed astronomical time primitives for Rust.
   `TimeContext::new().allow_pre_definition_utc()`.
 - Automatic `ΔT = TT - UT1` handling for `UT1` conversions via an explicit
   `TimeContext`. For the currently compiled bundle fetched 2026-04-18, the
-  default monthly-ΔT path stays within 10 ms of the bundled daily IERS-derived
-  path over the observed overlap through 2026-04-16, and within 0.2 s over the
-  compiled short-range prediction overlap through 2027-04-24. Opt into
+  default monthly-ΔT path stays within 15 ms of the bundled daily IERS-derived
+  path over the observed overlap, and within 0.2 s over the compiled
+  short-range prediction overlap. Opt into
   `TimeContext::with_builtin_eop()` when you want the highest-fidelity bundled
   UT1 path; raw EOP values are available under `tempoch::eop` and bracketed by
   the public `EOP_START_MJD` / `EOP_OBSERVED_END_MJD` / `EOP_END_MJD`

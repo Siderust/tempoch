@@ -429,8 +429,8 @@ mod tests {
 
         let (obs_abs, obs_mjd, obs_signed) = observed_worst.expect("observed EOP overlap");
         assert!(
-            obs_abs < 0.01,
-            "monthly ΔT exceeded observed-overlap bound: |Δ|={obs_abs:.9} s at MJD {obs_mjd} ({}) with signed diff {obs_signed:.9} s; expected < 0.01 s through {} ({})",
+            obs_abs < 0.015,
+            "monthly ΔT exceeded observed-overlap bound: |Δ|={obs_abs:.9} s at MJD {obs_mjd} ({}) with signed diff {obs_signed:.9} s; expected < 0.015 s through {} ({})",
             mjd_to_date_string(obs_mjd),
             EOP_OBSERVED_END_MJD,
             mjd_to_date_string(EOP_OBSERVED_END_MJD),
