@@ -132,6 +132,28 @@ jobs:
           fi
 
       # -----------------------------------------------------------------------
+      # Record data refresh in Unreleased section if release is skipped.
+      # This ensures users see that data was updated even if a release is pending.
+      # -----------------------------------------------------------------------
+      - name: Update CHANGELOG (Unreleased) if WIP detected
+        if: steps.wip.outputs.skip == 'true'
+        env:
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: |
+          set -euo pipefail
+          bash .github/scripts/update-changelog.sh unreleased
+          git add CHANGELOG.md
+          if git diff --cached --quiet; then
+            echo "No changes to CHANGELOG.md needed."
+          else
+            git commit -m "docs: record data refresh in unreleased changelog"
+            git push origin HEAD:main
+          fi
+
+      # -----------------------------------------------------------------------
       # Version bump
       # Increments the patch component of all four publishable crates and
       # rewrites dependency version constraints between them.
