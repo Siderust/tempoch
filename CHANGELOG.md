@@ -7,6 +7,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.4.3 - 2026-05-04]
+
+### Changed
+
+- Updated release dependencies to `affn 0.6.2`, `qtty 0.7.0`, and `qtty-ffi 0.7.0`.
+- Refreshed README install snippets for the `0.4.3` line.
+
 ## [0.4.2 - 2026-04-25]
 
 ### Added

@@ -1,6 +1,6 @@
 [package]
 name = "tempoch-core"
-version = "0.4.2"
+version = "0.4.3"
 edition = "2021"
 authors = ["VPRamon <vallespuigramon@gmail.com>"]
 description = "Core astronomical time primitives for tempoch."
@@ -17,9 +17,9 @@ name = "tempoch_core"
 path = "src/lib.rs"
 
 [dependencies]
-affn = { version = "0.6.1" }
+affn = { version = "0.6.2" }
 chrono = "0.4.43"
-qtty = { version = "0.6.1", features = ["julian-time"] }
+qtty = { version = "0.7.0", features = ["julian-time"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "alloc"], optional = true }
 tempoch-time-data = { path = "../tempoch-time-data", version = "0.1.0" }
 

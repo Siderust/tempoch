@@ -10,9 +10,9 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "affn"
-version = "0.6.1"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "381a7e024c56cbd97e2a39b6fe6aa6dccc1750e5ef31f795744b524cc9501e90"
+checksum = "0014e31e5ef8439603545dbc2913307dcb82910809484ddec91c58dccf7a8b9b"
 dependencies = [
  "affn-derive",
  "nalgebra",
@@ -21,9 +21,9 @@ dependencies = [
 
 [[package]]
 name = "affn-derive"
-version = "0.1.4"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82753e9be968f42991300bcee91930171a1f2a7a2d0f074a6f32b2fb19241df6"
+checksum = "808e8b27c0eaf4d3481be80676a13f3173aa4a7f31df9d1e5e2bc34901ce8a5d"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -871,9 +871,9 @@ dependencies = [
 
 [[package]]
 name = "qtty"
-version = "0.6.1"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "adc4e4fbd7aabae80c30ca07bd9583dc3bc3f6bcf8b123ff538386715aeee293"
+checksum = "61587536c9c9ec95845b7e5ddbac8afb06ce94ea10fc2728543db3f7bc0a2bc6"
 dependencies = [
  "qtty-core",
  "qtty-derive",
@@ -881,9 +881,9 @@ dependencies = [
 
 [[package]]
 name = "qtty-core"
-version = "0.6.1"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e524035941ae68ff8524dfc41d395fe721cd3c0e7eaa16a756284d59a64ddd53"
+checksum = "3b01d8237a224bea98fcd76fed95ceff6dcca63f613948ef08ecdfeb7e5e398e"
 dependencies = [
  "libm",
  "qtty-derive",
@@ -893,9 +893,9 @@ dependencies = [
 
 [[package]]
 name = "qtty-derive"
-version = "0.6.1"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75757ec156050a0343f72034061a8cfd7a4a7c49254ba55feef0c4951bceb842"
+checksum = "2d4df57ba07bf5109d76487c62a92b0d0ae13e94711cd37f0302bfa886cb44c3"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -904,9 +904,9 @@ dependencies = [
 
 [[package]]
 name = "qtty-ffi"
-version = "0.6.1"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e768485c5909c5d0e34071829a2e4e1cd9e963765da3244284fc0e44f55357db"
+checksum = "18e1481ea808f7aa18b48b650f85950631168663bc52faded612d78a89df0441"
 dependencies = [
  "cbindgen",
  "qtty",
@@ -1168,7 +1168,7 @@ dependencies = [
 
 [[package]]
 name = "tempoch"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "chrono",
  "qtty",
@@ -1178,7 +1178,7 @@ dependencies = [
 
 [[package]]
 name = "tempoch-core"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "affn",
  "chrono",
@@ -1190,7 +1190,7 @@ dependencies = [
 
 [[package]]
 name = "tempoch-ffi"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "cbindgen",
  "chrono",
