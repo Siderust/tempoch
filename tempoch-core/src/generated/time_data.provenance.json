@@ -1,7 +1,7 @@
 {
   "delta_t_observed_sha256": "9f88e53593495a09219fe956eeadea0fa9f8e3e02c310b2aa2b70852383cdf6f",
   "delta_t_predictions_sha256": "5d864fddd30b2c64d2a86d3debbb25604eb5de44370c96bccf2abd5463f3db08",
-  "eop_finals_sha256": "11c25ed53c5975d76dc43252dbf6eff2f7181b594d6effb5930fd47727083a47",
-  "fetched_utc": "2026-04-18T14:43:18",
+  "eop_finals_sha256": "eeb76193cd43c065b763d78923f8a8ce2f8a62df5d3e1519a3217fac433bdaa6",
+  "fetched_utc": "2026-05-04T18:23:57",
   "utc_tai_sha256": "54e702abdc388ae3bf8cfc5f126900a5277829ad90e80f6773df6e714a133642"
 }
