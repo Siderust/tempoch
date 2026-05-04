@@ -11,7 +11,11 @@
 # Usage (from workspace root):
 #   bash .github/scripts/update-changelog.sh <new-version>
 #
+#   Use 'unreleased' as version to update the [Unreleased] section without
+#   creating a new versioned header (used when publication is blocked by WIP).
+#
 #   Example:
+#     bash .github/scripts/update-changelog.sh unreleased
 #     bash .github/scripts/update-changelog.sh 0.4.3
 #
 # The script requires:
@@ -90,6 +94,12 @@ fi
 # Fetch timestamp from the new provenance (first 10 characters = YYYY-MM-DD).
 FETCH_DATE=$(jq_field "$NEW_PROV" "fetched_utc" | cut -c1-10)
 
+# If in 'unreleased' mode, avoid duplicate entries for the same fetch date.
+if [ "$NEW_VERSION" = "unreleased" ] && grep -q "Refreshed generated time tables (fetched $FETCH_DATE)" "$CHANGELOG"; then
+    echo "CHANGELOG.md already updated for fetch date $FETCH_DATE. Skipping."
+    exit 0
+fi
+
 # ---------------------------------------------------------------------------
 # Build the new changelog section
 # ---------------------------------------------------------------------------
@@ -100,9 +110,15 @@ TMP_ENTRY=$(mktemp /tmp/changelog_entry.XXXXXX)
 # Ensure temp file is removed on exit.
 trap 'rm -f "$TMP_ENTRY"' EXIT
 
-printf "\n## [%s] - %s\n\n### Changed\n\n- Refreshed generated time tables (fetched %s):\n%s\n" \
-    "$NEW_VERSION" "$TODAY" "$FETCH_DATE" "$(printf "%b" "$CHANGED_LINES")" \
-    > "$TMP_ENTRY"
+if [ "$NEW_VERSION" = "unreleased" ]; then
+    printf "\n### Changed\n\n- Refreshed generated time tables (fetched %s):\n%s\n" \
+        "$FETCH_DATE" "$(printf "%b" "$CHANGED_LINES")" \
+        > "$TMP_ENTRY"
+else
+    printf "\n## [%s] - %s\n\n### Changed\n\n- Refreshed generated time tables (fetched %s):\n%s\n" \
+        "$NEW_VERSION" "$TODAY" "$FETCH_DATE" "$(printf "%b" "$CHANGED_LINES")" \
+        > "$TMP_ENTRY"
+fi
 
 # ---------------------------------------------------------------------------
 # Splice the entry into CHANGELOG.md after the ## [Unreleased] heading
