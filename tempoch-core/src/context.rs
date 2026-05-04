@@ -27,8 +27,8 @@ use tempoch_time_data::TimeDataBundle;
 /// | 948–1619 | ±15 s (Stephenson & Houlden) | same |
 /// | 1620–1973 | ±0.1–1 s (Meeus biennial table) | same |
 /// | 1973 – EOP start | ~0.01 s (USNO monthly) | same |
-/// | EOP observed range | For the compiled bundle fetched 2026-04-18, < 10 ms from the bundled daily IERS-derived path through 2026-04-16 | preferred highest-fidelity bundled UT1 path |
-/// | EOP prediction range | For the compiled bundle fetched 2026-04-18, < 0.2 s from the bundled short-range daily prediction through 2027-04-24 | preferred highest-fidelity bundled UT1 path |
+/// | EOP observed range | < 15 ms from the bundled daily IERS-derived path over the compiled observed overlap | preferred highest-fidelity bundled UT1 path |
+/// | EOP prediction range | < 0.2 s from the bundled short-range daily prediction over the compiled prediction overlap | preferred highest-fidelity bundled UT1 path |
 /// | Beyond EOP | monthly ΔT only; prediction uncertainty grows | falls back to monthly ΔT |
 ///
 /// The builtin EOP is only consulted inside the captured bundle's coverage;
