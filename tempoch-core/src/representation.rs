@@ -12,7 +12,7 @@ use crate::encoding::{
 };
 use crate::error::ConversionError;
 use crate::scale::conversion::InfallibleScaleConvert;
-use crate::scale::{CoordinateScale, Scale, TAI, UTC};
+use crate::scale::{CoordinateScale, Scale, TAI, TDB, TT, UTC};
 use crate::sealed::Sealed;
 use crate::target::{ContextConversionTarget, ConversionTarget, InfallibleConversionTarget};
 use crate::time::Time;
@@ -81,12 +81,12 @@ impl TimeRepresentation for J2000s {
 
 impl TimeRepresentation for JD {
     type Unit = qtty::unit::Day;
-    const NAME: &'static str = "JD";
+    const NAME: &'static str = "Julian Day";
 }
 
 impl TimeRepresentation for MJD {
     type Unit = qtty::unit::Day;
-    const NAME: &'static str = "MJD";
+    const NAME: &'static str = "Modified Julian Day";
 }
 
 impl TimeRepresentation for Unix {
@@ -129,6 +129,7 @@ where
     qtty::Quantity<R::Unit>: fmt::Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} ", R::NAME)?;
         fmt::Display::fmt(&self.raw, f)
     }
 }
@@ -166,8 +167,13 @@ impl<S: Scale, R: TimeRepresentation> PartialOrd for EncodedTime<S, R> {
 }
 
 impl<S: Scale, R: TimeRepresentation> EncodedTime<S, R> {
+    /// Construct from a raw quantity, bypassing the finite check.
+    ///
+    /// Passing a non-finite value yields an instant whose behaviour is
+    /// unspecified. Prefer [`Self::try_new`] for user-supplied data; use this
+    /// only when the value is known to be finite (e.g. compile-time constants).
     #[inline]
-    pub(crate) const fn new_unchecked(raw: Quantity<R::Unit>) -> Self {
+    pub const fn new_unchecked(raw: Quantity<R::Unit>) -> Self {
         Self {
             raw,
             _marker: PhantomData,
@@ -284,6 +290,178 @@ pub type UnixTime = EncodedTime<UTC, Unix>;
 /// `EncodedTime<TAI, GPS>` convenience alias.
 pub type GpsTime = EncodedTime<TAI, GPS>;
 
+/// J2000.0 epoch as a TT-scale Julian Date (JD(TT) = 2 451 545.0).
+pub const J2000_TT: JulianDate<TT> =
+    EncodedTime::<TT, JD>::new_unchecked(Day::new(2_451_545.0));
+
+// ── Inherent helpers for Day-based encoded times (JD and MJD) ────────────────
+
+impl<S: Scale, R> EncodedTime<S, R>
+where
+    R: TimeRepresentation<Unit = qtty::unit::Day>,
+{
+    /// Earlier of `self` and `other`.
+    ///
+    /// Equivalent to `if self <= other { self } else { other }`.
+    #[inline]
+    pub fn min(self, other: Self) -> Self {
+        if self.raw.value() <= other.raw.value() {
+            self
+        } else {
+            other
+        }
+    }
+
+    /// Later of `self` and `other`.
+    #[inline]
+    pub fn max(self, other: Self) -> Self {
+        if self.raw.value() >= other.raw.value() {
+            self
+        } else {
+            other
+        }
+    }
+
+    /// Midpoint between `self` and `other`.
+    #[inline]
+    pub fn mean(self, other: Self) -> Self {
+        Self::new_unchecked(Day::new(
+            (self.raw.value() + other.raw.value()) * 0.5,
+        ))
+    }
+}
+
+// ── JulianDate<S> inherent helpers ───────────────────────────────────────────
+
+/// Length of a Julian year in days (exactly 365.25 d).
+pub const JULIAN_YEAR_DAYS: Day = Day::new(365.25);
+
+impl<S: CoordinateScale> JulianDate<S> {
+    /// Construct from a raw Julian Day value without validation.
+    ///
+    /// Prefer [`Self::try_new`] for untrusted input.
+    #[inline]
+    pub fn new(jd: f64) -> Self {
+        Self::new_unchecked(Day::new(jd))
+    }
+
+    /// Raw Julian Day value as `f64` (days since noon 1 January 4713 BC JD).
+    #[inline]
+    pub fn jd_value(self) -> f64 {
+        self.raw().value()
+    }
+
+    /// Julian centuries since J2000.0: `T = (JD − 2 451 545.0) / 36 525`.
+    #[inline]
+    pub fn julian_centuries(self) -> f64 {
+        (self.raw().value() - crate::constats::J2000_JD_TT.value())
+            / crate::constats::DAYS_PER_JC.value()
+    }
+
+    /// Julian millennia since J2000.0: `T = (JD − 2 451 545.0) / 365 250`.
+    #[inline]
+    pub fn julian_millennias(self) -> f64 {
+        (self.raw().value() - crate::constats::J2000_JD_TT.value())
+            / (crate::constats::DAYS_PER_JC.value() * 10.0)
+    }
+
+    /// Length of a Julian year in days (365.25 d).
+    pub const JULIAN_YEAR: Day = Day::new(365.25);
+
+    /// Length of a Julian century in days (36 525 d).
+    pub const JULIAN_CENTURY: Day = Day::new(36_525.0);
+}
+
+impl JulianDate<TT> {
+    /// J2000.0 epoch as a TT-scale Julian Date (`JD(TT) = 2 451 545.0`).
+    pub const J2000: Self = J2000_TT;
+
+    /// Convert this TT Julian Date to the TDB scale.
+    ///
+    /// Uses the Fairhead-Bretagnon periodic correction stored in the scale
+    /// conversion layer. The result is on the TDB coordinate time axis, still
+    /// expressed as a Julian Date.
+    #[inline]
+    pub fn tt_to_tdb(self) -> JulianDate<TDB> {
+        JulianDate::<TDB>::from_time_infallible(self.to_time().to_scale::<TDB>())
+    }
+
+    /// Build a TT Julian Date from a `chrono::DateTime<Utc>`.
+    ///
+    /// Converts UTC → TAI → TT internally.  Panics if the UTC time data is
+    /// unavailable for the supplied instant; use
+    /// [`Time::<UTC>::try_from_chrono`] for a fallible path.
+    #[inline]
+    pub fn from_chrono(dt: chrono::DateTime<chrono::Utc>) -> Self {
+        let utc = Time::<UTC>::from_chrono(dt);
+        Self::from_time_infallible(utc.to_scale::<TT>())
+    }
+
+    /// Convert this TT Julian Date to a `chrono::DateTime<Utc>`.
+    ///
+    /// Returns `None` if the value is outside the supported UTC range.
+    #[inline]
+    pub fn to_chrono(self) -> Option<chrono::DateTime<chrono::Utc>> {
+        self.to_time().to_scale::<UTC>().to_chrono()
+    }
+}
+
+// ── Cross-representation From conversions (JD ↔ MJD for CoordinateScales) ───
+
+impl<S: CoordinateScale> From<ModifiedJulianDate<S>> for JulianDate<S> {
+    /// Convert a Modified Julian Date to a Julian Date on the same scale.
+    #[inline]
+    fn from(mjd: ModifiedJulianDate<S>) -> Self {
+        mjd.to::<JD>()
+    }
+}
+
+impl<S: CoordinateScale> From<JulianDate<S>> for ModifiedJulianDate<S> {
+    /// Convert a Julian Date to a Modified Julian Date on the same scale.
+    #[inline]
+    fn from(jd: JulianDate<S>) -> Self {
+        jd.to::<MJD>()
+    }
+}
+
+// ── ModifiedJulianDate<S> inherent helpers ────────────────────────────────────
+
+impl<S: CoordinateScale> ModifiedJulianDate<S> {
+    /// Construct from a raw Modified Julian Day value without validation.
+    ///
+    /// Prefer [`Self::try_new`] for untrusted input.
+    #[inline]
+    pub fn new(mjd: f64) -> Self {
+        Self::new_unchecked(Day::new(mjd))
+    }
+
+    /// Raw Modified Julian Day value as `f64` (days since midnight 17 November 1858).
+    #[inline]
+    pub fn mjd_value(self) -> f64 {
+        self.raw().value()
+    }
+}
+
+impl ModifiedJulianDate<TT> {
+    /// Build a TT Modified Julian Date from a `chrono::DateTime<Utc>`.
+    ///
+    /// Converts UTC → TAI → TT internally.  Panics if UTC time data is
+    /// unavailable; use [`Time::<UTC>::try_from_chrono`] for a fallible path.
+    #[inline]
+    pub fn from_chrono(dt: chrono::DateTime<chrono::Utc>) -> Self {
+        let utc = Time::<UTC>::from_chrono(dt);
+        Self::from_time_infallible(utc.to_scale::<TT>())
+    }
+
+    /// Convert this TT Modified Julian Date to a `chrono::DateTime<Utc>`.
+    ///
+    /// Returns `None` if the value is outside the supported UTC range.
+    #[inline]
+    pub fn to_chrono(self) -> Option<chrono::DateTime<chrono::Utc>> {
+        self.to_time().to_scale::<UTC>().to_chrono()
+    }
+}
+
 macro_rules! coordinate_representation {
     ($repr:ty, $quantity:ty, $from_time:expr, $to_time:expr) => {
         impl<S: CoordinateScale> RepresentationForScale<S> for $repr {
@@ -380,6 +558,69 @@ impl InfallibleRepresentationForScale<TAI> for GPS {
     #[inline]
     fn into_time(raw: Second) -> Time<TAI> {
         Time::from_raw_gps_seconds(raw).expect("finite GPS seconds must decode")
+    }
+}
+
+// ── Arithmetic on EncodedTime ────────────────────────────────────────────────
+//
+// For JD- and MJD-based representations (both use `qtty::unit::Day`), it is
+// natural to shift an instant by a number of days and to compute the signed
+// duration between two instants.
+
+impl<S: Scale, R> core::ops::Add<Day> for EncodedTime<S, R>
+where
+    R: TimeRepresentation<Unit = qtty::unit::Day>,
+{
+    type Output = Self;
+
+    #[inline]
+    fn add(self, rhs: Day) -> Self {
+        Self::new_unchecked(Day::new(self.raw.value() + rhs.value()))
+    }
+}
+
+impl<S: Scale, R> core::ops::Sub<Day> for EncodedTime<S, R>
+where
+    R: TimeRepresentation<Unit = qtty::unit::Day>,
+{
+    type Output = Self;
+
+    #[inline]
+    fn sub(self, rhs: Day) -> Self {
+        Self::new_unchecked(Day::new(self.raw.value() - rhs.value()))
+    }
+}
+
+impl<S: Scale, R> core::ops::AddAssign<Day> for EncodedTime<S, R>
+where
+    R: TimeRepresentation<Unit = qtty::unit::Day>,
+{
+    #[inline]
+    fn add_assign(&mut self, rhs: Day) {
+        *self = *self + rhs;
+    }
+}
+
+impl<S: Scale, R> core::ops::SubAssign<Day> for EncodedTime<S, R>
+where
+    R: TimeRepresentation<Unit = qtty::unit::Day>,
+{
+    #[inline]
+    fn sub_assign(&mut self, rhs: Day) {
+        *self = *self - rhs;
+    }
+}
+
+/// `b - a` returns the signed offset in days: positive when `b` is later.
+impl<S: Scale, R> core::ops::Sub for EncodedTime<S, R>
+where
+    R: TimeRepresentation<Unit = qtty::unit::Day>,
+{
+    type Output = Day;
+
+    #[inline]
+    fn sub(self, rhs: Self) -> Day {
+        Day::new(self.raw.value() - rhs.raw.value())
     }
 }
 
@@ -538,7 +779,7 @@ mod tests {
     fn encoded_time_display_delegates_to_quantity() {
         let jd = JulianDate::<TT>::try_new(Day::new(2_451_545.123_456_789)).unwrap();
 
-        assert_eq!(format!("{jd:.9}"), "2451545.123456789 d");
+        assert_eq!(format!("{jd:.9}"), "Julian Day 2451545.123456789 d");
     }
 
     #[test]

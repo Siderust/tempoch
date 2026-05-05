@@ -40,6 +40,7 @@ mod delta_t;
 pub(crate) mod encoding;
 pub mod eop;
 pub mod error;
+pub mod ext;
 pub(crate) mod generated;
 mod interval;
 pub mod representation;
@@ -68,10 +69,12 @@ pub use error::{ConversionError, TimeDataError};
 pub use generated::{
     EOP_END_MJD, EOP_OBSERVED_END_MJD, EOP_START_MJD, MODERN_DELTA_T_OBSERVED_END_MJD,
 };
-pub use interval::{Interval, InvalidIntervalError, InvalidPeriodError, Period, PeriodListError};
+pub use interval::{complement_within, Interval, InvalidIntervalError, InvalidPeriodError, Period, PeriodListError};
+pub use ext::TimeInstant;
 pub use representation::{
     EncodedTime, GpsTime, InfallibleRepresentationForScale, J2000Seconds, J2000s, JulianDate,
-    ModifiedJulianDate, RepresentationForScale, TimeRepresentation, Unix, UnixTime, GPS, JD, MJD,
+    J2000_TT, JULIAN_YEAR_DAYS, ModifiedJulianDate, RepresentationForScale, TimeRepresentation,
+    Unix, UnixTime, GPS, JD, MJD,
 };
 pub use scalar::{
     scalar_add_days, scalar_difference_in_days, time_tt_from_scalar, time_tt_to_scalar, ScaleKind,

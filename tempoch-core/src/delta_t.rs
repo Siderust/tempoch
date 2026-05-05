@@ -257,7 +257,7 @@ fn delta_t_extrapolated(jd_ut: Day) -> Second {
 ///
 /// Returns `Err(ConversionError::Ut1HorizonExceeded)` for any date beyond
 /// [`DELTA_T_PREDICTION_HORIZON_MJD`], consistent with the behaviour of
-/// [`Time::to_scale_with::<UT1>`] scale conversions.
+/// [`crate::Time::to_scale_with`] scale conversions.
 ///
 /// For dates that require an unconstrained extrapolation beyond the horizon,
 /// use [`delta_t_seconds_extrapolated`] instead — but note that those values

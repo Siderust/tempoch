@@ -55,9 +55,9 @@ impl std::error::Error for ConversionError {}
 
 /// Error surface for runtime time-data operations.
 ///
-/// Returned by [`crate::update_runtime_time_data`] and
-/// [`crate::refresh_runtime_time_data`] when the runtime data bundle cannot be
-/// loaded or refreshed.
+/// Returned by `update_runtime_time_data` and `refresh_runtime_time_data`
+/// (available with the `runtime-data-fetch` feature) when the runtime data
+/// bundle cannot be loaded or refreshed.
 #[derive(Debug)]
 pub enum TimeDataError {
     /// An I/O error occurred while reading or writing the data bundle.
