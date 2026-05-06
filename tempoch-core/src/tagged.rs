@@ -219,4 +219,52 @@ mod tests {
             TaggedPeriod(period)
         );
     }
+
+    #[test]
+    fn tagged_from_impls_preserve_inner_values() {
+        let tt = Time::<TT>::from_raw_j2000_seconds(Second::new(3.5)).unwrap();
+        let tagged_time: TaggedTime<TT> = tt.into();
+        let time: Time<TT> = tagged_time.into();
+        assert_eq!(time, tt);
+
+        let period = Period::<TT>::new(
+            Time::<TT>::from_raw_j2000_seconds(Second::new(1.0)).unwrap(),
+            Time::<TT>::from_raw_j2000_seconds(Second::new(2.0)).unwrap(),
+        );
+        let tagged_period: TaggedPeriod<TT> = period.into();
+        let decoded_period: Period<TT> = tagged_period.into();
+        assert_eq!(decoded_period, period);
+    }
+
+    #[test]
+    fn tagged_period_rejects_outer_and_nested_scale_mismatches() {
+        let outer_err = serde_json::from_value::<TaggedPeriod<TT>>(json!({
+            "scale": "UTC",
+            "start": {"scale": "TT", "hi": 1.0, "lo": 0.0},
+            "end": {"scale": "TT", "hi": 2.0, "lo": 0.0}
+        }))
+        .unwrap_err();
+        assert!(outer_err.to_string().contains("expected scale TT"));
+
+        let nested_err = serde_json::from_value::<TaggedPeriod<TT>>(json!({
+            "scale": "TT",
+            "start": {"scale": "UTC", "hi": 1.0, "lo": 0.0},
+            "end": {"scale": "TT", "hi": 2.0, "lo": 0.0}
+        }))
+        .unwrap_err();
+        assert!(nested_err.to_string().contains("expected scale TT"));
+    }
+
+    #[test]
+    fn tagged_period_rejects_reversed_endpoints() {
+        let err = serde_json::from_value::<TaggedPeriod<TT>>(json!({
+            "scale": "TT",
+            "start": {"scale": "TT", "hi": 2.0, "lo": 0.0},
+            "end": {"scale": "TT", "hi": 1.0, "lo": 0.0}
+        }))
+        .unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("interval start must not be after end"));
+    }
 }

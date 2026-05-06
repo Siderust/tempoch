@@ -66,3 +66,27 @@ impl<S: CoordinateScale> TimeInstant for JulianDate<S> {
         JulianDate::<S>::new_unchecked(Day::new(self.raw().value() + duration.value()))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::representation::{J2000Seconds, JulianDate, ModifiedJulianDate};
+    use crate::scale::TT;
+
+    #[test]
+    fn time_instant_trait_supports_time_and_encoded_dates() {
+        let tt = J2000Seconds::<TT>::try_new(Second::new(10.0))
+            .unwrap()
+            .to_time();
+        let tt_later = tt.add_duration(Second::new(2.5));
+        assert_eq!(tt_later.difference(&tt), Second::new(2.5));
+
+        let mjd = ModifiedJulianDate::<TT>::new(60_000.0);
+        let mjd_later = mjd.add_duration(Day::new(1.25));
+        assert_eq!(mjd_later.difference(&mjd), Day::new(1.25));
+
+        let jd = JulianDate::<TT>::new(2_460_000.0);
+        let jd_later = jd.add_duration(Day::new(0.5));
+        assert_eq!(jd_later.difference(&jd), Day::new(0.5));
+    }
+}

@@ -105,3 +105,26 @@ where
         Self::try_new(raw.start, raw.end).map_err(serde::de::Error::custom)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::representation::{J2000s, JulianDate, JD};
+    use crate::scale::TT;
+    use qtty::{Day, Second};
+
+    #[test]
+    fn encoded_time_serde_roundtrips_raw_quantity() {
+        let jd = JulianDate::<TT>::try_new(Day::new(2_451_545.25)).unwrap();
+        let encoded = serde_json::to_string(&jd).unwrap();
+        let decoded: JulianDate<TT> = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded, jd);
+
+        let seconds = EncodedTime::<TT, J2000s>::try_new(Second::new(12.5)).unwrap();
+        let encoded = serde_json::to_string(&seconds).unwrap();
+        let decoded: EncodedTime<TT, J2000s> = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded, seconds);
+
+        assert!(serde_json::from_str::<EncodedTime<TT, JD>>("null").is_err());
+    }
+}

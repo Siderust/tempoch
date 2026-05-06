@@ -315,4 +315,39 @@ mod tests {
         );
         assert!((shifted - utc - Second::new(10.0)).abs() < Second::new(1e-12));
     }
+
+    #[test]
+    #[allow(clippy::clone_on_copy)]
+    fn scale_axis_debug_and_time_formatting_are_stable() {
+        let axis = ScaleAxis::<TT>(PhantomData);
+        assert_eq!(format!("{axis:?}"), "ScaleAxis(\"TT\")");
+
+        let time = Time::<TT>::from_raw_j2000_seconds(Second::new(1.25)).unwrap();
+        let cloned = time.clone();
+        assert_eq!(cloned, time);
+        assert!(format!("{time:?}").starts_with("Time<TT>("));
+        assert_eq!(format!("{time}"), "TT 1.250000000 s");
+    }
+
+    #[test]
+    fn time_partial_order_and_assign_arithmetic() {
+        let start = Time::<TT>::from_raw_j2000_seconds(Second::new(10.0)).unwrap();
+        let mut shifted = start;
+
+        shifted += Second::new(3.0);
+        assert!(shifted > start);
+        assert_eq!(shifted - start, Second::new(3.0));
+
+        shifted -= Second::new(1.25);
+        assert_eq!(shifted - start, Second::new(1.75));
+        assert_eq!(shifted - Second::new(1.75), start);
+    }
+
+    #[test]
+    fn raw_j2000_constructor_rejects_nonfinite() {
+        assert!(matches!(
+            Time::<TT>::from_raw_j2000_seconds(Second::new(f64::NAN)),
+            Err(ConversionError::NonFinite)
+        ));
+    }
 }

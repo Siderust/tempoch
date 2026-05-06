@@ -770,7 +770,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scale::TT;
+    use crate::scale::{TAI, TT, UT1, UTC};
 
     #[test]
     fn encoded_time_display_delegates_to_quantity() {
@@ -786,5 +786,112 @@ mod tests {
 
         assert!(formatted.contains("e"));
         assert!(formatted.ends_with(" s"));
+    }
+
+    #[test]
+    #[allow(clippy::clone_on_copy)]
+    fn encoded_time_core_helpers_and_day_arithmetic() {
+        let base = JulianDate::<TT>::try_new(Day::new(2_451_545.0)).unwrap();
+        let later = JulianDate::<TT>::try_new(Day::new(2_451_547.0)).unwrap();
+
+        assert_eq!(base.clone(), base);
+        assert!(format!("{base:?}").contains("Julian Day"));
+        assert!(format!("{base:.2E}").ends_with(" d"));
+        assert_eq!(base.raw(), Day::new(2_451_545.0));
+        assert_eq!(base.quantity(), base.raw());
+        assert_eq!(base.jd_value(), 2_451_545.0);
+        assert_eq!(base.julian_centuries(), 0.0);
+        assert_eq!(base.julian_millennias(), 0.0);
+
+        assert_eq!(base.min(later), base);
+        assert_eq!(later.min(base), base);
+        assert_eq!(base.max(later), later);
+        assert_eq!(later.max(base), later);
+        assert_eq!(base.mean(later).raw(), Day::new(2_451_546.0));
+
+        assert_eq!((base + Day::new(2.0)).raw(), later.raw());
+        assert_eq!((later - Day::new(2.0)).raw(), base.raw());
+        assert_eq!(later - base, Day::new(2.0));
+
+        let mut shifted = base;
+        shifted += Day::new(3.0);
+        shifted -= Day::new(1.0);
+        assert_eq!(shifted, later);
+
+        let mjd = ModifiedJulianDate::<TT>::new(51_544.5);
+        assert_eq!(mjd.mjd_value(), 51_544.5);
+        assert_eq!(JulianDate::<TT>::from(mjd).raw(), base.raw());
+        assert_eq!(
+            ModifiedJulianDate::<TT>::from(base).raw(),
+            Day::new(51_544.5)
+        );
+    }
+
+    #[test]
+    fn encoded_time_conversion_helpers_cover_targets() {
+        let ctx = TimeContext::new();
+        let seconds = J2000Seconds::<TT>::try_new(Second::new(86_400.0)).unwrap();
+
+        let time = seconds.try_to_time().unwrap();
+        assert_eq!(seconds.to_time_with(&ctx).unwrap(), time);
+        assert_eq!(seconds.to_time(), time);
+
+        let jd = seconds.to::<JD>();
+        let mjd = seconds.try_to::<MJD>().unwrap();
+        let ut1 = seconds.to_with::<UT1>(&ctx).unwrap();
+        assert!(ut1.raw_seconds_pair().0.is_finite());
+
+        assert_eq!(jd.raw(), Day::new(2_451_546.0));
+        assert_eq!(mjd.raw(), Day::new(51_545.5));
+
+        let time_from_encoded: Time<TT> = seconds.into();
+        let encoded_from_time: J2000Seconds<TT> = time_from_encoded.into();
+        assert_eq!(
+            encoded_from_time,
+            J2000Seconds::<TT>::try_new(Second::new(86_400.0)).unwrap()
+        );
+
+        assert!(J2000Seconds::<TT>::try_new(Second::new(f64::NAN)).is_err());
+    }
+
+    #[test]
+    fn gps_and_unix_encoded_representations_roundtrip() {
+        let ctx = TimeContext::new();
+        let utc =
+            Time::<UTC>::from_raw_unix_seconds_with(Second::new(946_728_000.0), &ctx).unwrap();
+
+        let unix = utc.to_with::<Unix>(&ctx).unwrap();
+        let utc_from_unix = unix.to_time_with(&ctx).unwrap();
+        assert!((utc_from_unix - utc).abs() < Second::new(1e-4));
+
+        let ut1_from_unix = unix.to_with::<UT1>(&ctx).unwrap();
+        assert!(ut1_from_unix.raw_seconds_pair().0.is_finite());
+
+        let tai = utc.to::<TAI>();
+        let gps = tai.try_to::<GPS>().unwrap();
+        assert_eq!(gps.try_to_time().unwrap(), tai);
+        assert_eq!(gps.to_time_with(&ctx).unwrap(), tai);
+
+        let gps_as_jd = gps.try_to::<JD>().unwrap();
+        assert!(gps_as_jd.raw().is_finite());
+    }
+
+    #[test]
+    fn tt_jd_and_mjd_chrono_helpers_roundtrip() {
+        let dt = chrono::DateTime::from_timestamp(946_728_000, 250_000_000).unwrap();
+
+        let jd = JulianDate::<TT>::from_chrono(dt);
+        let jd_back = jd.to_chrono().unwrap();
+        let jd_delta_ns =
+            jd_back.timestamp_nanos_opt().unwrap() - dt.timestamp_nanos_opt().unwrap();
+        assert!(jd_delta_ns.abs() < 50_000);
+
+        let mjd = ModifiedJulianDate::<TT>::from_chrono(dt);
+        let mjd_back = mjd.to_chrono().unwrap();
+        let mjd_delta_ns =
+            mjd_back.timestamp_nanos_opt().unwrap() - dt.timestamp_nanos_opt().unwrap();
+        assert!(mjd_delta_ns.abs() < 50_000);
+
+        assert!(JulianDate::<TT>::J2000.tt_to_tdb().raw().is_finite());
     }
 }
