@@ -40,7 +40,6 @@ where
     }
 }
 
-
 impl<S: Scale> Serialize for Time<S> {
     fn serialize<Ser>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error>
     where

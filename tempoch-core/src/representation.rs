@@ -291,8 +291,7 @@ pub type UnixTime = EncodedTime<UTC, Unix>;
 pub type GpsTime = EncodedTime<TAI, GPS>;
 
 /// J2000.0 epoch as a TT-scale Julian Date (JD(TT) = 2 451 545.0).
-pub const J2000_TT: JulianDate<TT> =
-    EncodedTime::<TT, JD>::new_unchecked(Day::new(2_451_545.0));
+pub const J2000_TT: JulianDate<TT> = EncodedTime::<TT, JD>::new_unchecked(Day::new(2_451_545.0));
 
 // ── Inherent helpers for Day-based encoded times (JD and MJD) ────────────────
 
@@ -325,9 +324,7 @@ where
     /// Midpoint between `self` and `other`.
     #[inline]
     pub fn mean(self, other: Self) -> Self {
-        Self::new_unchecked(Day::new(
-            (self.raw.value() + other.raw.value()) * 0.5,
-        ))
+        Self::new_unchecked(Day::new((self.raw.value() + other.raw.value()) * 0.5))
     }
 }
 

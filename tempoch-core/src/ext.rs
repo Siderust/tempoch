@@ -7,8 +7,8 @@ use qtty::Day;
 
 use crate::representation::{JulianDate, ModifiedJulianDate};
 use crate::scale::CoordinateScale;
-use crate::time::Time;
 use crate::scale::TT;
+use crate::time::Time;
 use qtty::Second;
 
 /// Provides arithmetic on [`Time<S>`] values via seconds duration.
