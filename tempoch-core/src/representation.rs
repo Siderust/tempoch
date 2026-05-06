@@ -770,6 +770,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::active::{active_time_data, with_test_time_data};
     use crate::scale::{TAI, TT, UT1, UTC};
 
     #[test]
@@ -878,20 +879,23 @@ mod tests {
 
     #[test]
     fn tt_jd_and_mjd_chrono_helpers_roundtrip() {
-        let dt = chrono::DateTime::from_timestamp(946_728_000, 250_000_000).unwrap();
+        let bundle = active_time_data().as_ref().clone();
+        with_test_time_data(bundle, || {
+            let dt = chrono::DateTime::from_timestamp(946_728_000, 250_000_000).unwrap();
 
-        let jd = JulianDate::<TT>::from_chrono(dt);
-        let jd_back = jd.to_chrono().unwrap();
-        let jd_delta_ns =
-            jd_back.timestamp_nanos_opt().unwrap() - dt.timestamp_nanos_opt().unwrap();
-        assert!(jd_delta_ns.abs() < 50_000);
+            let jd = JulianDate::<TT>::from_chrono(dt);
+            let jd_back = jd.to_chrono().unwrap();
+            let jd_delta_ns =
+                jd_back.timestamp_nanos_opt().unwrap() - dt.timestamp_nanos_opt().unwrap();
+            assert!(jd_delta_ns.abs() < 50_000);
 
-        let mjd = ModifiedJulianDate::<TT>::from_chrono(dt);
-        let mjd_back = mjd.to_chrono().unwrap();
-        let mjd_delta_ns =
-            mjd_back.timestamp_nanos_opt().unwrap() - dt.timestamp_nanos_opt().unwrap();
-        assert!(mjd_delta_ns.abs() < 50_000);
+            let mjd = ModifiedJulianDate::<TT>::from_chrono(dt);
+            let mjd_back = mjd.to_chrono().unwrap();
+            let mjd_delta_ns =
+                mjd_back.timestamp_nanos_opt().unwrap() - dt.timestamp_nanos_opt().unwrap();
+            assert!(mjd_delta_ns.abs() < 50_000);
 
-        assert!(JulianDate::<TT>::J2000.tt_to_tdb().raw().is_finite());
+            assert!(JulianDate::<TT>::J2000.tt_to_tdb().raw().is_finite());
+        });
     }
 }
