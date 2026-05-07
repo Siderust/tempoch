@@ -66,6 +66,22 @@ Typed astronomical time primitives for Rust.
 - A utility `Interval<T>` type for half-open time ranges over `Time<A>`,
   with intersection, normalization, validation, and complement helpers.
 
+## Compiled Tables And Official References
+
+The generated tables under `tempoch-core/src/generated/` are tied to explicit
+authoritative sources:
+
+| Generated table | Purpose | Official reference | Canonical upstream |
+|---|---|---|---|
+| `UTC_TAI_SEGMENTS` | UTC-to-TAI history, including pre-1972 rate segments and post-1972 leap-second steps | IERS Bulletin C / `UTC-TAI.history` | `https://hpiers.obspm.fr/eoppc/bul/bulc/UTC-TAI.history` |
+| `MODERN_DELTA_T_POINTS` | Compiled modern `ΔT = TT - UT1` series | USNO observed monthly `deltat.data` plus USNO predicted `deltat.preds` | `https://maia.usno.navy.mil/ser7/deltat.data` and `https://maia.usno.navy.mil/ser7/deltat.preds` |
+| `EOP_POINTS` | Daily Earth-orientation parameters used by the bundled UT1/EOP path | IERS combined Bulletin A + C04 file `finals2000A.all` | `https://datacenter.iers.org/data/9/finals2000A.all` |
+
+`MODERN_DELTA_T_POINTS` is a derived bundle in this crate: the observed USNO
+monthly series is concatenated with C0-adjusted USNO predictions, and the
+observed/predicted boundary is exposed through
+`MODERN_DELTA_T_OBSERVED_END_MJD`.
+
 **Storage model:** `Time<S>` stores a compensated `(hi, lo)` pair of seconds
 since J2000 TT on the target axis. Tags such as `JD`, `MJD`, `Unix`, and
 `GPS` are conversion targets, not storage types.
