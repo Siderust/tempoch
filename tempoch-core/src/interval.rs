@@ -356,8 +356,12 @@ pub fn complement_within<T: Copy + PartialOrd>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::representation::{JulianDate, ModifiedJulianDate, MJD};
-    use crate::{Time, TT};
+    #[cfg(feature = "serde")]
+    use crate::representation::JulianDate;
+    use crate::representation::{ModifiedJulianDate, MJD};
+    #[cfg(feature = "serde")]
+    use crate::Time;
+    use crate::TT;
     use qtty::Day;
     #[cfg(feature = "serde")]
     use serde::de::{value, IntoDeserializer};
