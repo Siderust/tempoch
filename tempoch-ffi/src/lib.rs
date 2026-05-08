@@ -20,11 +20,15 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
 pub mod carriers;
+mod constats;
+mod eop;
 mod error;
 mod period;
 mod time;
 
 pub use carriers::*;
+pub use constats::*;
+pub use eop::*;
 pub use error::*;
 pub use period::*;
 pub use time::*;
@@ -91,6 +95,12 @@ mod tests {
         assert_eq!(std::mem::align_of::<TempochPeriodMjd>(), 8);
     }
 
+    #[test]
+    fn layout_tempoch_eop_values() {
+        assert_eq!(std::mem::size_of::<TempochEopValues>(), 64);
+        assert_eq!(std::mem::align_of::<TempochEopValues>(), 8);
+    }
+
     // ── Status discriminants are stable ───────────────────────────────────
 
     #[test]
@@ -104,6 +114,8 @@ mod tests {
         assert_eq!(TempochStatus::InvalidDurationUnit as i32, 6);
         assert_eq!(TempochStatus::InternalPanic as i32, 7);
         assert_eq!(TempochStatus::Ut1HorizonExceeded as i32, 8);
+        assert_eq!(TempochStatus::PeriodListUnsorted as i32, 9);
+        assert_eq!(TempochStatus::PeriodListOverlapping as i32, 10);
     }
 
     // ── ScaleId discriminants are stable ──────────────────────────────────
