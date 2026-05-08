@@ -7,7 +7,32 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
-## [0.4.3 - 2026-05-04]
+### Removed
+
+- **BREAKING:** Removed deprecated `JulianTimeExt` trait and all its method implementations. All methods have been available as inherent methods on `JulianDate<S>` and `ModifiedJulianDate<S>` since version 0.4.4:
+  * `.jd_value()`, `.mjd_value()` on `EncodedTime`, `JulianDate`, `ModifiedJulianDate`
+  * `.julian_centuries()`, `.julian_millennias()` on encoded time types
+  * `.quantity()` on encoded time types
+  * `.min()`, `.max()`, `.mean()` on encoded time types
+- **BREAKING:** Removed deprecated `EncodedTime<S, JD>::value()` alias (use `.jd_value()` or `.raw().value()`).
+- **BREAKING:** Removed deprecated `EncodedTime<S, MJD>::value()` alias (use `.mjd_value()` or `.raw().value()`).
+- **BREAKING:** Removed deprecated `JulianDate::from_utc()` and `to_utc()` (use `from_chrono()` and `to_chrono()`).
+- **BREAKING:** Removed deprecated `ModifiedJulianDate::from_utc()` and `to_utc()` (use `from_chrono()` and `to_chrono()`).
+
+### Fixed
+
+* Resolved all `cargo doc --no-deps` intra-doc link warnings (10 warnings → 0):
+  * `context.rs` — fixed `Time::<UTC>::try_from_chrono_with` link to use `crate::` prefix.
+  * `delta_t.rs` — fixed `Time::to_scale_with::<UT1>` link to use `crate::` prefix.
+  * `eop.rs` — fixed `EOP_OBSERVED_END_MJD` link to use `crate::` prefix; removed
+    broken link to private `crate::generated::eop_data`.
+  * `error.rs` — replaced broken links to feature-gated `update_runtime_time_data` /
+    `refresh_runtime_time_data` with plain prose.
+  * `scale/mod.rs` — rewrote UTC "Authoritative UTC API" section, removing references
+    to non-existent `from_unix_seconds` / `unix_seconds` methods and replacing them with
+    the correct `try_to::<Unix>()` API; fixed all `Time::` links to use `crate::` prefix.
+
+
 
 ### Changed
 

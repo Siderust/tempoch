@@ -6,11 +6,10 @@
 //!
 //! The series combines observed Bulletin C04 values (flag `I` in the
 //! upstream file) with short-range Bulletin A predictions (flag `P`). The
-//! boundary between the two sub-ranges is [`EOP_OBSERVED_END_MJD`].
+//! boundary between the two sub-ranges is [`crate::EOP_OBSERVED_END_MJD`].
 //!
-//! The baseline series is loaded at compile time from
-//! [`crate::generated::eop_data`]. Runtime refresh can replace the active
-//! bundle used by these helpers.
+//! The baseline series is loaded at compile time from the generated EOP data
+//! module. Runtime refresh can replace the active bundle used by these helpers.
 
 use crate::data::active::{active_time_data, time_data_eop_at};
 use qtty::{Day, Second};

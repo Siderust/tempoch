@@ -84,13 +84,8 @@ define_civil_scale!(
     /// Use the civil layer for any operation that depends on the UTC-TAI
     /// offset (i.e., leap seconds):
     ///
-    /// * [`Time::<UTC>::from_chrono`] / [`try_from_chrono`] / [`try_to_chrono`]
-    /// * [`Time::<UTC>::from_unix_seconds`] / [`unix_seconds`]
-    ///
-    /// [`try_from_chrono`]: crate::Time::try_from_chrono
-    /// [`try_to_chrono`]: crate::Time::try_to_chrono
-    /// [`from_unix_seconds`]: crate::Time::from_unix_seconds
-    /// [`unix_seconds`]: crate::Time::unix_seconds
+    /// * [`crate::Time::<UTC>::from_chrono`] / [`crate::Time::try_from_chrono`] / [`crate::Time::try_to_chrono`]
+    /// * Unix time: `time.try_to::<`[`crate::Unix`]`>()` returns a [`crate::UnixTime`]
     UTC = "UTC"
 );
 
