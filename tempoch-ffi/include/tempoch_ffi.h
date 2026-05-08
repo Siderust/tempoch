@@ -311,8 +311,8 @@ tempoch_status_t tempoch_period_mjd_intersection(struct tempoch_period_mjd_t a,
 // microseconds. Callers should not assume nanosecond-exact reversibility
 // through the JD(TT) axis.
 //
-// Returns `NaN` if `unix` is non-finite or outside the supported UTC civil range.
- double tempoch_unix_to_jd(double unix);
+// Returns `NaN` if `unix_ts` is non-finite or outside the supported UTC civil range.
+ double tempoch_unix_to_jd(double unix_ts);
 
 // Create a Unix timestamp from seconds since 1970-01-01T00:00:00 UTC.
 //
@@ -325,7 +325,7 @@ tempoch_status_t tempoch_period_mjd_intersection(struct tempoch_period_mjd_t a,
 // via [`tempoch_jd_to_unix`] or [`tempoch_unix_from_seconds`].
 //
 // This is also a convenience identity confirming the seconds convention.
- double tempoch_unix_to_seconds(double unix);
+ double tempoch_unix_to_seconds(double unix_ts);
 
 // Return ΔT = TT − UT1 in seconds for a Julian Date.
 //
