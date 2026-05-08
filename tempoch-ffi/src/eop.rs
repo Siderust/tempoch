@@ -64,10 +64,7 @@ pub extern "C" fn tempoch_eop_covers(mjd_utc: f64) -> bool {
 /// # Safety
 /// `out` must be a valid, writable pointer to `TempochEopValues`.
 #[no_mangle]
-pub unsafe extern "C" fn tempoch_eop_at(
-    mjd_utc: f64,
-    out: *mut TempochEopValues,
-) -> TempochStatus {
+pub unsafe extern "C" fn tempoch_eop_at(mjd_utc: f64, out: *mut TempochEopValues) -> TempochStatus {
     catch_panic!(TempochStatus::InternalPanic, {
         if out.is_null() {
             return TempochStatus::NullPointer;
