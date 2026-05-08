@@ -12,7 +12,7 @@ name = "tempoch_ffi"
 crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
-tempoch = { path = "../tempoch", version = "0.4.3" }
+tempoch = { path = "../tempoch", version = "0.4.4" }
 qtty = "0.7.0"
 qtty-ffi = "0.7.0"
 chrono = "0.4.44"
