@@ -7,7 +7,7 @@ use crate::catch_panic;
 use crate::error::TempochStatus;
 use qtty::Day;
 use qtty_ffi::{QttyQuantity, UnitId};
-use tempoch::{Interval, ModifiedJulianDate, Time, TT};
+use tempoch::{Interval, ModifiedJulianDate, PeriodListError, Time, TT};
 
 type MjdPeriod = Interval<Time<TT>>;
 
@@ -127,6 +127,336 @@ pub unsafe extern "C" fn tempoch_period_mjd_free(ptr: *mut TempochPeriodMjd, cou
             let _ = Box::from_raw(std::ptr::slice_from_raw_parts_mut(ptr, count));
         }
     }
+}
+
+// ── Helper utilities ──────────────────────────────────────────────────────────
+
+/// Convert a `PeriodListError` to the appropriate `TempochStatus`.
+#[inline]
+fn period_list_error_to_status(e: PeriodListError) -> TempochStatus {
+    match e {
+        PeriodListError::InvalidInterval { .. } => TempochStatus::InvalidPeriod,
+        PeriodListError::Unsorted { .. } => TempochStatus::PeriodListUnsorted,
+        PeriodListError::Overlapping { .. } => TempochStatus::PeriodListOverlapping,
+    }
+}
+
+/// Convert a C array of `TempochPeriodMjd` to a `Vec<MjdPeriod>`.
+///
+/// # Safety
+/// `ptr` must point to `count` valid, initialized `TempochPeriodMjd` values.
+unsafe fn slice_to_periods(
+    ptr: *const TempochPeriodMjd,
+    count: usize,
+) -> Result<Vec<MjdPeriod>, TempochStatus> {
+    let slice = unsafe { std::slice::from_raw_parts(ptr, count) };
+    slice.iter().map(|p| p.try_to_period()).collect()
+}
+
+/// Convert a `Vec<MjdPeriod>` to a heap-allocated C array.
+///
+/// The caller is responsible for freeing the returned pointer with
+/// `tempoch_period_mjd_free(*out, *out_count)`.
+fn periods_to_heap(
+    periods: Vec<MjdPeriod>,
+    out: *mut *mut TempochPeriodMjd,
+    out_count: *mut usize,
+) {
+    let ffi_periods: Vec<TempochPeriodMjd> =
+        periods.iter().map(TempochPeriodMjd::from_period).collect();
+    let mut boxed = ffi_periods.into_boxed_slice();
+    let count = boxed.len();
+    let ptr = boxed.as_mut_ptr();
+    std::mem::forget(boxed);
+    unsafe {
+        *out = ptr;
+        *out_count = count;
+    }
+}
+
+// ── Point-in-period test ──────────────────────────────────────────────────────
+
+/// Return `true` when `mjd` is within the half-open interval `[start, end)`.
+#[no_mangle]
+pub extern "C" fn tempoch_period_mjd_contains(period: TempochPeriodMjd, mjd: f64) -> bool {
+    mjd >= period.start_mjd && mjd < period.end_mjd
+}
+
+// ── Pairwise union ────────────────────────────────────────────────────────────
+
+/// Compute the union of two MJD periods.
+///
+/// Overlapping or touching periods are merged into one; disjoint periods
+/// produce two entries.  The result is written into the caller-provided
+/// two-element array `out[0..2]`; `*out_count` is set to 1 or 2.
+///
+/// Returns `InvalidPeriod` if either input period is malformed.
+///
+/// # Safety
+/// `out` must point to at least two writable `TempochPeriodMjd` values.
+/// `out_count` must be a valid writable pointer to `uintptr_t`.
+#[no_mangle]
+pub unsafe extern "C" fn tempoch_period_mjd_union(
+    a: TempochPeriodMjd,
+    b: TempochPeriodMjd,
+    out: *mut TempochPeriodMjd,
+    out_count: *mut usize,
+) -> TempochStatus {
+    catch_panic!(TempochStatus::InternalPanic, {
+        if out.is_null() || out_count.is_null() {
+            return TempochStatus::NullPointer;
+        }
+        let pa = match a.try_to_period() {
+            Ok(p) => p,
+            Err(status) => return status,
+        };
+        let pb = match b.try_to_period() {
+            Ok(p) => p,
+            Err(status) => return status,
+        };
+        let result = pa.union(&pb);
+        unsafe {
+            *out_count = result.len();
+            for (i, p) in result.iter().enumerate() {
+                *out.add(i) = TempochPeriodMjd::from_period(p);
+            }
+        }
+        TempochStatus::Ok
+    })
+}
+
+// ── Period list operations ────────────────────────────────────────────────────
+
+/// Validate that a period list is sorted, non-overlapping, and each
+/// `start <= end`.
+///
+/// Returns `Ok` if the list is valid, `InvalidPeriod` for malformed
+/// intervals, `PeriodListUnsorted` for ordering violations, and
+/// `PeriodListOverlapping` for overlapping intervals.
+///
+/// Passing a null pointer with `count == 0` is valid and returns `Ok`.
+///
+/// # Safety
+/// `periods` must point to `count` valid, initialized `TempochPeriodMjd`
+/// values (or be null when `count == 0`).
+#[no_mangle]
+pub unsafe extern "C" fn tempoch_period_list_validate(
+    periods: *const TempochPeriodMjd,
+    count: usize,
+) -> TempochStatus {
+    catch_panic!(TempochStatus::InternalPanic, {
+        if count == 0 {
+            return TempochStatus::Ok;
+        }
+        if periods.is_null() {
+            return TempochStatus::NullPointer;
+        }
+        let rust_periods = match unsafe { slice_to_periods(periods, count) } {
+            Ok(ps) => ps,
+            Err(status) => return status,
+        };
+        match Interval::validate(&rust_periods) {
+            Ok(()) => TempochStatus::Ok,
+            Err(e) => period_list_error_to_status(e),
+        }
+    })
+}
+
+/// Compute the complement of `periods` within `outer`: the gaps inside
+/// `outer` that are not covered by any period in the list.
+///
+/// `periods` must be sorted and non-overlapping.  The result is heap-
+/// allocated; the caller must free it with `tempoch_period_mjd_free`.
+///
+/// Returns `InvalidPeriod` for malformed inputs, `PeriodListUnsorted` or
+/// `PeriodListOverlapping` for invalid list structure.
+///
+/// # Safety
+/// - `periods` must point to `count` valid `TempochPeriodMjd` values (or be
+///   null when `count == 0`).
+/// - `out` and `out_count` must be valid writable pointers.
+#[no_mangle]
+pub unsafe extern "C" fn tempoch_period_list_complement(
+    outer: TempochPeriodMjd,
+    periods: *const TempochPeriodMjd,
+    count: usize,
+    out: *mut *mut TempochPeriodMjd,
+    out_count: *mut usize,
+) -> TempochStatus {
+    catch_panic!(TempochStatus::InternalPanic, {
+        if out.is_null() || out_count.is_null() {
+            return TempochStatus::NullPointer;
+        }
+        let outer_period = match outer.try_to_period() {
+            Ok(p) => p,
+            Err(status) => return status,
+        };
+        let input: Vec<MjdPeriod> = if count == 0 {
+            Vec::new()
+        } else {
+            if periods.is_null() {
+                return TempochStatus::NullPointer;
+            }
+            match unsafe { slice_to_periods(periods, count) } {
+                Ok(ps) => ps,
+                Err(status) => return status,
+            }
+        };
+        match outer_period.try_complement(&input) {
+            Ok(gaps) => {
+                periods_to_heap(gaps, out, out_count);
+                TempochStatus::Ok
+            }
+            Err(e) => period_list_error_to_status(e),
+        }
+    })
+}
+
+/// Intersect two sorted, non-overlapping period lists.
+///
+/// The result is heap-allocated; the caller must free it with
+/// `tempoch_period_mjd_free`.
+///
+/// Returns `InvalidPeriod`, `PeriodListUnsorted`, or `PeriodListOverlapping`
+/// when either input list is invalid.
+///
+/// # Safety
+/// - `a` / `b` must point to `a_count` / `b_count` valid periods (or be null
+///   when the corresponding count is 0).
+/// - `out` and `out_count` must be valid writable pointers.
+#[no_mangle]
+pub unsafe extern "C" fn tempoch_period_list_intersect(
+    a: *const TempochPeriodMjd,
+    a_count: usize,
+    b: *const TempochPeriodMjd,
+    b_count: usize,
+    out: *mut *mut TempochPeriodMjd,
+    out_count: *mut usize,
+) -> TempochStatus {
+    catch_panic!(TempochStatus::InternalPanic, {
+        if out.is_null() || out_count.is_null() {
+            return TempochStatus::NullPointer;
+        }
+        let load = |ptr: *const TempochPeriodMjd, cnt: usize| {
+            if cnt == 0 {
+                Ok(Vec::new())
+            } else if ptr.is_null() {
+                Err(TempochStatus::NullPointer)
+            } else {
+                unsafe { slice_to_periods(ptr, cnt) }
+            }
+        };
+        let ra = match load(a, a_count) {
+            Ok(ps) => ps,
+            Err(s) => return s,
+        };
+        let rb = match load(b, b_count) {
+            Ok(ps) => ps,
+            Err(s) => return s,
+        };
+        match Interval::try_intersect_many(&ra, &rb) {
+            Ok(result) => {
+                periods_to_heap(result, out, out_count);
+                TempochStatus::Ok
+            }
+            Err(e) => period_list_error_to_status(e),
+        }
+    })
+}
+
+/// Merge two period lists, combining overlapping and adjacent intervals.
+///
+/// The inputs do not need to be pre-sorted or non-overlapping; the output
+/// is always sorted and non-overlapping.  The result is heap-allocated; the
+/// caller must free it with `tempoch_period_mjd_free`.
+///
+/// Returns `InvalidPeriod` if any input period is malformed.
+///
+/// # Safety
+/// - `a` / `b` must point to `a_count` / `b_count` valid periods (or be null
+///   when the corresponding count is 0).
+/// - `out` and `out_count` must be valid writable pointers.
+#[no_mangle]
+pub unsafe extern "C" fn tempoch_period_list_union(
+    a: *const TempochPeriodMjd,
+    a_count: usize,
+    b: *const TempochPeriodMjd,
+    b_count: usize,
+    out: *mut *mut TempochPeriodMjd,
+    out_count: *mut usize,
+) -> TempochStatus {
+    catch_panic!(TempochStatus::InternalPanic, {
+        if out.is_null() || out_count.is_null() {
+            return TempochStatus::NullPointer;
+        }
+        let load = |ptr: *const TempochPeriodMjd, cnt: usize| {
+            if cnt == 0 {
+                Ok(Vec::new())
+            } else if ptr.is_null() {
+                Err(TempochStatus::NullPointer)
+            } else {
+                unsafe { slice_to_periods(ptr, cnt) }
+            }
+        };
+        let ra = match load(a, a_count) {
+            Ok(ps) => ps,
+            Err(s) => return s,
+        };
+        let rb = match load(b, b_count) {
+            Ok(ps) => ps,
+            Err(s) => return s,
+        };
+        // Validate that each individual period is well-formed; union_many does
+        // not check for internal correctness, only sorted order is assumed.
+        if let Err(e) = Interval::validate(&ra) {
+            return period_list_error_to_status(e);
+        }
+        if let Err(e) = Interval::validate(&rb) {
+            return period_list_error_to_status(e);
+        }
+        let result = Interval::union_many(&ra, &rb);
+        periods_to_heap(result, out, out_count);
+        TempochStatus::Ok
+    })
+}
+
+/// Sort and merge overlapping or adjacent intervals in a period list.
+///
+/// The result is heap-allocated; the caller must free it with
+/// `tempoch_period_mjd_free`.
+///
+/// Returns `InvalidPeriod` if any input period is malformed.
+///
+/// # Safety
+/// - `periods` must point to `count` valid periods (or be null when
+///   `count == 0`).
+/// - `out` and `out_count` must be valid writable pointers.
+#[no_mangle]
+pub unsafe extern "C" fn tempoch_period_list_normalize(
+    periods: *const TempochPeriodMjd,
+    count: usize,
+    out: *mut *mut TempochPeriodMjd,
+    out_count: *mut usize,
+) -> TempochStatus {
+    catch_panic!(TempochStatus::InternalPanic, {
+        if out.is_null() || out_count.is_null() {
+            return TempochStatus::NullPointer;
+        }
+        let input: Vec<MjdPeriod> = if count == 0 {
+            Vec::new()
+        } else {
+            if periods.is_null() {
+                return TempochStatus::NullPointer;
+            }
+            match unsafe { slice_to_periods(periods, count) } {
+                Ok(ps) => ps,
+                Err(status) => return status,
+            }
+        };
+        let result = Interval::normalize(&input);
+        periods_to_heap(result, out, out_count);
+        TempochStatus::Ok
+    })
 }
 
 #[cfg(test)]

@@ -12,7 +12,7 @@ after_includes = """
 [export]
 # Keep tempoch-owned ABI metadata visible even when the generic entry points
 # accept raw integers instead of Rust enums directly.
-include = ["TempochScaleId", "TempochStatus", "TempochUtc", "TempochPeriodMjd"]
+include = ["TempochScaleId", "TempochStatus", "TempochUtc", "TempochPeriodMjd", "TempochEopValues"]
 # Exclude qtty-ffi types — they come from qtty_ffi.h (included via after_includes)
 exclude = ["QttyQuantity", "UnitId", "DimensionId", "QttyDerivedQuantity"]
 
@@ -21,6 +21,7 @@ exclude = ["QttyQuantity", "UnitId", "DimensionId", "QttyDerivedQuantity"]
 "TempochStatus" = "tempoch_status_t"
 "TempochUtc" = "tempoch_utc_t"
 "TempochPeriodMjd" = "tempoch_period_mjd_t"
+"TempochEopValues" = "tempoch_eop_values_t"
 "QttyQuantity" = "qtty_quantity_t"
 
 [enum]
