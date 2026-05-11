@@ -1,3 +1,10 @@
+
+## [0.4.5] - 2026-05-11
+
+### Changed
+
+- Refreshed generated time tables (fetched 2026-05-11):
+  - Earth Orientation Parameters finals2000A (IERS)
 # Changelog
 
 All notable changes to this project will be documented in this file.
