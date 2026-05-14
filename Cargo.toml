@@ -7,9 +7,3 @@ members = [
     "tempoch-time-data",
     "tempoch-time-data-updater",
 ]
-
-[patch.crates-io]
-qtty = { path = "../qtty/qtty" }
-qtty-core = { path = "../qtty/qtty-core" }
-qtty-ffi = { path = "../qtty/qtty-ffi" }
-affn = { path = "../affn" }
