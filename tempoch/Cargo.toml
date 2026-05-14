@@ -24,7 +24,7 @@ tempoch-core = { path = "../tempoch-core", version = "0.4.3" }
 
 [dev-dependencies]
 chrono = "0.4.44"
-qtty = "0.7.0"
+qtty = "0.8"
 serde_json = "1"
 
 [[example]]

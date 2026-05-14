@@ -33,6 +33,7 @@
 //! See [`constats`] for typed epoch and offset constants.
 
 mod civil;
+pub mod compat;
 pub mod constats;
 mod context;
 mod data;
@@ -78,6 +79,7 @@ pub use scalar::{
 };
 pub use scale::{ContinuousScale, CoordinateScale, Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
 pub use target::{ContextConversionTarget, ConversionTarget, InfallibleConversionTarget};
+pub use compat::{complement_within, TimeInstant, J2000_TT, JULIAN_YEAR_DAYS};
 pub use time::Time;
 
 #[cfg(test)]

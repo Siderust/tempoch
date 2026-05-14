@@ -25,6 +25,8 @@ pub use tempoch_core::{
     EOP_OBSERVED_END_MJD, EOP_START_MJD, GPS, GPS_EPOCH_JD_TAI, GPS_EPOCH_JD_UTC,
     GPS_EPOCH_TAI_MINUS_UTC, JD, MJD, MODERN_DELTA_T_OBSERVED_END_MJD, TAI, TCB, TCG, TDB, TT, UT1,
     UTC, UTC_DEFINED_FROM_MJD,
+    // backward-compat shims retained from < 0.4.2
+    complement_within, TimeInstant, J2000_TT, JULIAN_YEAR_DAYS,
 };
 #[cfg(feature = "runtime-data-fetch")]
 pub use tempoch_core::{

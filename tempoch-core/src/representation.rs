@@ -174,6 +174,15 @@ impl<S: Scale, R: TimeRepresentation> EncodedTime<S, R> {
         }
     }
 
+    /// Construct from a raw typed quantity without checking for finiteness.
+    ///
+    /// For use in `const` contexts. The caller must ensure `raw` is finite;
+    /// passing a non-finite value produces incorrect behaviour.
+    #[inline]
+    pub const fn from_raw_unchecked(raw: Quantity<R::Unit>) -> Self {
+        Self::new_unchecked(raw)
+    }
+
     /// Return the underlying typed quantity.
     #[inline]
     pub const fn raw(self) -> Quantity<R::Unit> {
@@ -185,6 +194,11 @@ impl<S: Scale, R: TimeRepresentation> EncodedTime<S, R> {
     pub const fn quantity(self) -> Quantity<R::Unit> {
         self.raw
     }
+}
+
+impl<S: Scale> EncodedTime<S, JD> {
+    /// J2000.0 epoch as a Julian Date on scale `S` (JD 2 451 545.0).
+    pub const J2000: Self = Self::from_raw_unchecked(crate::constats::J2000_JD_TT);
 }
 
 impl<S: Scale, R> EncodedTime<S, R>
