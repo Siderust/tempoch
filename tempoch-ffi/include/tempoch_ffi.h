@@ -47,6 +47,10 @@ enum tempoch_status_t
   // A UT1 / ΔT conversion was requested for a date outside the compiled
   // ΔT data horizon.  The output value has not been written.
   TEMPOCH_STATUS_T_UT1_HORIZON_EXCEEDED = 8,
+  // The period list is not sorted by start time.
+  TEMPOCH_STATUS_T_PERIOD_LIST_UNSORTED = 9,
+  // The period list has overlapping intervals.
+  TEMPOCH_STATUS_T_PERIOD_LIST_OVERLAPPING = 10,
 };
 #ifndef __cplusplus
 typedef int32_t tempoch_status_t;
@@ -89,6 +93,40 @@ enum tempoch_scale_id_t
 typedef int32_t tempoch_scale_id_t;
 #endif // __cplusplus
 
+// Interpolated IERS Earth Orientation Parameter values at a UTC MJD.
+//
+// All scalar fields use the units from the upstream IERS `finals2000A.all`
+// file.  Fields that the upstream file leaves blank for the requested epoch
+// are encoded as `NaN`; check with `isnan()` before using them.
+//
+// # Fields
+// - `mjd_utc` — query epoch rounded to the nearest data point boundary.
+// - `pm_xp_arcsec` / `pm_yp_arcsec` — polar-motion components (arcseconds).
+// - `ut1_minus_utc` — DUT1 = UT1 − UTC (seconds of time).
+// - `lod_milliseconds` — excess length-of-day (milliseconds of time).
+// - `dx_milliarcsec` / `dy_milliarcsec` — IAU 2000A celestial-pole offsets
+//   (milliarcseconds).
+// - `ut1_observed` — `1` when both bracketing rows carry observed (`I`) data.
+//
+typedef struct tempoch_eop_values_t {
+  // UTC MJD of the interpolation result.
+  double mjd_utc;
+  // Polar motion X component (arcseconds). `NaN` if absent.
+  double pm_xp_arcsec;
+  // Polar motion Y component (arcseconds). `NaN` if absent.
+  double pm_yp_arcsec;
+  // DUT1 = UT1 − UTC (seconds of time).
+  double ut1_minus_utc;
+  // Excess LOD (milliseconds of time). `NaN` if absent.
+  double lod_milliseconds;
+  // ΔX celestial-pole offset (milliarcseconds). `NaN` if absent.
+  double dx_milliarcsec;
+  // ΔY celestial-pole offset (milliarcseconds). `NaN` if absent.
+  double dy_milliarcsec;
+  // Non-zero when both bracketing rows carry observed (`I`) data.
+  uint8_t ut1_observed;
+} tempoch_eop_values_t;
+
 // A time period expressed in Modified Julian Date, suitable for C interop.
 typedef struct tempoch_period_mjd_t {
   // Start of the period (MJD).
@@ -123,6 +161,53 @@ extern "C" {
 //
 // Current ABI line: 0.4.x -> 400
  uint32_t tempoch_ffi_version(void);
+
+// J2000.0 epoch as JD(TT) — 2 451 545.0.
+ double tempoch_const_j2000_jd_tt(void);
+
+// One Julian year in days — 365.25.
+ double tempoch_const_julian_year_days(void);
+
+// First MJD covered by the built-in UTC-TAI segment table (1961-01-01).
+ double tempoch_const_utc_defined_from_mjd(void);
+
+// GPS epoch as a Julian Day on the UTC axis (1980-01-06T00:00:00 UTC).
+ double tempoch_const_gps_epoch_jd_utc(void);
+
+// GPS epoch expressed as a Julian Day on the TAI axis.
+ double tempoch_const_gps_epoch_jd_tai(void);
+
+// Exact TAI − UTC offset at the GPS epoch, in seconds (19.0).
+ double tempoch_const_gps_epoch_tai_minus_utc_seconds(void);
+
+// MJD of the last date for which a ΔT prediction (not extrapolation) is
+// available from the compiled USNO data.
+ double tempoch_const_delta_t_prediction_horizon_mjd(void);
+
+// First MJD covered by the compiled IERS EOP series.
+ double tempoch_const_eop_start_mjd(void);
+
+// Last MJD covered by the compiled IERS EOP series.
+ double tempoch_const_eop_end_mjd(void);
+
+// Last MJD with *observed* (Bulletin C04) EOP data in the compiled series.
+ double tempoch_const_eop_observed_end_mjd(void);
+
+// Last MJD with modern observed ΔT data (post-1955 atomic-clock era).
+ double tempoch_const_modern_delta_t_observed_end_mjd(void);
+
+// Returns `true` when [`tempoch_eop_at`] would succeed for `mjd_utc`.
+ bool tempoch_eop_covers(double mjd_utc);
+
+// Interpolate IERS EOP values at `mjd_utc` (UTC Modified Julian Date).
+//
+// Returns `Ok` and writes the result into `*out` on success.
+// Returns `Ut1HorizonExceeded` when `mjd_utc` is outside the compiled EOP
+// range.
+//
+// # Safety
+// `out` must be a valid, writable pointer to `TempochEopValues`.
+ tempoch_status_t tempoch_eop_at(double mjd_utc, struct tempoch_eop_values_t *out);
 
 // Create a new MJD period. Returns `InvalidPeriod` if the endpoints are
 // non-finite or `start_mjd > end_mjd`.
@@ -160,6 +245,119 @@ tempoch_status_t tempoch_period_mjd_intersection(struct tempoch_period_mjd_t a,
 // `ptr` and `count` must have been returned by the same function call and
 // must not be used after this call.
  void tempoch_period_mjd_free(struct tempoch_period_mjd_t *ptr, uintptr_t count);
+
+// Return `true` when `mjd` is within the half-open interval `[start, end)`.
+ bool tempoch_period_mjd_contains(struct tempoch_period_mjd_t period, double mjd);
+
+// Compute the union of two MJD periods.
+//
+// Overlapping or touching periods are merged into one; disjoint periods
+// produce two entries.  The result is written into the caller-provided
+// two-element array `out[0..2]`; `*out_count` is set to 1 or 2.
+//
+// Returns `InvalidPeriod` if either input period is malformed.
+//
+// # Safety
+// `out` must point to at least two writable `TempochPeriodMjd` values.
+// `out_count` must be a valid writable pointer to `uintptr_t`.
+
+tempoch_status_t tempoch_period_mjd_union(struct tempoch_period_mjd_t a,
+                                          struct tempoch_period_mjd_t b,
+                                          struct tempoch_period_mjd_t *out,
+                                          uintptr_t *out_count);
+
+// Validate that a period list is sorted, non-overlapping, and each
+// `start <= end`.
+//
+// Returns `Ok` if the list is valid, `InvalidPeriod` for malformed
+// intervals, `PeriodListUnsorted` for ordering violations, and
+// `PeriodListOverlapping` for overlapping intervals.
+//
+// Passing a null pointer with `count == 0` is valid and returns `Ok`.
+//
+// # Safety
+// `periods` must point to `count` valid, initialized `TempochPeriodMjd`
+// values (or be null when `count == 0`).
+
+tempoch_status_t tempoch_period_list_validate(const struct tempoch_period_mjd_t *periods,
+                                              uintptr_t count);
+
+// Compute the complement of `periods` within `outer`: the gaps inside
+// `outer` that are not covered by any period in the list.
+//
+// `periods` must be sorted and non-overlapping.  The result is heap-
+// allocated; the caller must free it with `tempoch_period_mjd_free`.
+//
+// Returns `InvalidPeriod` for malformed inputs, `PeriodListUnsorted` or
+// `PeriodListOverlapping` for invalid list structure.
+//
+// # Safety
+// - `periods` must point to `count` valid `TempochPeriodMjd` values (or be
+//   null when `count == 0`).
+// - `out` and `out_count` must be valid writable pointers.
+
+tempoch_status_t tempoch_period_list_complement(struct tempoch_period_mjd_t outer,
+                                                const struct tempoch_period_mjd_t *periods,
+                                                uintptr_t count,
+                                                struct tempoch_period_mjd_t **out,
+                                                uintptr_t *out_count);
+
+// Intersect two sorted, non-overlapping period lists.
+//
+// The result is heap-allocated; the caller must free it with
+// `tempoch_period_mjd_free`.
+//
+// Returns `InvalidPeriod`, `PeriodListUnsorted`, or `PeriodListOverlapping`
+// when either input list is invalid.
+//
+// # Safety
+// - `a` / `b` must point to `a_count` / `b_count` valid periods (or be null
+//   when the corresponding count is 0).
+// - `out` and `out_count` must be valid writable pointers.
+
+tempoch_status_t tempoch_period_list_intersect(const struct tempoch_period_mjd_t *a,
+                                               uintptr_t a_count,
+                                               const struct tempoch_period_mjd_t *b,
+                                               uintptr_t b_count,
+                                               struct tempoch_period_mjd_t **out,
+                                               uintptr_t *out_count);
+
+// Merge two period lists, combining overlapping and adjacent intervals.
+//
+// The inputs do not need to be pre-sorted or non-overlapping; the output
+// is always sorted and non-overlapping.  The result is heap-allocated; the
+// caller must free it with `tempoch_period_mjd_free`.
+//
+// Returns `InvalidPeriod` if any input period is malformed.
+//
+// # Safety
+// - `a` / `b` must point to `a_count` / `b_count` valid periods (or be null
+//   when the corresponding count is 0).
+// - `out` and `out_count` must be valid writable pointers.
+
+tempoch_status_t tempoch_period_list_union(const struct tempoch_period_mjd_t *a,
+                                           uintptr_t a_count,
+                                           const struct tempoch_period_mjd_t *b,
+                                           uintptr_t b_count,
+                                           struct tempoch_period_mjd_t **out,
+                                           uintptr_t *out_count);
+
+// Sort and merge overlapping or adjacent intervals in a period list.
+//
+// The result is heap-allocated; the caller must free it with
+// `tempoch_period_mjd_free`.
+//
+// Returns `InvalidPeriod` if any input period is malformed.
+//
+// # Safety
+// - `periods` must point to `count` valid periods (or be null when
+//   `count == 0`).
+// - `out` and `out_count` must be valid writable pointers.
+
+tempoch_status_t tempoch_period_list_normalize(const struct tempoch_period_mjd_t *periods,
+                                               uintptr_t count,
+                                               struct tempoch_period_mjd_t **out,
+                                               uintptr_t *out_count);
 
 // Create a Julian Date from a raw `double`.
  double tempoch_jd_new(double value);
@@ -311,8 +509,8 @@ tempoch_status_t tempoch_period_mjd_intersection(struct tempoch_period_mjd_t a,
 // microseconds. Callers should not assume nanosecond-exact reversibility
 // through the JD(TT) axis.
 //
-// Returns `NaN` if `unix` is non-finite or outside the supported UTC civil range.
- double tempoch_unix_to_jd(double unix);
+// Returns `NaN` if `unix_ts` is non-finite or outside the supported UTC civil range.
+ double tempoch_unix_to_jd(double unix_ts);
 
 // Create a Unix timestamp from seconds since 1970-01-01T00:00:00 UTC.
 //
@@ -325,7 +523,7 @@ tempoch_status_t tempoch_period_mjd_intersection(struct tempoch_period_mjd_t a,
 // via [`tempoch_jd_to_unix`] or [`tempoch_unix_from_seconds`].
 //
 // This is also a convenience identity confirming the seconds convention.
- double tempoch_unix_to_seconds(double unix);
+ double tempoch_unix_to_seconds(double unix_ts);
 
 // Return ΔT = TT − UT1 in seconds for a Julian Date.
 //

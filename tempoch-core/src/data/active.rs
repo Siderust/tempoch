@@ -652,18 +652,14 @@ mod tests {
             bundle.provenance().clone(),
         );
         let unix = Second::new(1_680_000_000.25);
-        let compiled_value = UnixTime::try_new(unix)
-            .and_then(|e| e.to_time_with(&TimeContext::new()))
-            .unwrap()
-            .raw_seconds_pair()
-            .0
-            .value()
-            + UnixTime::try_new(unix)
-                .and_then(|e| e.to_time_with(&TimeContext::new()))
-                .unwrap()
-                .raw_seconds_pair()
-                .1
-                .value();
+        let compiled_value = {
+            let compiled = compiled_time_data();
+            let jd_utc = unix_seconds_to_jd(unix);
+            let mjd_utc = jd_to_mjd(jd_utc);
+            let tai_minus_utc =
+                time_data_try_tai_minus_utc_mjd(compiled.as_ref(), mjd_utc, false).unwrap();
+            (jd_to_j2000_seconds(jd_utc) + tai_minus_utc).value()
+        };
 
         with_test_time_data(bundle, || {
             let overridden = UnixTime::try_new(unix)

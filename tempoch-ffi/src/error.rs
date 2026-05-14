@@ -35,4 +35,8 @@ pub enum TempochStatus {
     /// A UT1 / ΔT conversion was requested for a date outside the compiled
     /// ΔT data horizon.  The output value has not been written.
     Ut1HorizonExceeded = 8,
+    /// The period list is not sorted by start time.
+    PeriodListUnsorted = 9,
+    /// The period list has overlapping intervals.
+    PeriodListOverlapping = 10,
 }

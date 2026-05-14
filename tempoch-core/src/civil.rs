@@ -170,3 +170,43 @@ impl Time<TAI> {
         self.total_seconds() - GPS_EPOCH_TAI.raw()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::data::active::{active_time_data, with_test_time_data};
+
+    #[test]
+    fn chrono_convenience_wrappers_roundtrip_with_context() {
+        let bundle = active_time_data().as_ref().clone();
+        with_test_time_data(bundle, || {
+            let ctx = TimeContext::new();
+            let dt = DateTime::from_timestamp(946_728_000, 125_000_000).unwrap();
+
+            let with_ctx = Time::<UTC>::from_chrono_with(dt, &ctx);
+            let default_ctx = Time::<UTC>::from_chrono(dt);
+            assert_eq!(with_ctx, default_ctx);
+
+            let back_with_ctx = with_ctx.to_chrono_with(&ctx).unwrap();
+            let back_default = with_ctx.to_chrono().unwrap();
+            let with_ctx_delta_ns =
+                back_with_ctx.timestamp_nanos_opt().unwrap() - dt.timestamp_nanos_opt().unwrap();
+            let default_delta_ns =
+                back_default.timestamp_nanos_opt().unwrap() - dt.timestamp_nanos_opt().unwrap();
+
+            assert!(with_ctx_delta_ns.abs() < 50_000);
+            assert!(default_delta_ns.abs() < 50_000);
+        });
+    }
+
+    #[test]
+    fn gps_raw_seconds_reject_nonfinite_and_roundtrip() {
+        assert!(matches!(
+            Time::<TAI>::from_raw_gps_seconds(Second::new(f64::INFINITY)),
+            Err(ConversionError::NonFinite)
+        ));
+
+        let tai = Time::<TAI>::from_raw_gps_seconds(Second::new(123.5)).unwrap();
+        assert_eq!(tai.raw_gps_seconds(), Second::new(123.5));
+    }
+}

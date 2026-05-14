@@ -323,11 +323,45 @@ impl<T: Copy + PartialOrd> Interval<T> {
     }
 }
 
+/// Gaps inside `outer` that are not covered by any interval in `periods`.
+///
+/// This is a free-function wrapper around [`Interval::complement`].  `periods`
+/// must be sorted and non-overlapping (see [`Interval::validate`]).
+///
+/// # Example
+///
+/// ```
+/// use tempoch_core::{complement_within, JulianDate, TT, Interval};
+/// use qtty::Day;
+///
+/// let outer = Interval::<JulianDate<TT>>::new(
+///     JulianDate::new(2_451_545.0),
+///     JulianDate::new(2_451_550.0),
+/// );
+/// let filled = vec![Interval::new(
+///     JulianDate::new(2_451_546.0),
+///     JulianDate::new(2_451_548.0),
+/// )];
+/// let gaps = complement_within(outer, &filled);
+/// assert_eq!(gaps.len(), 2);
+/// ```
+#[inline]
+pub fn complement_within<T: Copy + PartialOrd>(
+    outer: Interval<T>,
+    periods: &[Interval<T>],
+) -> Vec<Interval<T>> {
+    outer.complement(periods)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::representation::{JulianDate, ModifiedJulianDate, MJD};
-    use crate::{Time, TT};
+    #[cfg(feature = "serde")]
+    use crate::representation::JulianDate;
+    use crate::representation::{ModifiedJulianDate, MJD};
+    #[cfg(feature = "serde")]
+    use crate::Time;
+    use crate::TT;
     use qtty::Day;
     #[cfg(feature = "serde")]
     use serde::de::{value, IntoDeserializer};

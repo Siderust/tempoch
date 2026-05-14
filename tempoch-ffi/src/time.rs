@@ -426,10 +426,10 @@ pub extern "C" fn tempoch_jd_to_unix(jd: f64) -> f64 {
 /// microseconds. Callers should not assume nanosecond-exact reversibility
 /// through the JD(TT) axis.
 ///
-/// Returns `NaN` if `unix` is non-finite or outside the supported UTC civil range.
+/// Returns `NaN` if `unix_ts` is non-finite or outside the supported UTC civil range.
 #[no_mangle]
-pub extern "C" fn tempoch_unix_to_jd(unix: f64) -> f64 {
-    scale_value_to_jd(unix, TempochScaleId::UnixTime).unwrap_or(f64::NAN)
+pub extern "C" fn tempoch_unix_to_jd(unix_ts: f64) -> f64 {
+    scale_value_to_jd(unix_ts, TempochScaleId::UnixTime).unwrap_or(f64::NAN)
 }
 
 /// Create a Unix timestamp from seconds since 1970-01-01T00:00:00 UTC.
@@ -447,8 +447,8 @@ pub extern "C" fn tempoch_unix_from_seconds(seconds: f64) -> f64 {
 ///
 /// This is also a convenience identity confirming the seconds convention.
 #[no_mangle]
-pub extern "C" fn tempoch_unix_to_seconds(unix: f64) -> f64 {
-    unix
+pub extern "C" fn tempoch_unix_to_seconds(unix_ts: f64) -> f64 {
+    unix_ts
 }
 
 /// Return ΔT = TT − UT1 in seconds for a Julian Date.

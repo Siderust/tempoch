@@ -21,7 +21,7 @@ affn = { version = "0.7" }
 chrono = "0.4.43"
 qtty = { version = "0.8", features = ["julian-time"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "alloc"], optional = true }
-tempoch-time-data = { path = "../tempoch-time-data", version = "0.1.0" }
+tempoch-time-data = { path = "../tempoch-time-data", version = "0.1.1" }
 
 [dev-dependencies]
 serde_json = "1"

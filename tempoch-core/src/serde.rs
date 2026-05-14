@@ -2,13 +2,43 @@
 // Copyright (C) 2026 Vallés Puig, Ramon
 
 use crate::interval::Interval;
+use crate::representation::{EncodedTime, TimeRepresentation};
 use crate::scale::Scale;
 use crate::time::Time;
-use qtty::Second;
+use qtty::{Quantity, Second, Unit};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 const NONFINITE_TIME_VALUE_ERROR: &str = "time value must be finite (not NaN or infinity)";
+
+impl<S: Scale, R: TimeRepresentation> Serialize for EncodedTime<S, R>
+where
+    Quantity<R::Unit>: Serialize,
+{
+    fn serialize<Ser>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error>
+    where
+        Ser: Serializer,
+    {
+        self.raw().serialize(serializer)
+    }
+}
+
+impl<'de, S: Scale, R: TimeRepresentation> Deserialize<'de> for EncodedTime<S, R>
+where
+    Quantity<R::Unit>: Deserialize<'de>,
+    R::Unit: Unit,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = Quantity::<R::Unit>::deserialize(deserializer)?;
+        if !raw.is_finite() {
+            return Err(serde::de::Error::custom(NONFINITE_TIME_VALUE_ERROR));
+        }
+        Ok(Self::new_unchecked(raw))
+    }
+}
 
 impl<S: Scale> Serialize for Time<S> {
     fn serialize<Ser>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error>
@@ -73,5 +103,28 @@ where
 
         let raw = RawInterval::<T>::deserialize(deserializer)?;
         Self::try_new(raw.start, raw.end).map_err(serde::de::Error::custom)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::representation::{J2000s, JulianDate, JD};
+    use crate::scale::TT;
+    use qtty::{Day, Second};
+
+    #[test]
+    fn encoded_time_serde_roundtrips_raw_quantity() {
+        let jd = JulianDate::<TT>::try_new(Day::new(2_451_545.25)).unwrap();
+        let encoded = serde_json::to_string(&jd).unwrap();
+        let decoded: JulianDate<TT> = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded, jd);
+
+        let seconds = EncodedTime::<TT, J2000s>::try_new(Second::new(12.5)).unwrap();
+        let encoded = serde_json::to_string(&seconds).unwrap();
+        let decoded: EncodedTime<TT, J2000s> = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded, seconds);
+
+        assert!(serde_json::from_str::<EncodedTime<TT, JD>>("null").is_err());
     }
 }
