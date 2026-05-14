@@ -28,19 +28,19 @@ pub extern "C" fn tempoch_const_julian_year_days() -> f64 {
 /// First MJD covered by the built-in UTC-TAI segment table (1961-01-01).
 #[no_mangle]
 pub extern "C" fn tempoch_const_utc_defined_from_mjd() -> f64 {
-    UTC_DEFINED_FROM_MJD.value()
+    UTC_DEFINED_FROM_MJD.raw().value()
 }
 
 /// GPS epoch as a Julian Day on the UTC axis (1980-01-06T00:00:00 UTC).
 #[no_mangle]
 pub extern "C" fn tempoch_const_gps_epoch_jd_utc() -> f64 {
-    GPS_EPOCH_JD_UTC.value()
+    GPS_EPOCH_JD_UTC.raw().value()
 }
 
 /// GPS epoch expressed as a Julian Day on the TAI axis.
 #[no_mangle]
 pub extern "C" fn tempoch_const_gps_epoch_jd_tai() -> f64 {
-    GPS_EPOCH_JD_TAI.value()
+    GPS_EPOCH_JD_TAI.raw().value()
 }
 
 /// Exact TAI − UTC offset at the GPS epoch, in seconds (19.0).
@@ -53,7 +53,7 @@ pub extern "C" fn tempoch_const_gps_epoch_tai_minus_utc_seconds() -> f64 {
 /// available from the compiled USNO data.
 #[no_mangle]
 pub extern "C" fn tempoch_const_delta_t_prediction_horizon_mjd() -> f64 {
-    DELTA_T_PREDICTION_HORIZON_MJD.value()
+    DELTA_T_PREDICTION_HORIZON_MJD.raw().value()
 }
 
 /// First MJD covered by the compiled IERS EOP series.
@@ -127,5 +127,12 @@ mod tests {
         let horizon = tempoch_const_delta_t_prediction_horizon_mjd();
         assert!(horizon.is_finite());
         assert!(horizon > 0.0);
+    }
+
+    #[test]
+    fn modern_delta_t_observed_end_mjd_is_finite_and_positive() {
+        let end = tempoch_const_modern_delta_t_observed_end_mjd();
+        assert!(end.is_finite());
+        assert!(end > 0.0);
     }
 }

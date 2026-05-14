@@ -132,7 +132,34 @@ canonical J2000-based seconds because it gives one precise internal axis for
 arithmetic and scale conversion, while still allowing JD/MJD-style APIs at the
 boundary.
 
-### Why UTC is treated specially
+### Format vs Scale
+
+Two orthogonal phantom-type axes drive all typed time values in `tempoch`:
+
+- **Scale** — the physical time axis: `TT`, `TAI`, `UTC`, `UT1`, `TDB`,
+  `TCG`, `TCB`. A scale tells you *which* reference frame's clock is ticking.
+- **Format** — how an instant is numerically encoded: `JD` (Julian Day),
+  `MJD` (Modified Julian Day), `J2000s` (SI seconds since J2000), `Unix`
+  (POSIX seconds), `GPS` (days since GPS epoch). A format tells you *how* you
+  read the number off the wire.
+
+The two are always kept separate:
+
+- [`Time<S>`] stores no format; it is a raw J2000-based compensated pair on
+  scale `S`.
+- [`EncodedTime<S, F>`] (and its aliases `JulianDate<S>`, `ModifiedJulianDate<S>`,
+  etc.) pair a scale with a format for I/O and coordinate constants.
+- [`Coord<S, F>`] is the typed low-level counterpart used for compile-time
+  constants (`J2000_JD_TT: Coord<TT, JD>`, etc.).
+
+The type parameter order is always **Scale first, Format second** — matching
+the reading direction "JD on TT" → `Coord<TT, JD>` / `EncodedTime<TT, JD>`.
+
+`ScaleKind` variant names follow the same `<Format><Scale>` pattern:
+`JdTt`, `MjdTt`, `JdTdb`, `JdTai`, `JdTcg`, `JdTcb`, `JdGps`, `JdUt1`,
+`Unix`.
+
+
 
 `UTC` is a civil scale with leap-second labeling, so it cannot be treated as a
 simple uniform scalar everywhere. `tempoch` keeps the internal instant storage
@@ -152,21 +179,21 @@ the horizon. Use the exported `DELTA_T_PREDICTION_HORIZON_MJD` typed
 
 ```toml
 [dependencies]
-tempoch = "0.4.4"
+tempoch = "0.5.0"
 ```
 
 Enable `serde` if you want to serialize typed times and periods:
 
 ```toml
 [dependencies]
-tempoch = { version = "0.4.4", features = ["serde"] }
+tempoch = { version = "0.5.0", features = ["serde"] }
 ```
 
 The `serde` feature composes with the ordinary runtime refresh behavior:
 
 ```toml
 [dependencies]
-tempoch = { version = "0.4.4", features = ["serde", "runtime-data-fetch"] }
+tempoch = { version = "0.5.0", features = ["serde", "runtime-data-fetch"] }
 ```
 
 ## Serde

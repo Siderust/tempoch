@@ -35,15 +35,16 @@
 mod civil;
 pub mod constats;
 mod context;
+pub mod coord;
 mod data;
 mod delta_t;
 pub(crate) mod encoding;
 pub mod eop;
 pub mod error;
-pub mod ext;
+mod ext;
+pub mod format;
 pub(crate) mod generated;
 mod interval;
-pub mod representation;
 pub mod scalar;
 mod scale;
 mod sealed;
@@ -57,9 +58,11 @@ mod serde_impl;
 pub mod tagged;
 
 pub use constats::{
-    GPS_EPOCH_JD_TAI, GPS_EPOCH_JD_UTC, GPS_EPOCH_TAI_MINUS_UTC, UTC_DEFINED_FROM_MJD,
+    GPS_EPOCH_JD_TAI, GPS_EPOCH_JD_UTC, GPS_EPOCH_TAI_MINUS_UTC, JULIAN_YEAR_DAYS,
+    UTC_DEFINED_FROM_MJD,
 };
 pub use context::TimeContext;
+pub use coord::{Coord, Offset};
 #[cfg(feature = "runtime-data-fetch")]
 pub use data::active::{
     fetch_latest_time_data, refresh_runtime_time_data, update_runtime_time_data,
@@ -67,16 +70,15 @@ pub use data::active::{
 pub use delta_t::{delta_t_seconds, delta_t_seconds_extrapolated, DELTA_T_PREDICTION_HORIZON_MJD};
 pub use error::{ConversionError, TimeDataError};
 pub use ext::TimeInstant;
+pub use format::{
+    EncodedTime, FormatForScale, GpsTime, InfallibleFormatForScale, J2000Seconds, J2000s,
+    JulianDate, ModifiedJulianDate, TimeFormat, Unix, UnixTime, GPS, JD, MJD,
+};
 pub use generated::{
     EOP_END_MJD, EOP_OBSERVED_END_MJD, EOP_START_MJD, MODERN_DELTA_T_OBSERVED_END_MJD,
 };
 pub use interval::{
     complement_within, Interval, InvalidIntervalError, InvalidPeriodError, Period, PeriodListError,
-};
-pub use representation::{
-    EncodedTime, GpsTime, InfallibleRepresentationForScale, J2000Seconds, J2000s, JulianDate,
-    ModifiedJulianDate, RepresentationForScale, TimeRepresentation, Unix, UnixTime, GPS, J2000_TT,
-    JD, JULIAN_YEAR_DAYS, MJD,
 };
 pub use scalar::{
     scalar_add_days, scalar_difference_in_days, time_tt_from_scalar, time_tt_to_scalar, ScaleKind,

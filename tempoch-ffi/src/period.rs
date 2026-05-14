@@ -593,4 +593,726 @@ mod tests {
     fn period_free_null_is_safe() {
         unsafe { tempoch_period_mjd_free(std::ptr::null_mut(), 0) };
     }
+
+    // ── contains ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn period_contains_inside() {
+        let p = TempochPeriodMjd {
+            start_mjd: 10.0,
+            end_mjd: 20.0,
+        };
+        assert!(tempoch_period_mjd_contains(p, 15.0));
+    }
+
+    #[test]
+    fn period_contains_at_start_is_inclusive() {
+        let p = TempochPeriodMjd {
+            start_mjd: 10.0,
+            end_mjd: 20.0,
+        };
+        assert!(tempoch_period_mjd_contains(p, 10.0));
+    }
+
+    #[test]
+    fn period_contains_at_end_is_exclusive() {
+        let p = TempochPeriodMjd {
+            start_mjd: 10.0,
+            end_mjd: 20.0,
+        };
+        assert!(!tempoch_period_mjd_contains(p, 20.0));
+    }
+
+    #[test]
+    fn period_contains_before_start_is_false() {
+        let p = TempochPeriodMjd {
+            start_mjd: 10.0,
+            end_mjd: 20.0,
+        };
+        assert!(!tempoch_period_mjd_contains(p, 5.0));
+    }
+
+    #[test]
+    fn period_contains_after_end_is_false() {
+        let p = TempochPeriodMjd {
+            start_mjd: 10.0,
+            end_mjd: 20.0,
+        };
+        assert!(!tempoch_period_mjd_contains(p, 25.0));
+    }
+
+    // ── union ───────────────────────────────────────────────────────────────
+
+    #[test]
+    fn period_union_overlapping_merges_to_one() {
+        let a = TempochPeriodMjd {
+            start_mjd: 0.0,
+            end_mjd: 10.0,
+        };
+        let b = TempochPeriodMjd {
+            start_mjd: 5.0,
+            end_mjd: 15.0,
+        };
+        let mut out = [
+            TempochPeriodMjd {
+                start_mjd: 0.0,
+                end_mjd: 0.0,
+            },
+            TempochPeriodMjd {
+                start_mjd: 0.0,
+                end_mjd: 0.0,
+            },
+        ];
+        let mut count: usize = 0;
+        let status = unsafe { tempoch_period_mjd_union(a, b, out.as_mut_ptr(), &mut count) };
+        assert_eq!(status, TempochStatus::Ok);
+        assert_eq!(count, 1);
+        assert!((out[0].start_mjd - 0.0).abs() < 1e-12);
+        assert!((out[0].end_mjd - 15.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn period_union_disjoint_gives_two_results() {
+        let a = TempochPeriodMjd {
+            start_mjd: 0.0,
+            end_mjd: 5.0,
+        };
+        let b = TempochPeriodMjd {
+            start_mjd: 10.0,
+            end_mjd: 15.0,
+        };
+        let mut out = [
+            TempochPeriodMjd {
+                start_mjd: 0.0,
+                end_mjd: 0.0,
+            },
+            TempochPeriodMjd {
+                start_mjd: 0.0,
+                end_mjd: 0.0,
+            },
+        ];
+        let mut count: usize = 0;
+        let status = unsafe { tempoch_period_mjd_union(a, b, out.as_mut_ptr(), &mut count) };
+        assert_eq!(status, TempochStatus::Ok);
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn period_union_null_out_returns_null_pointer() {
+        let a = TempochPeriodMjd {
+            start_mjd: 0.0,
+            end_mjd: 5.0,
+        };
+        let b = a;
+        let mut count: usize = 0;
+        let status = unsafe { tempoch_period_mjd_union(a, b, std::ptr::null_mut(), &mut count) };
+        assert_eq!(status, TempochStatus::NullPointer);
+    }
+
+    #[test]
+    fn period_union_null_count_returns_null_pointer() {
+        let a = TempochPeriodMjd {
+            start_mjd: 0.0,
+            end_mjd: 5.0,
+        };
+        let b = a;
+        let mut out = [
+            TempochPeriodMjd {
+                start_mjd: 0.0,
+                end_mjd: 0.0,
+            },
+            TempochPeriodMjd {
+                start_mjd: 0.0,
+                end_mjd: 0.0,
+            },
+        ];
+        let status =
+            unsafe { tempoch_period_mjd_union(a, b, out.as_mut_ptr(), std::ptr::null_mut()) };
+        assert_eq!(status, TempochStatus::NullPointer);
+    }
+
+    #[test]
+    fn period_union_invalid_a_returns_invalid_period() {
+        let a = TempochPeriodMjd {
+            start_mjd: f64::NAN,
+            end_mjd: 5.0,
+        };
+        let b = TempochPeriodMjd {
+            start_mjd: 1.0,
+            end_mjd: 5.0,
+        };
+        let mut out = [
+            TempochPeriodMjd {
+                start_mjd: 0.0,
+                end_mjd: 0.0,
+            },
+            TempochPeriodMjd {
+                start_mjd: 0.0,
+                end_mjd: 0.0,
+            },
+        ];
+        let mut count: usize = 0;
+        let status = unsafe { tempoch_period_mjd_union(a, b, out.as_mut_ptr(), &mut count) };
+        assert_eq!(status, TempochStatus::InvalidPeriod);
+    }
+
+    #[test]
+    fn period_union_invalid_b_returns_invalid_period() {
+        let a = TempochPeriodMjd {
+            start_mjd: 1.0,
+            end_mjd: 5.0,
+        };
+        let b = TempochPeriodMjd {
+            start_mjd: f64::NAN,
+            end_mjd: 5.0,
+        };
+        let mut out = [
+            TempochPeriodMjd {
+                start_mjd: 0.0,
+                end_mjd: 0.0,
+            },
+            TempochPeriodMjd {
+                start_mjd: 0.0,
+                end_mjd: 0.0,
+            },
+        ];
+        let mut count: usize = 0;
+        let status = unsafe { tempoch_period_mjd_union(a, b, out.as_mut_ptr(), &mut count) };
+        assert_eq!(status, TempochStatus::InvalidPeriod);
+    }
+
+    // ── period_intersection_invalid_b ───────────────────────────────────────
+
+    #[test]
+    fn period_intersection_invalid_b() {
+        let a = TempochPeriodMjd {
+            start_mjd: 1.0,
+            end_mjd: 5.0,
+        };
+        let b = TempochPeriodMjd {
+            start_mjd: f64::NAN,
+            end_mjd: 5.0,
+        };
+        let mut out = TempochPeriodMjd {
+            start_mjd: 0.0,
+            end_mjd: 0.0,
+        };
+        let status = unsafe { tempoch_period_mjd_intersection(a, b, &mut out) };
+        assert_eq!(status, TempochStatus::InvalidPeriod);
+    }
+
+    // ── list_validate ───────────────────────────────────────────────────────
+
+    #[test]
+    fn period_list_validate_empty_returns_ok() {
+        let status = unsafe { tempoch_period_list_validate(std::ptr::null(), 0) };
+        assert_eq!(status, TempochStatus::Ok);
+    }
+
+    #[test]
+    fn period_list_validate_single_valid_returns_ok() {
+        let p = TempochPeriodMjd {
+            start_mjd: 1.0,
+            end_mjd: 5.0,
+        };
+        let status = unsafe { tempoch_period_list_validate(&p, 1) };
+        assert_eq!(status, TempochStatus::Ok);
+    }
+
+    #[test]
+    fn period_list_validate_null_nonzero_returns_null_pointer() {
+        let status = unsafe { tempoch_period_list_validate(std::ptr::null(), 1) };
+        assert_eq!(status, TempochStatus::NullPointer);
+    }
+
+    #[test]
+    fn period_list_validate_invalid_period_returns_invalid() {
+        let p = TempochPeriodMjd {
+            start_mjd: f64::NAN,
+            end_mjd: 5.0,
+        };
+        let status = unsafe { tempoch_period_list_validate(&p, 1) };
+        assert_eq!(status, TempochStatus::InvalidPeriod);
+    }
+
+    #[test]
+    fn period_list_validate_unsorted_returns_unsorted() {
+        let periods = [
+            TempochPeriodMjd {
+                start_mjd: 10.0,
+                end_mjd: 15.0,
+            },
+            TempochPeriodMjd {
+                start_mjd: 1.0,
+                end_mjd: 5.0,
+            },
+        ];
+        let status = unsafe { tempoch_period_list_validate(periods.as_ptr(), 2) };
+        assert_eq!(status, TempochStatus::PeriodListUnsorted);
+    }
+
+    #[test]
+    fn period_list_validate_overlapping_returns_overlapping() {
+        let periods = [
+            TempochPeriodMjd {
+                start_mjd: 1.0,
+                end_mjd: 10.0,
+            },
+            TempochPeriodMjd {
+                start_mjd: 5.0,
+                end_mjd: 15.0,
+            },
+        ];
+        let status = unsafe { tempoch_period_list_validate(periods.as_ptr(), 2) };
+        assert_eq!(status, TempochStatus::PeriodListOverlapping);
+    }
+
+    // ── list_complement ─────────────────────────────────────────────────────
+
+    #[test]
+    fn period_list_complement_empty_periods_returns_outer() {
+        let outer = TempochPeriodMjd {
+            start_mjd: 0.0,
+            end_mjd: 10.0,
+        };
+        let mut out: *mut TempochPeriodMjd = std::ptr::null_mut();
+        let mut out_count: usize = 0;
+        let status = unsafe {
+            tempoch_period_list_complement(outer, std::ptr::null(), 0, &mut out, &mut out_count)
+        };
+        assert_eq!(status, TempochStatus::Ok);
+        assert_eq!(out_count, 1);
+        if out_count > 0 {
+            let result = unsafe { std::slice::from_raw_parts(out, out_count) };
+            assert!((result[0].start_mjd - 0.0).abs() < 1e-12);
+            assert!((result[0].end_mjd - 10.0).abs() < 1e-12);
+            unsafe { tempoch_period_mjd_free(out, out_count) };
+        }
+    }
+
+    #[test]
+    fn period_list_complement_with_periods_returns_gaps() {
+        let outer = TempochPeriodMjd {
+            start_mjd: 0.0,
+            end_mjd: 10.0,
+        };
+        let inner = TempochPeriodMjd {
+            start_mjd: 3.0,
+            end_mjd: 7.0,
+        };
+        let mut out: *mut TempochPeriodMjd = std::ptr::null_mut();
+        let mut out_count: usize = 0;
+        let status =
+            unsafe { tempoch_period_list_complement(outer, &inner, 1, &mut out, &mut out_count) };
+        assert_eq!(status, TempochStatus::Ok);
+        assert_eq!(out_count, 2);
+        if out_count > 0 {
+            let result = unsafe { std::slice::from_raw_parts(out, out_count) };
+            assert!((result[0].start_mjd - 0.0).abs() < 1e-12);
+            assert!((result[0].end_mjd - 3.0).abs() < 1e-12);
+            assert!((result[1].start_mjd - 7.0).abs() < 1e-12);
+            assert!((result[1].end_mjd - 10.0).abs() < 1e-12);
+            unsafe { tempoch_period_mjd_free(out, out_count) };
+        }
+    }
+
+    #[test]
+    fn period_list_complement_null_out_returns_null_pointer() {
+        let outer = TempochPeriodMjd {
+            start_mjd: 0.0,
+            end_mjd: 10.0,
+        };
+        let mut out_count: usize = 0;
+        let status = unsafe {
+            tempoch_period_list_complement(
+                outer,
+                std::ptr::null(),
+                0,
+                std::ptr::null_mut(),
+                &mut out_count,
+            )
+        };
+        assert_eq!(status, TempochStatus::NullPointer);
+    }
+
+    #[test]
+    fn period_list_complement_null_periods_nonzero_count_returns_null_pointer() {
+        let outer = TempochPeriodMjd {
+            start_mjd: 0.0,
+            end_mjd: 10.0,
+        };
+        let mut out: *mut TempochPeriodMjd = std::ptr::null_mut();
+        let mut out_count: usize = 0;
+        let status = unsafe {
+            tempoch_period_list_complement(outer, std::ptr::null(), 1, &mut out, &mut out_count)
+        };
+        assert_eq!(status, TempochStatus::NullPointer);
+    }
+
+    #[test]
+    fn period_list_complement_invalid_outer_returns_invalid_period() {
+        let outer = TempochPeriodMjd {
+            start_mjd: f64::NAN,
+            end_mjd: 10.0,
+        };
+        let mut out: *mut TempochPeriodMjd = std::ptr::null_mut();
+        let mut out_count: usize = 0;
+        let status = unsafe {
+            tempoch_period_list_complement(outer, std::ptr::null(), 0, &mut out, &mut out_count)
+        };
+        assert_eq!(status, TempochStatus::InvalidPeriod);
+    }
+
+    // ── list_intersect ──────────────────────────────────────────────────────
+
+    #[test]
+    fn period_list_intersect_basic() {
+        let a = [
+            TempochPeriodMjd {
+                start_mjd: 0.0,
+                end_mjd: 5.0,
+            },
+            TempochPeriodMjd {
+                start_mjd: 8.0,
+                end_mjd: 12.0,
+            },
+        ];
+        let b = [TempochPeriodMjd {
+            start_mjd: 3.0,
+            end_mjd: 10.0,
+        }];
+        let mut out: *mut TempochPeriodMjd = std::ptr::null_mut();
+        let mut out_count: usize = 0;
+        let status = unsafe {
+            tempoch_period_list_intersect(
+                a.as_ptr(),
+                a.len(),
+                b.as_ptr(),
+                b.len(),
+                &mut out,
+                &mut out_count,
+            )
+        };
+        assert_eq!(status, TempochStatus::Ok);
+        assert_eq!(out_count, 2);
+        if out_count > 0 {
+            let result = unsafe { std::slice::from_raw_parts(out, out_count) };
+            assert!((result[0].start_mjd - 3.0).abs() < 1e-12);
+            assert!((result[0].end_mjd - 5.0).abs() < 1e-12);
+            assert!((result[1].start_mjd - 8.0).abs() < 1e-12);
+            assert!((result[1].end_mjd - 10.0).abs() < 1e-12);
+            unsafe { tempoch_period_mjd_free(out, out_count) };
+        }
+    }
+
+    #[test]
+    fn period_list_intersect_empty_a_returns_empty() {
+        let b = [TempochPeriodMjd {
+            start_mjd: 3.0,
+            end_mjd: 10.0,
+        }];
+        let mut out: *mut TempochPeriodMjd = std::ptr::null_mut();
+        let mut out_count: usize = 0;
+        let status = unsafe {
+            tempoch_period_list_intersect(
+                std::ptr::null(),
+                0,
+                b.as_ptr(),
+                b.len(),
+                &mut out,
+                &mut out_count,
+            )
+        };
+        assert_eq!(status, TempochStatus::Ok);
+        assert_eq!(out_count, 0);
+    }
+
+    #[test]
+    fn period_list_intersect_empty_b_returns_empty() {
+        let a = [TempochPeriodMjd {
+            start_mjd: 3.0,
+            end_mjd: 10.0,
+        }];
+        let mut out: *mut TempochPeriodMjd = std::ptr::null_mut();
+        let mut out_count: usize = 0;
+        let status = unsafe {
+            tempoch_period_list_intersect(
+                a.as_ptr(),
+                a.len(),
+                std::ptr::null(),
+                0,
+                &mut out,
+                &mut out_count,
+            )
+        };
+        assert_eq!(status, TempochStatus::Ok);
+        assert_eq!(out_count, 0);
+    }
+
+    #[test]
+    fn period_list_intersect_null_out_returns_null_pointer() {
+        let a = [TempochPeriodMjd {
+            start_mjd: 0.0,
+            end_mjd: 5.0,
+        }];
+        let b = [TempochPeriodMjd {
+            start_mjd: 0.0,
+            end_mjd: 5.0,
+        }];
+        let mut out_count: usize = 0;
+        let status = unsafe {
+            tempoch_period_list_intersect(
+                a.as_ptr(),
+                a.len(),
+                b.as_ptr(),
+                b.len(),
+                std::ptr::null_mut(),
+                &mut out_count,
+            )
+        };
+        assert_eq!(status, TempochStatus::NullPointer);
+    }
+
+    #[test]
+    fn period_list_intersect_null_a_nonzero_count_returns_null_pointer() {
+        let b = [TempochPeriodMjd {
+            start_mjd: 0.0,
+            end_mjd: 5.0,
+        }];
+        let mut out: *mut TempochPeriodMjd = std::ptr::null_mut();
+        let mut out_count: usize = 0;
+        let status = unsafe {
+            tempoch_period_list_intersect(
+                std::ptr::null(),
+                1,
+                b.as_ptr(),
+                b.len(),
+                &mut out,
+                &mut out_count,
+            )
+        };
+        assert_eq!(status, TempochStatus::NullPointer);
+    }
+
+    #[test]
+    fn period_list_intersect_null_b_nonzero_count_returns_null_pointer() {
+        let a = [TempochPeriodMjd {
+            start_mjd: 0.0,
+            end_mjd: 5.0,
+        }];
+        let mut out: *mut TempochPeriodMjd = std::ptr::null_mut();
+        let mut out_count: usize = 0;
+        let status = unsafe {
+            tempoch_period_list_intersect(
+                a.as_ptr(),
+                a.len(),
+                std::ptr::null(),
+                1,
+                &mut out,
+                &mut out_count,
+            )
+        };
+        assert_eq!(status, TempochStatus::NullPointer);
+    }
+
+    // ── list_union ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn period_list_union_basic_merges_adjacent() {
+        let a = [TempochPeriodMjd {
+            start_mjd: 0.0,
+            end_mjd: 5.0,
+        }];
+        let b = [TempochPeriodMjd {
+            start_mjd: 5.0,
+            end_mjd: 10.0,
+        }];
+        let mut out: *mut TempochPeriodMjd = std::ptr::null_mut();
+        let mut out_count: usize = 0;
+        let status = unsafe {
+            tempoch_period_list_union(
+                a.as_ptr(),
+                a.len(),
+                b.as_ptr(),
+                b.len(),
+                &mut out,
+                &mut out_count,
+            )
+        };
+        assert_eq!(status, TempochStatus::Ok);
+        assert!(out_count >= 1);
+        if out_count > 0 {
+            unsafe { tempoch_period_mjd_free(out, out_count) };
+        }
+    }
+
+    #[test]
+    fn period_list_union_both_empty_returns_ok() {
+        let mut out: *mut TempochPeriodMjd = std::ptr::null_mut();
+        let mut out_count: usize = 0;
+        let status = unsafe {
+            tempoch_period_list_union(
+                std::ptr::null(),
+                0,
+                std::ptr::null(),
+                0,
+                &mut out,
+                &mut out_count,
+            )
+        };
+        assert_eq!(status, TempochStatus::Ok);
+        assert_eq!(out_count, 0);
+    }
+
+    #[test]
+    fn period_list_union_null_out_returns_null_pointer() {
+        let mut out_count: usize = 0;
+        let status = unsafe {
+            tempoch_period_list_union(
+                std::ptr::null(),
+                0,
+                std::ptr::null(),
+                0,
+                std::ptr::null_mut(),
+                &mut out_count,
+            )
+        };
+        assert_eq!(status, TempochStatus::NullPointer);
+    }
+
+    #[test]
+    fn period_list_union_null_a_nonzero_returns_null_pointer() {
+        let b = [TempochPeriodMjd {
+            start_mjd: 0.0,
+            end_mjd: 5.0,
+        }];
+        let mut out: *mut TempochPeriodMjd = std::ptr::null_mut();
+        let mut out_count: usize = 0;
+        let status = unsafe {
+            tempoch_period_list_union(
+                std::ptr::null(),
+                1,
+                b.as_ptr(),
+                b.len(),
+                &mut out,
+                &mut out_count,
+            )
+        };
+        assert_eq!(status, TempochStatus::NullPointer);
+    }
+
+    #[test]
+    fn period_list_union_invalid_period_in_a_returns_invalid() {
+        let a = [TempochPeriodMjd {
+            start_mjd: f64::NAN,
+            end_mjd: 5.0,
+        }];
+        let b = [TempochPeriodMjd {
+            start_mjd: 0.0,
+            end_mjd: 3.0,
+        }];
+        let mut out: *mut TempochPeriodMjd = std::ptr::null_mut();
+        let mut out_count: usize = 0;
+        let status = unsafe {
+            tempoch_period_list_union(
+                a.as_ptr(),
+                a.len(),
+                b.as_ptr(),
+                b.len(),
+                &mut out,
+                &mut out_count,
+            )
+        };
+        assert_eq!(status, TempochStatus::InvalidPeriod);
+    }
+
+    // ── list_normalize ──────────────────────────────────────────────────────
+
+    #[test]
+    fn period_list_normalize_merges_overlapping() {
+        let periods = [
+            TempochPeriodMjd {
+                start_mjd: 0.0,
+                end_mjd: 7.0,
+            },
+            TempochPeriodMjd {
+                start_mjd: 5.0,
+                end_mjd: 10.0,
+            },
+        ];
+        let mut out: *mut TempochPeriodMjd = std::ptr::null_mut();
+        let mut out_count: usize = 0;
+        let status = unsafe {
+            tempoch_period_list_normalize(periods.as_ptr(), periods.len(), &mut out, &mut out_count)
+        };
+        assert_eq!(status, TempochStatus::Ok);
+        assert_eq!(out_count, 1);
+        if out_count > 0 {
+            let result = unsafe { std::slice::from_raw_parts(out, out_count) };
+            assert!((result[0].start_mjd - 0.0).abs() < 1e-12);
+            assert!((result[0].end_mjd - 10.0).abs() < 1e-12);
+            unsafe { tempoch_period_mjd_free(out, out_count) };
+        }
+    }
+
+    #[test]
+    fn period_list_normalize_empty_input_returns_empty() {
+        let mut out: *mut TempochPeriodMjd = std::ptr::null_mut();
+        let mut out_count: usize = 0;
+        let status =
+            unsafe { tempoch_period_list_normalize(std::ptr::null(), 0, &mut out, &mut out_count) };
+        assert_eq!(status, TempochStatus::Ok);
+        assert_eq!(out_count, 0);
+    }
+
+    #[test]
+    fn period_list_normalize_null_out_returns_null_pointer() {
+        let mut out_count: usize = 0;
+        let status = unsafe {
+            tempoch_period_list_normalize(std::ptr::null(), 0, std::ptr::null_mut(), &mut out_count)
+        };
+        assert_eq!(status, TempochStatus::NullPointer);
+    }
+
+    #[test]
+    fn period_list_normalize_invalid_period_returns_invalid() {
+        let periods = [TempochPeriodMjd {
+            start_mjd: f64::NAN,
+            end_mjd: 5.0,
+        }];
+        let mut out: *mut TempochPeriodMjd = std::ptr::null_mut();
+        let mut out_count: usize = 0;
+        let status = unsafe {
+            tempoch_period_list_normalize(periods.as_ptr(), periods.len(), &mut out, &mut out_count)
+        };
+        assert_eq!(status, TempochStatus::InvalidPeriod);
+    }
+
+    #[test]
+    fn period_list_normalize_null_periods_nonzero_count_returns_null_pointer() {
+        let mut out: *mut TempochPeriodMjd = std::ptr::null_mut();
+        let mut out_count: usize = 0;
+        let status =
+            unsafe { tempoch_period_list_normalize(std::ptr::null(), 1, &mut out, &mut out_count) };
+        assert_eq!(status, TempochStatus::NullPointer);
+    }
+
+    // ── free with nonzero count ─────────────────────────────────────────────
+
+    #[test]
+    fn period_free_heap_allocated_array() {
+        let periods = [TempochPeriodMjd {
+            start_mjd: 0.0,
+            end_mjd: 5.0,
+        }];
+        let mut out: *mut TempochPeriodMjd = std::ptr::null_mut();
+        let mut out_count: usize = 0;
+        let status = unsafe {
+            tempoch_period_list_normalize(periods.as_ptr(), periods.len(), &mut out, &mut out_count)
+        };
+        assert_eq!(status, TempochStatus::Ok);
+        assert_eq!(out_count, 1);
+        // Exercise the non-null, non-zero branch of tempoch_period_mjd_free
+        unsafe { tempoch_period_mjd_free(out, out_count) };
+    }
 }

@@ -1179,4 +1179,98 @@ mod tests {
         let err = parse_eop_finals(&text).unwrap_err();
         assert!(err.contains("daily gap"));
     }
+
+    // ── TimeDataError display, source and From ───────────────────────────────
+
+    #[test]
+    fn time_data_error_display_io() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+        let err = TimeDataError::Io(io_err);
+        assert!(err.to_string().contains("I/O error"));
+        assert!(err.to_string().contains("file not found"));
+    }
+
+    #[test]
+    fn time_data_error_display_download() {
+        let err = TimeDataError::Download("timeout".into());
+        assert!(err.to_string().contains("download error"));
+        assert!(err.to_string().contains("timeout"));
+    }
+
+    #[test]
+    fn time_data_error_display_parse() {
+        let err = TimeDataError::Parse("bad line".into());
+        assert!(err.to_string().contains("parse error"));
+        assert!(err.to_string().contains("bad line"));
+    }
+
+    #[test]
+    fn time_data_error_display_integrity() {
+        let err = TimeDataError::Integrity("hash mismatch".into());
+        assert!(err.to_string().contains("integrity error"));
+        assert!(err.to_string().contains("hash mismatch"));
+    }
+
+    #[test]
+    fn time_data_error_source_io_is_some() {
+        use std::error::Error;
+        let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
+        let err = TimeDataError::Io(io_err);
+        assert!(err.source().is_some());
+    }
+
+    #[test]
+    fn time_data_error_source_non_io_is_none() {
+        use std::error::Error;
+        assert!(TimeDataError::Download("x".into()).source().is_none());
+        assert!(TimeDataError::Parse("x".into()).source().is_none());
+        assert!(TimeDataError::Integrity("x".into()).source().is_none());
+    }
+
+    #[test]
+    fn time_data_error_from_io_error() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::BrokenPipe, "pipe");
+        let err = TimeDataError::from(io_err);
+        assert!(matches!(err, TimeDataError::Io(_)));
+    }
+
+    // ── parse_month additional month names ───────────────────────────────────
+
+    #[test]
+    fn parse_utc_tai_segments_with_sep_oct_nov_dec() {
+        // Test month names not exercised by the default sample fixture.
+        let history = "\
+1961 Sep. 1 - Oct. 1 0.5s\n\
+Oct. 1 - Nov. 1 0.6s\n\
+Nov. 1 - Dec. 1 0.7s\n\
+Dec. 1 - 1962 Jan. 1 0.8s\n\
+1962 Jan. 1 - 1.0s\n";
+        let segments = parse_utc_tai_segments(history).unwrap();
+        assert!(segments.len() >= 5);
+    }
+
+    // ── parse_date_fragment error path ───────────────────────────────────────
+
+    #[test]
+    fn parse_utc_tai_segments_rejects_bad_date_fragment() {
+        // A line that has a dash but whose left side has alphabetic chars yet
+        // cannot be parsed as a valid date fragment (too many tokens).
+        let history = "baddate foo bar baz qux - 1962 Jan. 1 1.0s\n1962 Jan. 1 - 2.0s\n";
+        let result = parse_utc_tai_segments(history);
+        assert!(result.is_err());
+    }
+
+    // ── parse_utc_tai_segments with no-slope formula ─────────────────────────
+
+    #[test]
+    fn parse_utc_tai_segments_constant_offset_formula() {
+        let history = "1972 Jan. 1 - 1973 Jan. 1 10s\n1973 Jan. 1 - 11s\n";
+        let segments = parse_utc_tai_segments(history).unwrap();
+        assert_eq!(segments.len(), 2);
+        assert_eq!(segments[0].base_seconds, 10.0);
+        assert_eq!(segments[0].slope_seconds_per_day, 0.0);
+        assert_eq!(segments[1].base_seconds, 11.0);
+        assert_eq!(segments[1].slope_seconds_per_day, 0.0);
+        assert!(segments[1].end_mjd.is_none());
+    }
 }

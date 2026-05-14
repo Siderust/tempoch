@@ -5,7 +5,7 @@
 
 use qtty::Day;
 
-use crate::representation::{JulianDate, ModifiedJulianDate};
+use crate::format::{JulianDate, ModifiedJulianDate};
 use crate::scale::CoordinateScale;
 use crate::scale::TT;
 use crate::time::Time;
@@ -70,7 +70,7 @@ impl<S: CoordinateScale> TimeInstant for JulianDate<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::representation::{J2000Seconds, JulianDate, ModifiedJulianDate};
+    use crate::format::{J2000Seconds, JulianDate, ModifiedJulianDate};
     use crate::scale::TT;
 
     #[test]
@@ -81,11 +81,11 @@ mod tests {
         let tt_later = tt.add_duration(Second::new(2.5));
         assert_eq!(tt_later.difference(&tt), Second::new(2.5));
 
-        let mjd = ModifiedJulianDate::<TT>::new(60_000.0);
+        let mjd = ModifiedJulianDate::<TT>::from_raw_unchecked(Day::new(60_000.0));
         let mjd_later = mjd.add_duration(Day::new(1.25));
         assert_eq!(mjd_later.difference(&mjd), Day::new(1.25));
 
-        let jd = JulianDate::<TT>::new(2_460_000.0);
+        let jd = JulianDate::<TT>::from_raw_unchecked(Day::new(2_460_000.0));
         let jd_later = jd.add_duration(Day::new(0.5));
         assert_eq!(jd_later.difference(&jd), Day::new(0.5));
     }

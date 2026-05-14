@@ -19,7 +19,7 @@
 use crate::constats::GPS_EPOCH_JD_TAI;
 use crate::context::TimeContext;
 use crate::error::ConversionError;
-use crate::representation::{JulianDate, ModifiedJulianDate, UnixTime};
+use crate::format::{JulianDate, ModifiedJulianDate, UnixTime};
 use crate::scale::{TAI, TCB, TCG, TDB, TT, UT1, UTC};
 use crate::time::Time;
 use qtty::{Day, Second};
@@ -30,30 +30,34 @@ use qtty::{Day, Second};
 /// FFI adapters map their own integer discriminants to `ScaleKind` and then
 /// delegate all conversion logic to [`time_tt_from_scalar`] and
 /// [`time_tt_to_scalar`] rather than reimplementing the dispatch matrix.
+///
+/// Variant names follow the `<Format><Scale>` convention: the prefix names
+/// the encoding format (e.g. `Jd` = Julian Day, `Mjd` = Modified Julian Day)
+/// and the suffix names the time scale (e.g. `Tt`, `Tai`, `Tdb`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScaleKind {
-    /// Julian Day (TT) — equivalently Julian Ephemeris Date (JDE). Value in days.
+    /// Julian Day on the TT axis (equivalently: Julian Ephemeris Date). Value in days.
     JdTt,
     /// Modified Julian Day on the TT axis. Value in days.
     MjdTt,
-    /// Barycentric Dynamical Time, Julian days on the TDB axis.
-    Tdb,
-    /// International Atomic Time, Julian days on the TAI axis.
-    Tai,
-    /// Geocentric Coordinate Time, Julian days on the TCG axis.
-    Tcg,
-    /// Barycentric Coordinate Time, Julian days on the TCB axis.
-    Tcb,
-    /// GPS days since [`GPS_EPOCH_JD_TAI`] on the TAI axis.
+    /// Julian Day on the TDB axis. Value in days.
+    JdTdb,
+    /// Julian Day on the TAI axis. Value in days.
+    JdTai,
+    /// Julian Day on the TCG axis. Value in days.
+    JdTcg,
+    /// Julian Day on the TCB axis. Value in days.
+    JdTcb,
+    /// Julian Day offset from the GPS epoch, on the TAI axis.
     ///
     /// The unit is **Julian days** (not GPS seconds). A value of `1.0`
     /// represents one Julian day (86 400 s) elapsed since the GPS epoch.
     /// This is distinct from conventional GPS time which is expressed in
     /// integer seconds or (week, seconds-of-week). Divide by 86 400 to
-    /// convert from GPS seconds to this representation.
-    GpsDays,
-    /// Universal Time UT1, Julian days on the UT1 axis.
-    Ut1,
+    /// convert from GPS seconds to this encoding.
+    JdGps,
+    /// Julian Day on the UT1 axis. Value in days.
+    JdUt1,
     /// Unix / POSIX time in seconds since 1970-01-01T00:00:00 UTC.
     Unix,
 }
@@ -73,21 +77,21 @@ pub fn time_tt_from_scalar(
     match kind {
         ScaleKind::JdTt => JulianDate::<TT>::try_new(Day::new(value)).map(|e| e.to_time()),
         ScaleKind::MjdTt => ModifiedJulianDate::<TT>::try_new(Day::new(value)).map(|e| e.to_time()),
-        ScaleKind::Tdb => {
+        ScaleKind::JdTdb => {
             JulianDate::<TDB>::try_new(Day::new(value)).map(|e| e.to_time().to_scale::<TT>())
         }
-        ScaleKind::Tai => {
+        ScaleKind::JdTai => {
             JulianDate::<TAI>::try_new(Day::new(value)).map(|e| e.to_time().to_scale::<TT>())
         }
-        ScaleKind::Tcg => {
+        ScaleKind::JdTcg => {
             JulianDate::<TCG>::try_new(Day::new(value)).map(|e| e.to_time().to_scale::<TT>())
         }
-        ScaleKind::Tcb => {
+        ScaleKind::JdTcb => {
             JulianDate::<TCB>::try_new(Day::new(value)).map(|e| e.to_time().to_scale::<TT>())
         }
-        ScaleKind::GpsDays => JulianDate::<TAI>::try_new(GPS_EPOCH_JD_TAI + Day::new(value))
+        ScaleKind::JdGps => JulianDate::<TAI>::try_new(GPS_EPOCH_JD_TAI.raw() + Day::new(value))
             .map(|e| e.to_time().to_scale::<TT>()),
-        ScaleKind::Ut1 => JulianDate::<UT1>::try_new(Day::new(value))
+        ScaleKind::JdUt1 => JulianDate::<UT1>::try_new(Day::new(value))
             .and_then(|e| e.to_time().to_scale_with::<TT>(ctx)),
         ScaleKind::Unix => UnixTime::try_new(Second::new(value))
             .and_then(|e| e.to_time_with(ctx))
@@ -107,18 +111,18 @@ pub fn time_tt_to_scalar(
     kind: ScaleKind,
     ctx: &TimeContext,
 ) -> Result<f64, ConversionError> {
-    use crate::representation::{JD, MJD};
+    use crate::format::{JD, MJD};
     match kind {
         ScaleKind::JdTt => Ok(tt.to::<JD>().raw() / Day::new(1.0)),
         ScaleKind::MjdTt => Ok(tt.to::<MJD>().raw() / Day::new(1.0)),
-        ScaleKind::Tdb => Ok(tt.to_scale::<TDB>().to::<JD>().raw() / Day::new(1.0)),
-        ScaleKind::Tai => Ok(tt.to_scale::<TAI>().to::<JD>().raw() / Day::new(1.0)),
-        ScaleKind::Tcg => Ok(tt.to_scale::<TCG>().to::<JD>().raw() / Day::new(1.0)),
-        ScaleKind::Tcb => Ok(tt.to_scale::<TCB>().to::<JD>().raw() / Day::new(1.0)),
-        ScaleKind::GpsDays => {
-            Ok((tt.to_scale::<TAI>().to::<JD>().raw() - GPS_EPOCH_JD_TAI) / Day::new(1.0))
+        ScaleKind::JdTdb => Ok(tt.to_scale::<TDB>().to::<JD>().raw() / Day::new(1.0)),
+        ScaleKind::JdTai => Ok(tt.to_scale::<TAI>().to::<JD>().raw() / Day::new(1.0)),
+        ScaleKind::JdTcg => Ok(tt.to_scale::<TCG>().to::<JD>().raw() / Day::new(1.0)),
+        ScaleKind::JdTcb => Ok(tt.to_scale::<TCB>().to::<JD>().raw() / Day::new(1.0)),
+        ScaleKind::JdGps => {
+            Ok((tt.to_scale::<TAI>().to::<JD>().raw() - GPS_EPOCH_JD_TAI.raw()) / Day::new(1.0))
         }
-        ScaleKind::Ut1 => Ok(tt.to_scale_with::<UT1>(ctx)?.to::<JD>().raw() / Day::new(1.0)),
+        ScaleKind::JdUt1 => Ok(tt.to_scale_with::<UT1>(ctx)?.to::<JD>().raw() / Day::new(1.0)),
         ScaleKind::Unix => tt
             .to_scale::<UTC>()
             .raw_unix_seconds_with(ctx)

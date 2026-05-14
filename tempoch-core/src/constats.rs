@@ -3,45 +3,75 @@
 
 //! Typed epoch and offset constants.
 //!
-//! These values are exposed as raw `qtty` quantities so callers can pass them
-//! directly to `Time::<A>::from_julian_days`, `from_modified_julian_days`, etc.
+//! Coordinate-style constants are exposed as [`Coord<S, F>`] values that
+//! carry both their **scale** (TT, TAI, UTC, UT1, …) and their **format**
+//! (JD, MJD, J2000 seconds, …) at the type level. This prevents cross-axis
+//! misuse such as feeding a UTC-axis Julian Date to a TT-tagged
+//! [`JulianDate<TT>`] constructor.
+//!
+//! Pure SI-second offsets between scales (e.g. [`TT_MINUS_TAI`]) remain
+//! plain [`qtty::Second`] values: they are scale-independent durations
+//! used as algebraic offsets, not instants.
+//!
+//! [`Coord<S, F>`]: crate::Coord
+//! [`JulianDate<TT>`]: crate::JulianDate
 
 use qtty::{Day, Second};
 
+/// Days in a Julian year (365.25 d).
+pub const JULIAN_YEAR_DAYS: Day = Day::new(365.25);
+
+use crate::coord::Coord;
+use crate::format::{J2000s, JD, MJD};
+use crate::scale::{TAI, TT, UTC};
+
 pub use crate::delta_t::DELTA_T_PREDICTION_HORIZON_MJD;
 
-/// J2000 epoch as JD(TT) = 2_451_545.0.
-pub const J2000_JD_TT: Day = Day::new(2_451_545.0);
+/// J2000 epoch as a JD on the TT axis (`JD 2 451 545.0 TT`).
+pub const J2000_JD_TT: Coord<TT, JD> = Coord::from_raw_unchecked(Day::new(2_451_545.0));
 
-/// Offset between the Julian Day and Modified Julian Day counts.
+/// Offset between Julian Day and Modified Julian Day counts.
 ///
-/// `MJD = JD - JD_MINUS_MJD`.
-pub const JD_MINUS_MJD: Day = Day::new(2_400_000.5);
+/// `MJD = JD - JD_MINUS_MJD`. Kept crate-private: external callers should
+/// use the typed conversions on [`Coord<S, JD>`] / [`Coord<S, MJD>`]
+/// instead of doing the offset arithmetic by hand.
+pub(crate) const JD_MINUS_MJD: Day = Day::new(2_400_000.5);
 
 /// Exact `TT - TAI` offset (32.184 s).
+///
+/// This is a pure SI-second offset between two coordinate scales, not an
+/// instant; it is intentionally kept as a [`qtty::Second`] for algebraic
+/// use in scale conversions.
 pub const TT_MINUS_TAI: Second = Second::new(32.184);
 
-/// Unix epoch as a Julian Day on the UTC axis: 1970-01-01T00:00:00 UTC.
-pub const UNIX_EPOCH_JD: Day = Day::new(2_440_587.5);
+/// Unix epoch as a JD on the UTC axis: `1970-01-01T00:00:00 UTC`.
+pub const UNIX_EPOCH_JD: Coord<UTC, JD> = Coord::from_raw_unchecked(Day::new(2_440_587.5));
 
-/// Unix epoch as a Modified Julian Day on the UTC axis.
-pub const UNIX_EPOCH_MJD: Day = Day::new(40_587.0);
+/// Unix epoch as an MJD on the UTC axis.
+pub const UNIX_EPOCH_MJD: Coord<UTC, MJD> = Coord::from_raw_unchecked(Day::new(40_587.0));
 
-/// GPS epoch as a Julian Day on the UTC axis: 1980-01-06T00:00:00 UTC.
-pub const GPS_EPOCH_JD_UTC: Day = Day::new(2_444_244.5);
+/// GPS epoch as a JD on the UTC axis: `1980-01-06T00:00:00 UTC`.
+pub const GPS_EPOCH_JD_UTC: Coord<UTC, JD> = Coord::from_raw_unchecked(Day::new(2_444_244.5));
 
 /// Exact `TAI - UTC` offset at the GPS epoch.
+///
+/// Like [`TT_MINUS_TAI`], this is a pure SI-second offset and stays as a
+/// bare [`qtty::Second`].
 pub const GPS_EPOCH_TAI_MINUS_UTC: Second = Second::new(19.0);
 
-/// GPS epoch expressed as a Julian Day on the TAI axis.
+/// GPS epoch expressed as a JD on the TAI axis.
 ///
 /// At the GPS epoch, `TAI - UTC = 19 s` exactly, so this is
-/// `GPS_EPOCH_JD_UTC + 19 s`, converted to Julian days.
-pub const GPS_EPOCH_JD_TAI: Day =
-    GPS_EPOCH_JD_UTC.const_add(GPS_EPOCH_TAI_MINUS_UTC.to_const::<qtty::unit::Day>());
+/// `GPS_EPOCH_JD_UTC + 19 s` converted to Julian days, but on the TAI axis.
+pub const GPS_EPOCH_JD_TAI: Coord<TAI, JD> = Coord::from_raw_unchecked(
+    GPS_EPOCH_JD_UTC
+        .raw()
+        .const_add(GPS_EPOCH_TAI_MINUS_UTC.to_const::<qtty::unit::Day>()),
+);
 
-/// IAU 2000 B1.9 reference epoch `T0` as JD(TT).
-pub const IAU_TIME_EPOCH_T0_JD: Day = Day::new(2_443_144.500_372_5);
+/// IAU 2000 B1.9 reference epoch `T0` as a JD on the TT axis.
+pub const IAU_TIME_EPOCH_T0_JD: Coord<TT, JD> =
+    Coord::from_raw_unchecked(Day::new(2_443_144.500_372_5));
 
 /// Start of the interval where the built-in TT↔TDB truncated series achieves
 /// about 10 microseconds accuracy relative to numerical integration.
@@ -57,24 +87,27 @@ pub const IAU_TIME_EPOCH_T0_JD: Day = Day::new(2_443_144.500_372_5);
 /// The **end-to-end** accuracy ceiling is therefore **~10 µs**. These bounds
 /// apply within the 1600-01-01 to 2200-01-01 TT interval. This constant marks
 /// the start of that interval, corresponding approximately to 1600-01-01 TT.
-pub const TDB_TT_MODEL_HIGH_ACCURACY_START_JD: Day = Day::new(2_305_447.5);
+pub const TDB_TT_MODEL_HIGH_ACCURACY_START_JD: Coord<TT, JD> =
+    Coord::from_raw_unchecked(Day::new(2_305_447.5));
 
 /// End of the interval where the built-in TT↔TDB truncated series achieves
 /// about 10 microseconds accuracy relative to numerical integration.
 ///
 /// See [`TDB_TT_MODEL_HIGH_ACCURACY_START_JD`] for the full accuracy breakdown.
 /// This constant corresponds approximately to 2200-01-01 TT.
-pub const TDB_TT_MODEL_HIGH_ACCURACY_END_JD: Day = Day::new(2_524_598.5);
+pub const TDB_TT_MODEL_HIGH_ACCURACY_END_JD: Coord<TT, JD> =
+    Coord::from_raw_unchecked(Day::new(2_524_598.5));
 
-/// GPS epoch expressed as TAI seconds since J2000 TT on the TAI axis.
+/// GPS epoch expressed as J2000-second offset on the TAI axis.
 ///
 /// The storage convention is `(JD_TAI(P) − J2000_JD_TT) × 86400`. For the GPS
 /// epoch, `JD_UTC = GPS_EPOCH_JD_UTC` and `TAI − UTC = 19 s` (exact), giving:
 ///
 ///   `(44_244.0 − 51_544.5) × 86400 + 19 = −630_763_181`.
-pub const GPS_EPOCH_TAI: Second = Second::new(-630_763_181.0);
+pub const GPS_EPOCH_TAI: Coord<TAI, J2000s> =
+    Coord::from_raw_unchecked(Second::new(-630_763_181.0));
 
-/// First MJD covered by the compiled UTC-TAI segment table.
+/// First MJD covered by the compiled UTC-TAI segment table, on the UTC axis.
 ///
 /// This corresponds to 1961-01-01. UTC was defined starting from this date.
 /// For queries before this boundary, `Time<UTC>` conversions return
@@ -83,7 +116,7 @@ pub const GPS_EPOCH_TAI: Second = Second::new(-630_763_181.0);
 /// [`crate::TimeContext::allow_pre_definition_utc`]. The extrapolated offset is
 /// internally consistent (round-trips close) but is not a historically defined
 /// UTC-TAI value; no standard UTC existed before 1961.
-pub const UTC_DEFINED_FROM_MJD: Day = Day::new(37_300.0);
+pub const UTC_DEFINED_FROM_MJD: Coord<UTC, MJD> = Coord::from_raw_unchecked(Day::new(37_300.0));
 
 /// One Julian century in days (36 525 d), used for the Fairhead–Bretagnon
 /// parameter.
@@ -100,19 +133,23 @@ mod tests {
 
     #[test]
     fn unix_epoch_jd_and_mjd_constants_are_consistent() {
-        assert!((UNIX_EPOCH_JD - JD_MINUS_MJD - UNIX_EPOCH_MJD).abs() < Day::new(1e-15));
+        assert!(
+            (UNIX_EPOCH_JD.raw() - JD_MINUS_MJD - UNIX_EPOCH_MJD.raw()).abs() < Day::new(1e-15)
+        );
     }
 
     #[test]
     fn j2000_reference_values_match_known_offsets() {
-        assert!((J2000_JD_TT - JD_MINUS_MJD - Day::new(51_544.5)).abs() < Day::new(1e-12));
+        assert!((J2000_JD_TT.raw() - JD_MINUS_MJD - Day::new(51_544.5)).abs() < Day::new(1e-12));
         assert!((TT_MINUS_TAI - Second::new(32.184)).abs() < Second::new(1e-12));
-        assert!((UTC_DEFINED_FROM_MJD - Day::new(37_300.0)).abs() < Day::new(1e-12));
-        assert!((GPS_EPOCH_JD_UTC - Day::new(2_444_244.5)).abs() < Day::new(1e-12));
+        assert!((UTC_DEFINED_FROM_MJD.raw() - Day::new(37_300.0)).abs() < Day::new(1e-12));
+        assert!((GPS_EPOCH_JD_UTC.raw() - Day::new(2_444_244.5)).abs() < Day::new(1e-12));
         assert!((GPS_EPOCH_TAI_MINUS_UTC - Second::new(19.0)).abs() < Second::new(1e-12));
         assert!(
-            (GPS_EPOCH_JD_TAI - GPS_EPOCH_JD_UTC - GPS_EPOCH_TAI_MINUS_UTC.to::<qtty::unit::Day>())
-                .abs()
+            (GPS_EPOCH_JD_TAI.raw()
+                - GPS_EPOCH_JD_UTC.raw()
+                - GPS_EPOCH_TAI_MINUS_UTC.to::<qtty::unit::Day>())
+            .abs()
                 < Day::new(1e-9)
         );
     }
@@ -120,7 +157,7 @@ mod tests {
     #[test]
     fn high_accuracy_model_interval_is_ordered() {
         assert!(TDB_TT_MODEL_HIGH_ACCURACY_END_JD > TDB_TT_MODEL_HIGH_ACCURACY_START_JD);
-        assert!(GPS_EPOCH_TAI.is_finite());
-        assert!(DELTA_T_PREDICTION_HORIZON_MJD.is_finite());
+        assert!(GPS_EPOCH_TAI.raw().is_finite());
+        assert!(DELTA_T_PREDICTION_HORIZON_MJD.raw().is_finite());
     }
 }

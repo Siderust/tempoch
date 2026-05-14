@@ -462,7 +462,7 @@ fn datetime_from_utc_mjd(mjd_utc: DayQuantity) -> Option<DateTime<Utc>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::representation::{JulianDate, UnixTime, JD};
+    use crate::format::{JulianDate, UnixTime, JD};
     use crate::{Time, TimeContext, TT, UT1, UTC};
     use qtty::Second;
     use tempoch_time_data::TimeDataProvenance;
@@ -768,7 +768,7 @@ mod tests {
             bundle.eop_points().to_vec(),
             bundle.provenance().clone(),
         );
-        let beyond = crate::DELTA_T_PREDICTION_HORIZON_MJD + DayQuantity::new(15.0);
+        let beyond = crate::DELTA_T_PREDICTION_HORIZON_MJD.raw() + DayQuantity::new(15.0);
         let jd = beyond + crate::constats::JD_MINUS_MJD;
         let tt = JulianDate::<TT>::try_new(jd).unwrap().to_time();
 

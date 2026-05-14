@@ -78,12 +78,12 @@ impl From<TempochScaleId> for ScaleKind {
             // JD, JDE, and TT are all JD on the TT axis in the scalar ABI.
             TempochScaleId::JD | TempochScaleId::JDE | TempochScaleId::TT => ScaleKind::JdTt,
             TempochScaleId::MJD => ScaleKind::MjdTt,
-            TempochScaleId::TDB => ScaleKind::Tdb,
-            TempochScaleId::TAI => ScaleKind::Tai,
-            TempochScaleId::TCG => ScaleKind::Tcg,
-            TempochScaleId::TCB => ScaleKind::Tcb,
-            TempochScaleId::GPS => ScaleKind::GpsDays,
-            TempochScaleId::UT => ScaleKind::Ut1,
+            TempochScaleId::TDB => ScaleKind::JdTdb,
+            TempochScaleId::TAI => ScaleKind::JdTai,
+            TempochScaleId::TCG => ScaleKind::JdTcg,
+            TempochScaleId::TCB => ScaleKind::JdTcb,
+            TempochScaleId::GPS => ScaleKind::JdGps,
+            TempochScaleId::UT => ScaleKind::JdUt1,
             TempochScaleId::UnixTime => ScaleKind::Unix,
         }
     }

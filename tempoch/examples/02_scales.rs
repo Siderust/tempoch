@@ -6,7 +6,9 @@ use tempoch::{
 
 fn main() {
     let ctx = TimeContext::new();
-    let tt = JulianDate::<TT>::try_new(J2000_JD_TT).unwrap().to_time();
+    let tt = JulianDate::<TT>::try_new(J2000_JD_TT.raw())
+        .unwrap()
+        .to_time();
 
     let tai: Time<TAI> = tt.to::<TAI>();
     let utc: Time<UTC> = tt.to::<UTC>();
