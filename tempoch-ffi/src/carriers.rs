@@ -75,7 +75,7 @@ impl From<TempochScaleId> for ScaleKind {
     #[inline]
     fn from(id: TempochScaleId) -> Self {
         match id {
-        // JD, JDE, and TT are all JD on the TT axis in the scalar ABI.
+            // JD, JDE, and TT are all JD on the TT axis in the scalar ABI.
             TempochScaleId::JD | TempochScaleId::JDE | TempochScaleId::TT => ScaleKind::JdTt,
             TempochScaleId::MJD => ScaleKind::MjdTt,
             TempochScaleId::TDB => ScaleKind::JdTdb,

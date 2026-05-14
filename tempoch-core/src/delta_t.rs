@@ -347,8 +347,10 @@ fn delta_t_seconds_unconstrained(jd_ut: Day) -> Second {
 /// `delta_t_seconds` accepts a UT1 Julian Date and returns
 /// [`ConversionError::Ut1HorizonExceeded`] beyond this horizon, so the
 /// constant is naturally tagged as a [`Coord<UT1, MJD>`].
-pub const DELTA_T_PREDICTION_HORIZON_MJD: crate::coord::Coord<crate::scale::UT1, crate::format::MJD> =
-    crate::coord::Coord::from_raw_unchecked(MODERN_DELTA_T_END_MJD);
+pub const DELTA_T_PREDICTION_HORIZON_MJD: crate::coord::Coord<
+    crate::scale::UT1,
+    crate::format::MJD,
+> = crate::coord::Coord::from_raw_unchecked(MODERN_DELTA_T_END_MJD);
 
 #[cfg(test)]
 mod tests {

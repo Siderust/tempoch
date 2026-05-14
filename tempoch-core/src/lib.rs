@@ -41,8 +41,8 @@ mod delta_t;
 pub(crate) mod encoding;
 pub mod eop;
 pub mod error;
-pub mod format;
 mod ext;
+pub mod format;
 pub(crate) mod generated;
 mod interval;
 pub mod scalar;
@@ -70,15 +70,15 @@ pub use data::active::{
 pub use delta_t::{delta_t_seconds, delta_t_seconds_extrapolated, DELTA_T_PREDICTION_HORIZON_MJD};
 pub use error::{ConversionError, TimeDataError};
 pub use ext::TimeInstant;
+pub use format::{
+    EncodedTime, FormatForScale, GpsTime, InfallibleFormatForScale, J2000Seconds, J2000s,
+    JulianDate, ModifiedJulianDate, TimeFormat, Unix, UnixTime, GPS, JD, MJD,
+};
 pub use generated::{
     EOP_END_MJD, EOP_OBSERVED_END_MJD, EOP_START_MJD, MODERN_DELTA_T_OBSERVED_END_MJD,
 };
 pub use interval::{
     complement_within, Interval, InvalidIntervalError, InvalidPeriodError, Period, PeriodListError,
-};
-pub use format::{
-    EncodedTime, FormatForScale, GpsTime, InfallibleFormatForScale, J2000Seconds, J2000s,
-    JulianDate, ModifiedJulianDate, TimeFormat, Unix, UnixTime, GPS, JD, MJD,
 };
 pub use scalar::{
     scalar_add_days, scalar_difference_in_days, time_tt_from_scalar, time_tt_to_scalar, ScaleKind,

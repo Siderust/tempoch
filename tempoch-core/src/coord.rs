@@ -364,4 +364,3 @@ mod tests {
         let _ = accept_utc_jd(utc);
     }
 }
-

@@ -16,8 +16,12 @@ fn main() {
         .unwrap()
         .to_time();
 
-    let j2000_from_jd = JulianDate::<TT>::try_new(J2000_JD_TT.raw()).unwrap().to_time();
-    let unix_epoch_jd = JulianDate::<TT>::try_new(UNIX_EPOCH_JD.raw()).unwrap().to_time();
+    let j2000_from_jd = JulianDate::<TT>::try_new(J2000_JD_TT.raw())
+        .unwrap()
+        .to_time();
+    let unix_epoch_jd = JulianDate::<TT>::try_new(UNIX_EPOCH_JD.raw())
+        .unwrap()
+        .to_time();
     let half_day_jd = JulianDate::<TT>::try_new(Day::new(2_451_545.5))
         .unwrap()
         .to_time();
