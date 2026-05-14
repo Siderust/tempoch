@@ -128,4 +128,11 @@ mod tests {
         assert!(horizon.is_finite());
         assert!(horizon > 0.0);
     }
+
+    #[test]
+    fn modern_delta_t_observed_end_mjd_is_finite_and_positive() {
+        let end = tempoch_const_modern_delta_t_observed_end_mjd();
+        assert!(end.is_finite());
+        assert!(end > 0.0);
+    }
 }

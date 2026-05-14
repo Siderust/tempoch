@@ -583,8 +583,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scale::{TT, UTC};
-    use qtty::Day;
+    use crate::context::TimeContext;
+    use crate::scale::{TAI, TT, UTC};
+    use qtty::{Day, Second};
 
     #[test]
     fn encoded_time_display_delegates_to_quantity() {
@@ -595,12 +596,160 @@ mod tests {
 
     #[test]
     fn encoded_time_lower_exp_delegates_to_quantity() {
-        use qtty::Second;
         let seconds = J2000Seconds::<TT>::try_new(Second::new(1_234.5)).unwrap();
         let formatted = format!("{seconds:.2e}");
 
-        assert!(formatted.contains("e"));
-        assert!(formatted.ends_with(" s"));
+        assert_eq!(formatted, format!("{:.2e}", seconds.raw()));
+    }
+
+    #[test]
+    fn encoded_time_upper_exp_delegates_to_quantity() {
+        let seconds = J2000Seconds::<TT>::try_new(Second::new(1_234.5)).unwrap();
+        let formatted = format!("{seconds:.2E}");
+
+        assert_eq!(formatted, format!("{:.2E}", seconds.raw()));
+    }
+
+    #[test]
+    fn encoded_time_clone_matches_original() {
+        let jd = JulianDate::<TT>::try_new(Day::new(2_451_545.0)).unwrap();
+        let cloned = <JulianDate<TT> as Clone>::clone(&jd);
+        assert_eq!(jd.raw(), cloned.raw());
+    }
+
+    #[test]
+    fn encoded_time_partial_eq() {
+        let a = JulianDate::<TT>::try_new(Day::new(2_451_545.0)).unwrap();
+        let b = JulianDate::<TT>::try_new(Day::new(2_451_545.0)).unwrap();
+        let c = JulianDate::<TT>::try_new(Day::new(2_451_546.0)).unwrap();
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+    }
+
+    #[test]
+    fn encoded_time_quantity_is_alias_for_raw() {
+        let jd = JulianDate::<TT>::try_new(Day::new(2_451_545.5)).unwrap();
+        assert_eq!(jd.raw(), jd.quantity());
+    }
+
+    #[test]
+    fn encoded_time_try_to_time_on_unix() {
+        let ctx = TimeContext::new();
+        // J2000.0 epoch corresponds to 2000-01-01 11:58:55.816 UTC → unix ~946727935.816
+        let unix = UnixTime::try_new(Second::new(946_727_935.816)).unwrap();
+        let time = unix.to_time_with(&ctx).unwrap();
+        // Round-trip: time back to unix
+        let back = <Unix as FormatForScale<UTC>>::try_from_time(time, &ctx).unwrap();
+        assert!((back - Second::new(946_727_935.816)).abs() < Second::new(1e-3));
+    }
+
+    #[test]
+    fn encoded_time_to_infallible_conversion() {
+        // JulianDate<TT> implements InfallibleFormatForScale<TT>, so .to::<MJD>() works.
+        let jd = JulianDate::<TT>::try_new(Day::new(2_451_545.0)).unwrap();
+        let mjd: ModifiedJulianDate<TT> = jd.to::<MJD>();
+        // JD 2451545.0 == MJD 51544.5 (MJD = JD - 2400000.5)
+        assert!((mjd.raw().value() - 51_544.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn encoded_time_try_to_conversion() {
+        let jd = JulianDate::<TT>::try_new(Day::new(2_451_545.0)).unwrap();
+        let mjd: ModifiedJulianDate<TT> = jd.try_to::<MJD>().unwrap();
+        assert!((mjd.raw().value() - 51_544.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn encoded_time_to_with_for_unix() {
+        let ctx = TimeContext::new();
+        let jd = JulianDate::<UTC>::try_new(Day::new(2_451_545.0)).unwrap();
+        let unix: UnixTime = jd.to_with::<Unix>(&ctx).unwrap();
+        // JD 2451545.0 in UTC is around year 2000; unix value should be ~946M seconds.
+        assert!(unix.raw().value().is_finite());
+        assert!(unix.raw().value() > 9e8 && unix.raw().value() < 1e10);
+    }
+
+    #[test]
+    fn gps_format_roundtrip_through_tai() {
+        let gps_seconds = Second::new(0.0);
+        let time: crate::time::Time<TAI> =
+            <GPS as InfallibleFormatForScale<TAI>>::into_time(gps_seconds);
+        let back = <GPS as InfallibleFormatForScale<TAI>>::from_time(time);
+        assert!((back - gps_seconds).abs() < Second::new(1e-12));
+    }
+
+    #[test]
+    fn gps_encoded_time_to_time_roundtrip() {
+        let gps = GpsTime::try_new(Second::new(1_234_567.89)).unwrap();
+        let time = gps.to_time();
+        let back: GpsTime = time.into();
+        // f64 floating point round-trip tolerance for large values
+        assert!((back.raw() - gps.raw()).abs() < Second::new(1e-6));
+    }
+
+    #[test]
+    fn from_encoded_time_into_time() {
+        let jd = JulianDate::<TT>::try_new(Day::new(2_451_545.0)).unwrap();
+        let time: crate::time::Time<TT> = jd.into();
+        let back: JulianDate<TT> = time.into();
+        assert!((back.raw() - Day::new(2_451_545.0)).abs() < Day::new(1e-12));
+    }
+
+    #[test]
+    fn infallible_conversion_target_for_j2000s() {
+        let jd = JulianDate::<TT>::try_new(Day::new(2_451_545.0)).unwrap();
+        let time = jd.to_time();
+        // J2000s::convert gives the J2000 seconds representation
+        let j2k: J2000Seconds<TT> = J2000s::convert(time);
+        // J2000.0 epoch is 0 J2000 seconds by definition
+        assert!((j2k.raw().value()).abs() < 1e-6);
+    }
+
+    #[test]
+    fn conversion_target_try_convert_for_j2000s() {
+        let jd = JulianDate::<TT>::try_new(Day::new(2_451_545.0)).unwrap();
+        let time = jd.to_time();
+        let j2k: J2000Seconds<TT> = J2000s::try_convert(time).unwrap();
+        assert!((j2k.raw().value()).abs() < 1e-6);
+    }
+
+    #[test]
+    fn conversion_target_try_convert_for_jd() {
+        let mjd = ModifiedJulianDate::<TT>::try_new(Day::new(51_544.0)).unwrap();
+        let time = mjd.to_time();
+        let jd: JulianDate<TT> = JD::try_convert(time).unwrap();
+        // MJD 51544.0 == JD 2451544.5 (JD = MJD + 2400000.5)
+        assert!((jd.raw().value() - 2_451_544.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn conversion_target_try_convert_for_mjd() {
+        let jd = JulianDate::<TT>::try_new(Day::new(2_451_545.0)).unwrap();
+        let time = jd.to_time();
+        let mjd: ModifiedJulianDate<TT> = MJD::try_convert(time).unwrap();
+        // JD 2451545.0 == MJD 51544.5 (MJD = JD - 2400000.5)
+        assert!((mjd.raw().value() - 51_544.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn gps_conversion_target_try_convert() {
+        let jd = JulianDate::<TT>::try_new(Day::new(2_451_545.0)).unwrap();
+        let time = jd.to_time();
+        let gps: GpsTime = GPS::try_convert(time).unwrap();
+        assert!(gps.raw().is_finite());
+    }
+
+    #[test]
+    fn unix_context_conversion_target() {
+        let ctx = TimeContext::new();
+        let jd = JulianDate::<UTC>::try_new(Day::new(2_451_545.0)).unwrap();
+        let utc_time = jd.to_time();
+        let unix =
+            <Unix as crate::target::ContextConversionTarget<UTC>>::convert_with(utc_time, &ctx)
+                .unwrap();
+        // The Unix time for a JD around the year 2000 should be around 946M–947M seconds.
+        assert!(unix.raw().value().is_finite());
+        assert!(unix.raw().value() > 9e8 && unix.raw().value() < 1e10);
     }
 
     #[test]

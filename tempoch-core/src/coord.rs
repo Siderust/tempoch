@@ -347,7 +347,6 @@ mod tests {
         assert_eq!(format!("{c:.1}"), "2451545.5 d");
     }
 
-    /// Verifies that `Coord<TT, JD>` and `Coord<UTC, JD>` are distinct types.
     #[test]
     fn coord_scale_phantom_prevents_mixing() {
         fn accept_tt_jd(c: Coord<TT, JD>) -> Day {
@@ -362,5 +361,57 @@ mod tests {
 
         let _ = accept_tt_jd(tt);
         let _ = accept_utc_jd(utc);
+    }
+
+    #[test]
+    fn coord_quantity_is_alias_for_raw() {
+        let c = Coord::<TT, JD>::from_raw_unchecked(Day::new(2_451_545.5));
+        assert_eq!(c.raw(), c.quantity());
+    }
+
+    #[test]
+    fn offset_quantity_is_alias_for_raw() {
+        let v = Offset::<TT, JD>::from_raw_unchecked(Day::new(0.5));
+        assert_eq!(v.raw(), v.quantity());
+    }
+
+    #[test]
+    fn coord_minus_offset_yields_coord() {
+        let a = Coord::<TT, JD>::from_raw_unchecked(Day::new(2_451_546.0));
+        let v = Offset::<TT, JD>::from_raw_unchecked(Day::new(1.0));
+        let b = a - v;
+        assert_eq!(b.raw(), Day::new(2_451_545.0));
+    }
+
+    #[test]
+    fn coord_lower_exp_delegates_to_quantity() {
+        let c = Coord::<TT, JD>::from_raw_unchecked(Day::new(2_451_545.5));
+        assert_eq!(format!("{c:.2e}"), format!("{:.2e}", c.raw()));
+    }
+
+    #[test]
+    fn coord_upper_exp_delegates_to_quantity() {
+        let c = Coord::<TT, JD>::from_raw_unchecked(Day::new(2_451_545.5));
+        assert_eq!(format!("{c:.2E}"), format!("{:.2E}", c.raw()));
+    }
+
+    #[test]
+    fn offset_lower_exp_delegates_to_quantity() {
+        let v = Offset::<TT, JD>::from_raw_unchecked(Day::new(1.5));
+        assert_eq!(format!("{v:.2e}"), format!("{:.2e}", v.raw()));
+    }
+
+    #[test]
+    fn offset_upper_exp_delegates_to_quantity() {
+        let v = Offset::<TT, JD>::from_raw_unchecked(Day::new(1.5));
+        assert_eq!(format!("{v:.2E}"), format!("{:.2E}", v.raw()));
+    }
+
+    #[test]
+    fn offset_debug_includes_scale_and_format() {
+        let v = Offset::<TT, JD>::from_raw_unchecked(Day::new(1.0));
+        let dbg = format!("{v:?}");
+        assert!(dbg.contains("TT"));
+        assert!(dbg.contains("JD"));
     }
 }

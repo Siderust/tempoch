@@ -10,7 +10,9 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "affn"
-version = "0.7.0"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f7832d7c427971602a168a3d2974c944c055004f4448dba3f9200ecb78a5af6"
 dependencies = [
  "affn-derive",
  "qtty",
@@ -18,7 +20,9 @@ dependencies = [
 
 [[package]]
 name = "affn-derive"
-version = "0.7.0"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a7ba157cc31a5f39649d2c886fb7095ec607406d761481fc7bfaa48e644ff99"
 dependencies = [
  "proc-macro2",
  "quote",
