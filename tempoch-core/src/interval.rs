@@ -335,12 +335,12 @@ impl<T: Copy + PartialOrd> Interval<T> {
 /// use qtty::Day;
 ///
 /// let outer = Interval::<JulianDate<TT>>::new(
-///     JulianDate::new(2_451_545.0),
-///     JulianDate::new(2_451_550.0),
+///     JulianDate::from_raw_unchecked(Day::new(2_451_545.0)),
+///     JulianDate::from_raw_unchecked(Day::new(2_451_550.0)),
 /// );
 /// let filled = vec![Interval::new(
-///     JulianDate::new(2_451_546.0),
-///     JulianDate::new(2_451_548.0),
+///     JulianDate::from_raw_unchecked(Day::new(2_451_546.0)),
+///     JulianDate::from_raw_unchecked(Day::new(2_451_548.0)),
 /// )];
 /// let gaps = complement_within(outer, &filled);
 /// assert_eq!(gaps.len(), 2);
@@ -357,8 +357,8 @@ pub fn complement_within<T: Copy + PartialOrd>(
 mod tests {
     use super::*;
     #[cfg(feature = "serde")]
-    use crate::representation::JulianDate;
-    use crate::representation::{ModifiedJulianDate, MJD};
+    use crate::format::JulianDate;
+    use crate::format::{ModifiedJulianDate, MJD};
     #[cfg(feature = "serde")]
     use crate::Time;
     use crate::TT;

@@ -33,7 +33,6 @@
 //! See [`constats`] for typed epoch and offset constants.
 
 mod civil;
-pub mod compat;
 pub mod constats;
 mod context;
 pub mod coord;
@@ -43,10 +42,9 @@ pub(crate) mod encoding;
 pub mod eop;
 pub mod error;
 pub mod format;
-pub mod ext;
+mod ext;
 pub(crate) mod generated;
 mod interval;
-pub mod representation;
 pub mod scalar;
 mod scale;
 mod sealed;
@@ -60,7 +58,8 @@ mod serde_impl;
 pub mod tagged;
 
 pub use constats::{
-    GPS_EPOCH_JD_TAI, GPS_EPOCH_JD_UTC, GPS_EPOCH_TAI_MINUS_UTC, UTC_DEFINED_FROM_MJD,
+    GPS_EPOCH_JD_TAI, GPS_EPOCH_JD_UTC, GPS_EPOCH_TAI_MINUS_UTC, JULIAN_YEAR_DAYS,
+    UTC_DEFINED_FROM_MJD,
 };
 pub use context::TimeContext;
 pub use coord::{Coord, Offset};
@@ -74,23 +73,18 @@ pub use ext::TimeInstant;
 pub use generated::{
     EOP_END_MJD, EOP_OBSERVED_END_MJD, EOP_START_MJD, MODERN_DELTA_T_OBSERVED_END_MJD,
 };
-pub use interval::{Interval, InvalidIntervalError, InvalidPeriodError, Period, PeriodListError};
+pub use interval::{
+    complement_within, Interval, InvalidIntervalError, InvalidPeriodError, Period, PeriodListError,
+};
 pub use format::{
     EncodedTime, FormatForScale, GpsTime, InfallibleFormatForScale, J2000Seconds, J2000s,
     JulianDate, ModifiedJulianDate, TimeFormat, Unix, UnixTime, GPS, JD, MJD,
 };
-/// Compatibility re-export: `RepresentationForScale` is now [`FormatForScale`].
-pub use format::FormatForScale as RepresentationForScale;
-/// Compatibility re-export: `InfallibleRepresentationForScale` is now [`InfallibleFormatForScale`].
-pub use format::InfallibleFormatForScale as InfallibleRepresentationForScale;
-/// Compatibility re-export: `TimeRepresentation` is now [`TimeFormat`].
-pub use format::TimeFormat as TimeRepresentation;
 pub use scalar::{
     scalar_add_days, scalar_difference_in_days, time_tt_from_scalar, time_tt_to_scalar, ScaleKind,
 };
 pub use scale::{ContinuousScale, CoordinateScale, Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
 pub use target::{ContextConversionTarget, ConversionTarget, InfallibleConversionTarget};
-pub use compat::{complement_within, TimeInstant, J2000_TT, JULIAN_YEAR_DAYS};
 pub use time::Time;
 
 #[cfg(test)]

@@ -18,6 +18,9 @@
 
 use qtty::{Day, Second};
 
+/// Days in a Julian year (365.25 d).
+pub const JULIAN_YEAR_DAYS: Day = Day::new(365.25);
+
 use crate::coord::Coord;
 use crate::format::{J2000s, JD, MJD};
 use crate::scale::{TAI, TT, UTC};

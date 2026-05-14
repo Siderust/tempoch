@@ -462,7 +462,7 @@ fn datetime_from_utc_mjd(mjd_utc: DayQuantity) -> Option<DateTime<Utc>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::representation::{JulianDate, UnixTime, JD};
+    use crate::format::{JulianDate, UnixTime, JD};
     use crate::{Time, TimeContext, TT, UT1, UTC};
     use qtty::Second;
     use tempoch_time_data::TimeDataProvenance;

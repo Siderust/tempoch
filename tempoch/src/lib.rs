@@ -21,14 +21,11 @@ pub use tempoch_core::{
     ContinuousScale, ConversionError, ConversionTarget, CoordinateScale, EncodedTime, GpsTime,
     FormatForScale, InfallibleConversionTarget, InfallibleFormatForScale, Interval,
     InvalidIntervalError, InvalidPeriodError, J2000Seconds, J2000s, JulianDate, ModifiedJulianDate,
-    Period, PeriodListError, Scale, ScaleKind, Time, TimeContext, TimeDataError, TimeFormat, Unix,
-    UnixTime, DELTA_T_PREDICTION_HORIZON_MJD, EOP_END_MJD, EOP_OBSERVED_END_MJD, EOP_START_MJD,
-    GPS, GPS_EPOCH_JD_TAI, GPS_EPOCH_JD_UTC, GPS_EPOCH_TAI_MINUS_UTC, JD, MJD,
-    MODERN_DELTA_T_OBSERVED_END_MJD, TAI, TCB, TCG, TDB, TT, UT1, UTC, UTC_DEFINED_FROM_MJD,
-    // Compatibility re-exports (old names → new names)
-    RepresentationForScale, InfallibleRepresentationForScale, TimeRepresentation,
-    // backward-compat shims retained from < 0.4.2
-    complement_within, TimeInstant, J2000_TT, JULIAN_YEAR_DAYS,
+    Period, PeriodListError, Scale, ScaleKind, Time, TimeContext, TimeDataError, TimeFormat,
+    TimeInstant, Unix, UnixTime, DELTA_T_PREDICTION_HORIZON_MJD, EOP_END_MJD,
+    EOP_OBSERVED_END_MJD, EOP_START_MJD, GPS, GPS_EPOCH_JD_TAI, GPS_EPOCH_JD_UTC,
+    GPS_EPOCH_TAI_MINUS_UTC, JD, JULIAN_YEAR_DAYS, MJD, MODERN_DELTA_T_OBSERVED_END_MJD, TAI,
+    TCB, TCG, TDB, TT, UT1, UTC, UTC_DEFINED_FROM_MJD, complement_within,
 };
 #[cfg(feature = "runtime-data-fetch")]
 pub use tempoch_core::{

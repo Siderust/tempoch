@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Vallés Puig, Ramon
 
 use crate::interval::Interval;
-use crate::representation::{EncodedTime, TimeRepresentation};
+use crate::format::{EncodedTime, TimeFormat};
 use crate::scale::Scale;
 use crate::time::Time;
 use qtty::{Quantity, Second, Unit};
@@ -11,7 +11,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 const NONFINITE_TIME_VALUE_ERROR: &str = "time value must be finite (not NaN or infinity)";
 
-impl<S: Scale, R: TimeRepresentation> Serialize for EncodedTime<S, R>
+impl<S: Scale, R: TimeFormat> Serialize for EncodedTime<S, R>
 where
     Quantity<R::Unit>: Serialize,
 {
@@ -23,7 +23,7 @@ where
     }
 }
 
-impl<'de, S: Scale, R: TimeRepresentation> Deserialize<'de> for EncodedTime<S, R>
+impl<'de, S: Scale, R: TimeFormat> Deserialize<'de> for EncodedTime<S, R>
 where
     Quantity<R::Unit>: Deserialize<'de>,
     R::Unit: Unit,
@@ -109,7 +109,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::representation::{J2000s, JulianDate, JD};
+    use crate::format::{J2000s, JulianDate, JD};
     use crate::scale::TT;
     use qtty::{Day, Second};
 

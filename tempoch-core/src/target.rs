@@ -105,7 +105,7 @@ default_context_scale_target!(UT1 => UTC);
 
 #[cfg(test)]
 mod tests {
-    use crate::representation::{J2000s, Unix, GPS, JD, MJD};
+    use crate::format::{J2000s, Unix, GPS, JD, MJD};
     use crate::scale::{TAI, TT, UT1, UTC};
     use qtty::Second;
 
