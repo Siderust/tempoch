@@ -47,10 +47,10 @@ fn default_try_to_ut1_uses_default_context() {
 
 #[test]
 fn public_constats_epochs_are_usable() {
-    let j2000 = JulianDate::<TT>::try_new(J2000_JD_TT).unwrap().to_time();
+    let j2000 = JulianDate::<TT>::try_new(J2000_JD_TT.raw()).unwrap().to_time();
     let tai_s: Time<TAI> = j2000.to::<TAI>();
 
-    assert_eq!(j2000.to::<JD>().raw(), J2000_JD_TT);
+    assert_eq!(j2000.to::<JD>().raw(), J2000_JD_TT.raw());
     assert!(
         ((j2000.to::<J2000s>().raw() - tai_s.to::<J2000s>().raw()) - TT_MINUS_TAI).abs()
             < Second::new(1e-12)

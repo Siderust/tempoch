@@ -10,11 +10,10 @@ use qtty::{unit, Day};
 
 use crate::{
     constats,
+    format::{TimeFormat, JD, MJD},
     interval::Interval,
-    representation::{JD, MJD},
     EncodedTime, Scale, TDB, TT,
 };
-use crate::representation::TimeRepresentation;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -22,7 +21,7 @@ use crate::representation::TimeRepresentation;
 
 /// J2000.0 epoch as `JulianDate<TT>` (JD 2 451 545.0 TT).
 pub const J2000_TT: crate::JulianDate<TT> =
-    EncodedTime::<TT, JD>::from_raw_unchecked(constats::J2000_JD_TT);
+    EncodedTime::<TT, JD>::from_raw_unchecked(constats::J2000_JD_TT.raw());
 
 /// Days in a Julian year (365.25 d).
 pub const JULIAN_YEAR_DAYS: Day = Day::new(365.25);
@@ -65,7 +64,7 @@ pub trait TimeInstant: Copy + PartialOrd {
     fn mean(self, other: Self) -> Self;
 }
 
-impl<S: Scale, R: TimeRepresentation<Unit = unit::Day>> TimeInstant for EncodedTime<S, R> {
+impl<S: Scale, R: TimeFormat<Unit = unit::Day>> TimeInstant for EncodedTime<S, R> {
     /// `Day = Quantity<unit::Day>` — the day-offset quantity type.
     type Duration = Day;
 
@@ -93,9 +92,9 @@ impl<S: Scale, R: TimeRepresentation<Unit = unit::Day>> TimeInstant for EncodedT
 // satisfy the `Ord` contract; well-formed code should never encounter NaN.
 // ─────────────────────────────────────────────────────────────────────────────
 
-impl<S: Scale, R: TimeRepresentation<Unit = unit::Day>> Eq for EncodedTime<S, R> {}
+impl<S: Scale, R: TimeFormat<Unit = unit::Day>> Eq for EncodedTime<S, R> {}
 
-impl<S: Scale, R: TimeRepresentation<Unit = unit::Day>> Ord for EncodedTime<S, R> {
+impl<S: Scale, R: TimeFormat<Unit = unit::Day>> Ord for EncodedTime<S, R> {
     #[inline]
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         self.partial_cmp(other)
@@ -107,7 +106,7 @@ impl<S: Scale, R: TimeRepresentation<Unit = unit::Day>> Ord for EncodedTime<S, R
 // Arithmetic operators for day-based EncodedTime
 // ─────────────────────────────────────────────────────────────────────────────
 
-impl<S: Scale, R: TimeRepresentation<Unit = unit::Day>> core::ops::Sub for EncodedTime<S, R> {
+impl<S: Scale, R: TimeFormat<Unit = unit::Day>> core::ops::Sub for EncodedTime<S, R> {
     type Output = Day;
 
     #[inline]
@@ -116,7 +115,7 @@ impl<S: Scale, R: TimeRepresentation<Unit = unit::Day>> core::ops::Sub for Encod
     }
 }
 
-impl<S: Scale, R: TimeRepresentation<Unit = unit::Day>> core::ops::Add<Day> for EncodedTime<S, R> {
+impl<S: Scale, R: TimeFormat<Unit = unit::Day>> core::ops::Add<Day> for EncodedTime<S, R> {
     type Output = Self;
 
     #[inline]
@@ -125,7 +124,7 @@ impl<S: Scale, R: TimeRepresentation<Unit = unit::Day>> core::ops::Add<Day> for 
     }
 }
 
-impl<S: Scale, R: TimeRepresentation<Unit = unit::Day>> core::ops::Sub<Day> for EncodedTime<S, R> {
+impl<S: Scale, R: TimeFormat<Unit = unit::Day>> core::ops::Sub<Day> for EncodedTime<S, R> {
     type Output = Self;
 
     #[inline]
@@ -134,7 +133,7 @@ impl<S: Scale, R: TimeRepresentation<Unit = unit::Day>> core::ops::Sub<Day> for 
     }
 }
 
-impl<S: Scale, R: TimeRepresentation<Unit = unit::Day>> core::ops::AddAssign<Day>
+impl<S: Scale, R: TimeFormat<Unit = unit::Day>> core::ops::AddAssign<Day>
     for EncodedTime<S, R>
 {
     #[inline]
@@ -144,7 +143,7 @@ impl<S: Scale, R: TimeRepresentation<Unit = unit::Day>> core::ops::AddAssign<Day
 }
 
 /// Add a raw day count (as `f64`) to this instant.
-impl<S: Scale, R: TimeRepresentation<Unit = unit::Day>> core::ops::Add<f64> for EncodedTime<S, R> {
+impl<S: Scale, R: TimeFormat<Unit = unit::Day>> core::ops::Add<f64> for EncodedTime<S, R> {
     type Output = Self;
 
     #[inline]
@@ -154,7 +153,7 @@ impl<S: Scale, R: TimeRepresentation<Unit = unit::Day>> core::ops::Add<f64> for 
 }
 
 /// Subtract a raw day count (as `f64`) from this instant.
-impl<S: Scale, R: TimeRepresentation<Unit = unit::Day>> core::ops::Sub<f64> for EncodedTime<S, R> {
+impl<S: Scale, R: TimeFormat<Unit = unit::Day>> core::ops::Sub<f64> for EncodedTime<S, R> {
     type Output = Self;
 
     #[inline]
@@ -185,7 +184,7 @@ impl<S: Scale> From<EncodedTime<S, JD>> for EncodedTime<S, MJD> {
 // Convenience methods on any day-based EncodedTime
 // ─────────────────────────────────────────────────────────────────────────────
 
-impl<S: Scale, R: TimeRepresentation<Unit = unit::Day>> EncodedTime<S, R> {
+impl<S: Scale, R: TimeFormat<Unit = unit::Day>> EncodedTime<S, R> {
     /// Construct from a raw day value without bounds checking.
     ///
     /// Deprecated: prefer [`EncodedTime::from_raw_unchecked`]`(Day::new(raw))`.
@@ -219,13 +218,13 @@ impl<S: Scale> EncodedTime<S, JD> {
     /// Julian centuries since J2000.0: `T = (JD − 2 451 545.0) / 36 525`.
     #[inline]
     pub fn julian_centuries(self) -> f64 {
-        (self.raw().value() - constats::J2000_JD_TT.value()) / 36_525.0
+        (self.raw().value() - constats::J2000_JD_TT.raw().value()) / 36_525.0
     }
 
     /// Julian millennia since J2000.0: `T = (JD − 2 451 545.0) / 365 250`.
     #[inline]
     pub fn julian_millennias(self) -> f64 {
-        (self.raw().value() - constats::J2000_JD_TT.value()) / 365_250.0
+        (self.raw().value() - constats::J2000_JD_TT.raw().value()) / 365_250.0
     }
 }
 

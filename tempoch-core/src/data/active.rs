@@ -772,7 +772,7 @@ mod tests {
             bundle.eop_points().to_vec(),
             bundle.provenance().clone(),
         );
-        let beyond = crate::DELTA_T_PREDICTION_HORIZON_MJD + DayQuantity::new(15.0);
+        let beyond = crate::DELTA_T_PREDICTION_HORIZON_MJD.raw() + DayQuantity::new(15.0);
         let jd = beyond + crate::constats::JD_MINUS_MJD;
         let tt = JulianDate::<TT>::try_new(jd).unwrap().to_time();
 

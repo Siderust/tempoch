@@ -7,6 +7,40 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.5.0]
+
+### Breaking
+
+- Renamed `TimeRepresentation` → `TimeFormat`; canonical module is now
+  `format` (was `representation`). The old names are still re-exported from
+  the crate root with deprecation notices for migration.
+- Renamed `RepresentationForScale<S>` → `FormatForScale<S>`.
+- Renamed `InfallibleRepresentationForScale<S>` →
+  `InfallibleFormatForScale<S>`.
+- Swapped type parameter order on `Coord` and `Offset`:
+  `Coord<F, S>` / `Offset<F, S>` → `Coord<S, F>` / `Offset<S, F>`. The
+  new order (Scale first, Format second) matches `EncodedTime<S, F>` and
+  makes type signatures read in the natural order "JD on TT" →
+  `Coord<TT, JD>`.
+- Updated all constants in `tempoch::constats` to the new parameter order:
+  `J2000_JD_TT: Coord<TT, JD>`, `GPS_EPOCH_JD_TAI: Coord<TAI, JD>`, etc.
+- Renamed `ScaleKind` variants to follow the `<Format><Scale>` pattern:
+  - `Tdb` → `JdTdb`
+  - `Tai` → `JdTai`
+  - `Tcg` → `JdTcg`
+  - `Tcb` → `JdTcb`
+  - `Ut1` → `JdUt1`
+  - `GpsDays` → `JdGps`
+
+### Changed
+
+- All doc comments now use "format" (not "representation") for the encoding
+  phantom-type axis.
+- `Coord` module documentation updated to clarify the `<S, F>` ordering
+  convention.
+- `tempoch_core::format` is now the canonical public module for format
+  traits and markers; `tempoch_core::representation` is a re-export shim.
+
 ## [0.4.3 - 2026-05-04]
 
 ### Changed

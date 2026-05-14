@@ -50,13 +50,13 @@ fn affine_day_coordinate(source: Day, source_origin: Day, target_origin: Day) ->
 /// Julian Day → SI seconds since J2000 TT.
 #[inline]
 pub(crate) fn jd_to_j2000_seconds(jd: Day) -> Second {
-    affine_day_coordinate(jd, J2000_JD_TT, Day::new(0.0)).to::<SecondUnit>()
+    affine_day_coordinate(jd, J2000_JD_TT.raw(), Day::new(0.0)).to::<SecondUnit>()
 }
 
 /// SI seconds since J2000 TT → Julian Day.
 #[inline]
 pub(crate) fn j2000_seconds_to_jd(seconds: Second) -> Day {
-    affine_day_coordinate(seconds.to::<DayUnit>(), Day::new(0.0), J2000_JD_TT)
+    affine_day_coordinate(seconds.to::<DayUnit>(), Day::new(0.0), J2000_JD_TT.raw())
 }
 
 // ── MJD ↔ J2000 seconds ─────────────────────────────────────────────────
@@ -64,7 +64,7 @@ pub(crate) fn j2000_seconds_to_jd(seconds: Second) -> Day {
 /// Modified Julian Day → SI seconds since J2000 TT.
 #[inline]
 pub(crate) fn mjd_to_j2000_seconds(mjd: Day) -> Second {
-    affine_day_coordinate(mjd, J2000_JD_TT - JD_MINUS_MJD, Day::new(0.0)).to::<SecondUnit>()
+    affine_day_coordinate(mjd, J2000_JD_TT.raw() - JD_MINUS_MJD, Day::new(0.0)).to::<SecondUnit>()
 }
 
 /// SI seconds since J2000 TT → Modified Julian Day.
@@ -73,7 +73,7 @@ pub(crate) fn j2000_seconds_to_mjd(seconds: Second) -> Day {
     affine_day_coordinate(
         seconds.to::<DayUnit>(),
         Day::new(0.0),
-        J2000_JD_TT - JD_MINUS_MJD,
+        J2000_JD_TT.raw() - JD_MINUS_MJD,
     )
 }
 
@@ -90,7 +90,7 @@ pub(crate) fn jd_to_mjd(jd: Day) -> Day {
 /// Julian Day TT → Julian centuries since J2000 TT (dimensionless).
 #[inline]
 pub(crate) fn jd_to_julian_centuries(jd: Day) -> f64 {
-    (jd - J2000_JD_TT) / DAYS_PER_JC
+    (jd - J2000_JD_TT.raw()) / DAYS_PER_JC
 }
 
 // ── Unix / POSIX ─────────────────────────────────────────────────────────
@@ -98,19 +98,19 @@ pub(crate) fn jd_to_julian_centuries(jd: Day) -> f64 {
 /// UTC MJD → seconds since Unix epoch (1970-01-01).
 #[inline]
 pub(crate) fn mjd_to_unix_seconds(mjd: Day) -> Second {
-    (mjd - UNIX_EPOCH_MJD).to::<SecondUnit>()
+    (mjd - UNIX_EPOCH_MJD.raw()).to::<SecondUnit>()
 }
 
 /// Seconds since Unix epoch → UTC MJD.
 #[inline]
 pub(crate) fn unix_seconds_to_mjd(seconds: Second) -> Day {
-    UNIX_EPOCH_MJD + seconds.to::<DayUnit>()
+    UNIX_EPOCH_MJD.raw() + seconds.to::<DayUnit>()
 }
 
 /// Seconds since Unix epoch → Julian Day (UTC axis).
 #[inline]
 pub(crate) fn unix_seconds_to_jd(seconds: Second) -> Day {
-    UNIX_EPOCH_JD + seconds.to::<DayUnit>()
+    UNIX_EPOCH_JD.raw() + seconds.to::<DayUnit>()
 }
 
 #[cfg(test)]
@@ -138,13 +138,13 @@ mod tests {
 
     #[test]
     fn j2000_epoch_is_zero_seconds() {
-        let secs = jd_to_j2000_seconds(J2000_JD_TT);
+        let secs = jd_to_j2000_seconds(J2000_JD_TT.raw());
         assert!(secs.abs() < EPS_S);
     }
 
     #[test]
     fn julian_centuries_one_century() {
-        let jd = J2000_JD_TT + DAYS_PER_JC;
+        let jd = J2000_JD_TT.raw() + DAYS_PER_JC;
         let t = jd_to_julian_centuries(jd);
         assert!((t - 1.0).abs() < 1e-12);
     }

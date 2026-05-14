@@ -140,7 +140,7 @@ impl InfallibleScaleConvert<TT> for TDB {
 impl InfallibleScaleConvert<TCG> for TT {
     #[inline]
     fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
-        let t0 = jd_to_j2000_seconds(IAU_TIME_EPOCH_T0_JD);
+        let t0 = jd_to_j2000_seconds(IAU_TIME_EPOCH_T0_JD.raw());
         linear_map_pair(src_hi, src_lo, t0, t0, 1.0 / (1.0 - L_G))
     }
 }
@@ -148,7 +148,7 @@ impl InfallibleScaleConvert<TCG> for TT {
 impl InfallibleScaleConvert<TT> for TCG {
     #[inline]
     fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
-        let t0 = jd_to_j2000_seconds(IAU_TIME_EPOCH_T0_JD);
+        let t0 = jd_to_j2000_seconds(IAU_TIME_EPOCH_T0_JD.raw());
         linear_map_pair(src_hi, src_lo, t0, t0, 1.0 - L_G)
     }
 }
@@ -157,7 +157,7 @@ impl InfallibleScaleConvert<TCB> for TDB {
     #[inline]
     fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
         // TCB = T0 + (TDB - T0 - TDB0) / (1 - L_B)
-        let t0 = jd_to_j2000_seconds(IAU_TIME_EPOCH_T0_JD);
+        let t0 = jd_to_j2000_seconds(IAU_TIME_EPOCH_T0_JD.raw());
         linear_map_pair(
             src_hi,
             src_lo,
@@ -172,7 +172,7 @@ impl InfallibleScaleConvert<TDB> for TCB {
     #[inline]
     fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
         // TDB = T0 + (1 - L_B) * (TCB - T0) + TDB0
-        let t0 = jd_to_j2000_seconds(IAU_TIME_EPOCH_T0_JD);
+        let t0 = jd_to_j2000_seconds(IAU_TIME_EPOCH_T0_JD.raw());
         linear_map_pair(src_hi, src_lo, t0, t0 + TDB0, 1.0 - L_B)
     }
 }

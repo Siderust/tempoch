@@ -273,7 +273,7 @@ fn delta_t_extrapolated(jd_ut: Day) -> Second {
 #[inline]
 pub fn delta_t_seconds(jd_ut: Day) -> Result<Second, ConversionError> {
     let mjd = jd_to_mjd(jd_ut);
-    if mjd > DELTA_T_PREDICTION_HORIZON_MJD {
+    if mjd > DELTA_T_PREDICTION_HORIZON_MJD.raw() {
         return Err(ConversionError::Ut1HorizonExceeded);
     }
     Ok(delta_t_seconds_unconstrained(jd_ut))
@@ -342,8 +342,13 @@ fn delta_t_seconds_unconstrained(jd_ut: Day) -> Second {
     }
 }
 
-/// MJD of the last compiled ΔT prediction point.
-pub const DELTA_T_PREDICTION_HORIZON_MJD: Day = MODERN_DELTA_T_END_MJD;
+/// MJD of the last compiled ΔT prediction point, on the UT1 axis.
+///
+/// `delta_t_seconds` accepts a UT1 Julian Date and returns
+/// [`ConversionError::Ut1HorizonExceeded`] beyond this horizon, so the
+/// constant is naturally tagged as a [`Coord<UT1, MJD>`].
+pub const DELTA_T_PREDICTION_HORIZON_MJD: crate::coord::Coord<crate::scale::UT1, crate::format::MJD> =
+    crate::coord::Coord::from_raw_unchecked(MODERN_DELTA_T_END_MJD);
 
 #[cfg(test)]
 mod tests {

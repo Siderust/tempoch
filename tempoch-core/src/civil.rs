@@ -161,12 +161,12 @@ impl Time<TAI> {
         if !seconds.is_finite() {
             return Err(ConversionError::NonFinite);
         }
-        Self::try_new(seconds + GPS_EPOCH_TAI, Second::new(0.0))
+        Self::try_new(seconds + GPS_EPOCH_TAI.raw(), Second::new(0.0))
     }
 
     /// Return GPS seconds since the GPS epoch for this instant.
     #[inline]
     pub(crate) fn raw_gps_seconds(self) -> Second {
-        self.total_seconds() - GPS_EPOCH_TAI
+        self.total_seconds() - GPS_EPOCH_TAI.raw()
     }
 }
