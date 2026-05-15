@@ -225,33 +225,6 @@ extern "C" {
 // Current ABI line: 0.4.x -> 400
  uint32_t tempoch_ffi_version(void);
 
-// Create a default context backed by the monthly ΔT model.
-//
-// # Safety
-// `out` must be a valid, non-null pointer to writable storage for a context handle.
- tempoch_status_t tempoch_context_create_default(struct tempoch_context_t **out);
-
-// Create a context that prefers the compiled builtin EOP path for UT1.
-//
-// # Safety
-// `out` must be a valid, non-null pointer to writable storage for a context handle.
- tempoch_status_t tempoch_context_create_with_builtin_eop(struct tempoch_context_t **out);
-
-// Derive a new context that permits pre-1961 UTC extrapolation.
-//
-// # Safety
-// `handle` must be a valid, non-null context pointer produced by this crate, and `out` must be
-// a valid, non-null pointer to writable storage for a context handle.
-
-tempoch_status_t tempoch_context_allow_pre_definition_utc(const struct tempoch_context_t *handle,
-                                                          struct tempoch_context_t **out);
-
-// Free a context handle previously returned by `tempoch_context_create_*`.
-//
-// # Safety
-// `handle` must be either null or a live pointer produced by this crate.
- void tempoch_context_free(struct tempoch_context_t *handle);
-
 // J2000.0 epoch as JD(TT) — 2 451 545.0.
  double tempoch_const_j2000_jd_tt(void);
 
@@ -285,6 +258,33 @@ tempoch_status_t tempoch_context_allow_pre_definition_utc(const struct tempoch_c
 
 // Last MJD with modern observed ΔT data (post-1955 atomic-clock era).
  double tempoch_const_modern_delta_t_observed_end_mjd(void);
+
+// Create a default context backed by the monthly ΔT model.
+//
+// # Safety
+// `out` must be a valid, non-null pointer to writable storage for a context handle.
+ tempoch_status_t tempoch_context_create_default(struct tempoch_context_t **out);
+
+// Create a context that prefers the compiled builtin EOP path for UT1.
+//
+// # Safety
+// `out` must be a valid, non-null pointer to writable storage for a context handle.
+ tempoch_status_t tempoch_context_create_with_builtin_eop(struct tempoch_context_t **out);
+
+// Derive a new context that permits pre-1961 UTC extrapolation.
+//
+// # Safety
+// `handle` must be a valid, non-null context pointer produced by this crate, and `out` must be
+// a valid, non-null pointer to writable storage for a context handle.
+
+tempoch_status_t tempoch_context_allow_pre_definition_utc(const struct tempoch_context_t *handle,
+                                                          struct tempoch_context_t **out);
+
+// Free a context handle previously returned by `tempoch_context_create_*`.
+//
+// # Safety
+// `handle` must be either null or a live pointer produced by this crate.
+ void tempoch_context_free(struct tempoch_context_t *handle);
 
 // Returns `true` when [`tempoch_eop_at`] would succeed for `mjd_utc`.
  bool tempoch_eop_covers(double mjd_utc);

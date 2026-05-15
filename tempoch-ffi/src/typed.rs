@@ -737,6 +737,18 @@ mod tests {
     use super::*;
     use std::ptr;
 
+    fn utc_j2000() -> TempochUtc {
+        TempochUtc {
+            year: 2000,
+            month: 1,
+            day: 1,
+            hour: 12,
+            minute: 0,
+            second: 0,
+            nanosecond: 0,
+        }
+    }
+
     #[test]
     fn roundtrip_tt_jd_through_split_time() {
         let mut value = TempochTime {
@@ -757,6 +769,16 @@ mod tests {
     }
 
     #[test]
+    fn tag_decoders_reject_invalid_ids() {
+        assert_eq!(TempochScaleTag::from_raw(0), Some(TempochScaleTag::TT));
+        assert_eq!(TempochScaleTag::from_raw(6), Some(TempochScaleTag::TCB));
+        assert_eq!(TempochScaleTag::from_raw(-1), None);
+        assert_eq!(TempochFormatTag::from_raw(0), Some(TempochFormatTag::JD));
+        assert_eq!(TempochFormatTag::from_raw(4), Some(TempochFormatTag::GPS));
+        assert_eq!(TempochFormatTag::from_raw(99), None);
+    }
+
+    #[test]
     fn unix_decode_to_ut1_requires_context_but_defaults() {
         let mut value = TempochTime {
             hi_seconds: 0.0,
@@ -765,6 +787,229 @@ mod tests {
         assert_eq!(
             unsafe { tempoch_time_from_format(946_727_935.816, 3, 3, ptr::null(), &mut value) },
             TempochStatus::Ok
+        );
+    }
+
+    #[test]
+    fn typed_time_validation_paths() {
+        let mut value = TempochTime {
+            hi_seconds: 0.0,
+            lo_seconds: 0.0,
+        };
+        assert_eq!(
+            unsafe { tempoch_time_new(0.0, 0.0, &mut value) },
+            TempochStatus::Ok
+        );
+
+        let mut untouched = TempochTime {
+            hi_seconds: 123.0,
+            lo_seconds: 456.0,
+        };
+        assert_eq!(
+            unsafe { tempoch_time_new(f64::NAN, 0.0, &mut untouched) },
+            TempochStatus::ConversionFailed
+        );
+        assert_eq!(untouched.hi_seconds, 123.0);
+        assert_eq!(untouched.lo_seconds, 456.0);
+
+        let mut added = TempochTime {
+            hi_seconds: 0.0,
+            lo_seconds: 0.0,
+        };
+        assert_eq!(
+            unsafe {
+                tempoch_time_add_seconds(
+                    TempochTime {
+                        hi_seconds: 0.0,
+                        lo_seconds: 0.0,
+                    },
+                    QttyQuantity::new(1.0, UnitId::Day),
+                    &mut added,
+                )
+            },
+            TempochStatus::Ok
+        );
+        assert!((added.hi_seconds - 86_400.0).abs() < 1e-12);
+
+        let mut diff = 0.0;
+        assert_eq!(
+            unsafe {
+                tempoch_time_difference_seconds(
+                    TempochTime {
+                        hi_seconds: 10.0,
+                        lo_seconds: 0.0,
+                    },
+                    TempochTime {
+                        hi_seconds: 7.5,
+                        lo_seconds: 0.0,
+                    },
+                    &mut diff,
+                )
+            },
+            TempochStatus::Ok
+        );
+        assert!((diff - 2.5).abs() < 1e-12);
+
+        assert_eq!(
+            unsafe {
+                tempoch_time_add_seconds(
+                    TempochTime {
+                        hi_seconds: 0.0,
+                        lo_seconds: 0.0,
+                    },
+                    QttyQuantity::new(1.0, UnitId::Meter),
+                    &mut added,
+                )
+            },
+            TempochStatus::InvalidDurationUnit
+        );
+
+        assert_eq!(
+            unsafe { tempoch_time_new(0.0, 0.0, ptr::null_mut(),) },
+            TempochStatus::NullPointer
+        );
+    }
+
+    #[test]
+    fn typed_format_and_scale_roundtrips_cover_unix_gps_and_ut1() {
+        let mut unix_time = TempochTime {
+            hi_seconds: 0.0,
+            lo_seconds: 0.0,
+        };
+        assert_eq!(
+            unsafe { tempoch_time_from_format(0.0, 2, 3, ptr::null(), &mut unix_time) },
+            TempochStatus::Ok
+        );
+        let mut unix_raw = 0.0;
+        assert_eq!(
+            unsafe { tempoch_time_to_format(unix_time, 2, 3, ptr::null(), &mut unix_raw) },
+            TempochStatus::Ok
+        );
+        assert!(unix_raw.abs() < 1e-5);
+
+        let mut gps_time = TempochTime {
+            hi_seconds: 0.0,
+            lo_seconds: 0.0,
+        };
+        assert_eq!(
+            unsafe { tempoch_time_from_format(0.0, 0, 4, ptr::null(), &mut gps_time) },
+            TempochStatus::Ok
+        );
+        let mut gps_raw = 0.0;
+        assert_eq!(
+            unsafe { tempoch_time_to_format(gps_time, 0, 4, ptr::null(), &mut gps_raw) },
+            TempochStatus::Ok
+        );
+        assert!(gps_raw.abs() < 1e-5);
+
+        let mut ut1_time = TempochTime {
+            hi_seconds: 0.0,
+            lo_seconds: 0.0,
+        };
+        assert_eq!(
+            unsafe { tempoch_time_from_format(2_451_545.0, 3, 0, ptr::null(), &mut ut1_time) },
+            TempochStatus::Ok
+        );
+        let mut jd = 0.0;
+        assert_eq!(
+            unsafe { tempoch_time_to_format(ut1_time, 3, 0, ptr::null(), &mut jd) },
+            TempochStatus::Ok
+        );
+        assert!((jd - 2_451_545.0).abs() < 1e-12);
+
+        let mut converted = TempochTime {
+            hi_seconds: 0.0,
+            lo_seconds: 0.0,
+        };
+        assert_eq!(
+            unsafe { tempoch_time_scale_convert(ut1_time, 3, 0, ptr::null(), &mut converted) },
+            TempochStatus::Ok
+        );
+
+        let mut future_utc = TempochTime {
+            hi_seconds: 0.0,
+            lo_seconds: 0.0,
+        };
+        assert_eq!(
+            unsafe { tempoch_time_from_format(2_465_000.0, 2, 0, ptr::null(), &mut future_utc) },
+            TempochStatus::Ok
+        );
+        let mut future_ut1 = TempochTime {
+            hi_seconds: -1.0,
+            lo_seconds: -1.0,
+        };
+        assert_eq!(
+            unsafe { tempoch_time_scale_convert(future_utc, 2, 3, ptr::null(), &mut future_ut1) },
+            TempochStatus::Ut1HorizonExceeded
+        );
+    }
+
+    #[test]
+    fn typed_civil_roundtrip_and_invalid_inputs() {
+        let mut value = TempochTime {
+            hi_seconds: 0.0,
+            lo_seconds: 0.0,
+        };
+        assert_eq!(
+            unsafe { tempoch_time_from_civil(utc_j2000(), ptr::null(), &mut value) },
+            TempochStatus::Ok
+        );
+
+        let mut civil = TempochUtc {
+            year: 0,
+            month: 0,
+            day: 0,
+            hour: 0,
+            minute: 0,
+            second: 0,
+            nanosecond: 0,
+        };
+        assert_eq!(
+            unsafe { tempoch_time_to_civil(value, ptr::null(), &mut civil) },
+            TempochStatus::Ok
+        );
+        assert_eq!(civil.year, 2000);
+        assert_eq!(civil.month, 1);
+        assert_eq!(civil.day, 1);
+
+        let mut invalid = TempochTime {
+            hi_seconds: 0.0,
+            lo_seconds: 0.0,
+        };
+        assert_eq!(
+            unsafe {
+                tempoch_time_from_civil(
+                    TempochUtc {
+                        year: 2000,
+                        month: 13,
+                        day: 1,
+                        hour: 0,
+                        minute: 0,
+                        second: 0,
+                        nanosecond: 0,
+                    },
+                    ptr::null(),
+                    &mut invalid,
+                )
+            },
+            TempochStatus::ConversionFailed
+        );
+
+        assert_eq!(
+            unsafe { tempoch_time_to_format(value, 0, 99, ptr::null(), &mut 0.0) },
+            TempochStatus::InvalidFormatId
+        );
+        assert_eq!(
+            unsafe { tempoch_time_from_format(0.0, 99, 0, ptr::null(), &mut invalid) },
+            TempochStatus::InvalidScaleId
+        );
+        assert_eq!(
+            unsafe { tempoch_time_from_format(0.0, 0, 99, ptr::null(), &mut invalid) },
+            TempochStatus::InvalidFormatId
+        );
+        assert_eq!(
+            unsafe { tempoch_time_scale_convert(value, 99, 0, ptr::null(), &mut invalid) },
+            TempochStatus::InvalidScaleId
         );
     }
 }
