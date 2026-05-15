@@ -39,4 +39,8 @@ pub enum TempochStatus {
     PeriodListUnsorted = 9,
     /// The period list has overlapping intervals.
     PeriodListOverlapping = 10,
+    /// A generic time conversion failed.
+    ConversionFailed = 11,
+    /// The provided format ID is not a recognized `TempochFormatTag`.
+    InvalidFormatId = 12,
 }

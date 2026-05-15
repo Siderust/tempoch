@@ -21,17 +21,21 @@
 
 pub mod carriers;
 mod constats;
+mod context;
 mod eop;
 mod error;
 mod period;
 mod time;
+mod typed;
 
 pub use carriers::*;
 pub use constats::*;
+pub use context::*;
 pub use eop::*;
 pub use error::*;
 pub use period::*;
 pub use time::*;
+pub use typed::*;
 
 // Re-export qtty-ffi types used in our public FFI surface
 pub use qtty_ffi::{QttyQuantity, UnitId};
@@ -54,7 +58,7 @@ pub(crate) use catch_panic;
 #[allow(clippy::erasing_op, clippy::identity_op)]
 #[no_mangle]
 pub extern "C" fn tempoch_ffi_version() -> u32 {
-    0 * 10000 + 4 * 100 + 0 // 0.4.0
+    0 * 10000 + 5 * 100 + 0 // 0.5.1
 }
 
 #[cfg(test)]
@@ -63,7 +67,7 @@ mod tests {
 
     #[test]
     fn version_returns_expected_value() {
-        assert_eq!(tempoch_ffi_version(), 400);
+        assert_eq!(tempoch_ffi_version(), 500);
     }
 
     // ── Layout tests ──────────────────────────────────────────────────────
@@ -101,6 +105,12 @@ mod tests {
         assert_eq!(std::mem::align_of::<TempochEopValues>(), 8);
     }
 
+    #[test]
+    fn layout_tempoch_time() {
+        assert_eq!(std::mem::size_of::<TempochTime>(), 16);
+        assert_eq!(std::mem::align_of::<TempochTime>(), 8);
+    }
+
     // ── Status discriminants are stable ───────────────────────────────────
 
     #[test]
@@ -116,6 +126,8 @@ mod tests {
         assert_eq!(TempochStatus::Ut1HorizonExceeded as i32, 8);
         assert_eq!(TempochStatus::PeriodListUnsorted as i32, 9);
         assert_eq!(TempochStatus::PeriodListOverlapping as i32, 10);
+        assert_eq!(TempochStatus::ConversionFailed as i32, 11);
+        assert_eq!(TempochStatus::InvalidFormatId as i32, 12);
     }
 
     // ── ScaleId discriminants are stable ──────────────────────────────────

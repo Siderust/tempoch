@@ -51,9 +51,35 @@ enum tempoch_status_t
   TEMPOCH_STATUS_T_PERIOD_LIST_UNSORTED = 9,
   // The period list has overlapping intervals.
   TEMPOCH_STATUS_T_PERIOD_LIST_OVERLAPPING = 10,
+  // A generic time conversion failed.
+  TEMPOCH_STATUS_T_CONVERSION_FAILED = 11,
+  // The provided format ID is not a recognized `TempochFormatTag`.
+  TEMPOCH_STATUS_T_INVALID_FORMAT_ID = 12,
 };
 #ifndef __cplusplus
 typedef int32_t tempoch_status_t;
+#endif // __cplusplus
+
+// Format tags used by the split-instant C ABI.
+//
+enum tempoch_format_tag_t
+#ifdef __cplusplus
+  : int32_t
+#endif // __cplusplus
+ {
+  // Julian Day.
+  TEMPOCH_FORMAT_TAG_T_JD = 0,
+  // Modified Julian Day.
+  TEMPOCH_FORMAT_TAG_T_MJD = 1,
+  // SI seconds since J2000 on the source scale axis.
+  TEMPOCH_FORMAT_TAG_T_J2000_SECONDS = 2,
+  // POSIX / Unix seconds on the UTC axis.
+  TEMPOCH_FORMAT_TAG_T_UNIX = 3,
+  // GPS seconds on the TAI axis.
+  TEMPOCH_FORMAT_TAG_T_GPS = 4,
+};
+#ifndef __cplusplus
+typedef int32_t tempoch_format_tag_t;
 #endif // __cplusplus
 
 // Time scale identifier for generic dispatch functions.
@@ -92,6 +118,35 @@ enum tempoch_scale_id_t
 #ifndef __cplusplus
 typedef int32_t tempoch_scale_id_t;
 #endif // __cplusplus
+
+// Scale tags used by the split-instant C ABI.
+//
+enum tempoch_scale_tag_t
+#ifdef __cplusplus
+  : int32_t
+#endif // __cplusplus
+ {
+  // Terrestrial Time.
+  TEMPOCH_SCALE_TAG_T_TT = 0,
+  // International Atomic Time.
+  TEMPOCH_SCALE_TAG_T_TAI = 1,
+  // Coordinated Universal Time stored on its continuous instant axis.
+  TEMPOCH_SCALE_TAG_T_UTC = 2,
+  // Universal Time 1.
+  TEMPOCH_SCALE_TAG_T_UT1 = 3,
+  // Barycentric Dynamical Time.
+  TEMPOCH_SCALE_TAG_T_TDB = 4,
+  // Geocentric Coordinate Time.
+  TEMPOCH_SCALE_TAG_T_TCG = 5,
+  // Barycentric Coordinate Time.
+  TEMPOCH_SCALE_TAG_T_TCB = 6,
+};
+#ifndef __cplusplus
+typedef int32_t tempoch_scale_tag_t;
+#endif // __cplusplus
+
+// Opaque FFI time-conversion context.
+typedef struct tempoch_context_t tempoch_context_t;
 
 // Interpolated IERS Earth Orientation Parameter values at a UTC MJD.
 //
@@ -153,6 +208,14 @@ typedef struct tempoch_utc_t {
   uint32_t nanosecond;
 } tempoch_utc_t;
 
+// Split J2000-second instant on a scale-specific axis.
+typedef struct tempoch_time_t {
+  // High part of the compensated J2000-second pair.
+  double hi_seconds;
+  // Low residual part of the compensated J2000-second pair.
+  double lo_seconds;
+} tempoch_time_t;
+
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
@@ -195,6 +258,33 @@ extern "C" {
 
 // Last MJD with modern observed ΔT data (post-1955 atomic-clock era).
  double tempoch_const_modern_delta_t_observed_end_mjd(void);
+
+// Create a default context backed by the monthly ΔT model.
+//
+// # Safety
+// `out` must be a valid, non-null pointer to writable storage for a context handle.
+ tempoch_status_t tempoch_context_create_default(struct tempoch_context_t **out);
+
+// Create a context that prefers the compiled builtin EOP path for UT1.
+//
+// # Safety
+// `out` must be a valid, non-null pointer to writable storage for a context handle.
+ tempoch_status_t tempoch_context_create_with_builtin_eop(struct tempoch_context_t **out);
+
+// Derive a new context that permits pre-1961 UTC extrapolation.
+//
+// # Safety
+// `handle` must be a valid, non-null context pointer produced by this crate, and `out` must be
+// a valid, non-null pointer to writable storage for a context handle.
+
+tempoch_status_t tempoch_context_allow_pre_definition_utc(const struct tempoch_context_t *handle,
+                                                          struct tempoch_context_t **out);
+
+// Free a context handle previously returned by `tempoch_context_create_*`.
+//
+// # Safety
+// `handle` must be either null or a live pointer produced by this crate.
+ void tempoch_context_free(struct tempoch_context_t *handle);
 
 // Returns `true` when [`tempoch_eop_at`] would succeed for `mjd_utc`.
  bool tempoch_eop_covers(double mjd_utc);
@@ -610,6 +700,84 @@ tempoch_status_t tempoch_time_add_qty(double value,
 // # Safety
 // `out` must be a valid, writable pointer to `double`.
  tempoch_status_t tempoch_scale_to_jd(double value, int32_t scale_id, double *out);
+
+// Validate and normalize a split J2000-second pair.
+//
+// # Safety
+// `out` must be a valid, writable pointer to `TempochTime`.
+
+tempoch_status_t tempoch_time_new(double hi_seconds,
+                                  double lo_seconds,
+                                  struct tempoch_time_t *out);
+
+// Convert a split instant from one scale to another.
+//
+// # Safety
+// `out` must be a valid, writable pointer to `TempochTime`.
+
+tempoch_status_t tempoch_time_scale_convert(struct tempoch_time_t value,
+                                            int32_t from_scale,
+                                            int32_t to_scale,
+                                            const struct tempoch_context_t *context,
+                                            struct tempoch_time_t *out);
+
+// Encode a split instant in the requested public format.
+//
+// # Safety
+// `out` must be a valid, writable pointer to `double`.
+
+tempoch_status_t tempoch_time_to_format(struct tempoch_time_t value,
+                                        int32_t scale,
+                                        int32_t format,
+                                        const struct tempoch_context_t *context,
+                                        double *out);
+
+// Decode a split instant from the requested public format.
+//
+// # Safety
+// `out` must be a valid, writable pointer to `TempochTime`.
+
+tempoch_status_t tempoch_time_from_format(double raw,
+                                          int32_t scale,
+                                          int32_t format,
+                                          const struct tempoch_context_t *context,
+                                          struct tempoch_time_t *out);
+
+// Build a UTC-axis split instant from a civil calendar label.
+//
+// # Safety
+// `out` must be a valid, writable pointer to `TempochTime`.
+
+tempoch_status_t tempoch_time_from_civil(struct tempoch_utc_t civil,
+                                         const struct tempoch_context_t *context,
+                                         struct tempoch_time_t *out);
+
+// Convert a split instant on the UTC axis to a civil calendar label.
+//
+// # Safety
+// `out` must be a valid, writable pointer to `TempochUtc`.
+
+tempoch_status_t tempoch_time_to_civil(struct tempoch_time_t value,
+                                       const struct tempoch_context_t *context,
+                                       struct tempoch_utc_t *out);
+
+// Shift a split instant by a duration convertible to seconds.
+//
+// # Safety
+// `out` must be a valid, writable pointer to `TempochTime`.
+
+tempoch_status_t tempoch_time_add_seconds(struct tempoch_time_t value,
+                                          qtty_quantity_t duration,
+                                          struct tempoch_time_t *out);
+
+// Return `lhs - rhs` in SI seconds.
+//
+// # Safety
+// `out` must be a valid, writable pointer to `double`.
+
+tempoch_status_t tempoch_time_difference_seconds(struct tempoch_time_t lhs,
+                                                 struct tempoch_time_t rhs,
+                                                 double *out);
 
 #ifdef __cplusplus
 }  // extern "C"
