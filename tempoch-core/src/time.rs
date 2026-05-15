@@ -144,6 +144,19 @@ impl<S: CoordinateScale> Time<S> {
         Self::try_new(seconds, Second::new(0.0))
     }
 
+    /// Build from a split J2000-second pair on the scale's coordinate axis.
+    ///
+    /// This is the public constructor for FFI and wrapper layers that need to
+    /// preserve the compensated `(hi, lo)` representation instead of
+    /// flattening it to one scalar.
+    #[inline]
+    pub fn try_from_raw_j2000_seconds_split(
+        hi: Second,
+        lo: Second,
+    ) -> Result<Self, ConversionError> {
+        Self::try_new(hi, lo)
+    }
+
     /// Build from a split J2000-second pair.
     #[inline]
     #[cfg(test)]

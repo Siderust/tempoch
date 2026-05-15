@@ -1,6 +1,6 @@
 [package]
 name = "tempoch"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2021"
 authors = ["VPRamon <vallespuigramon@gmail.com>"]
 description = "Astronomical time primitives: typed time scales, Julian dates, UTC conversion, and interval operations."
@@ -20,7 +20,7 @@ serde = ["tempoch-core/serde"]
 runtime-data-fetch = ["tempoch-core/runtime-data-fetch"]
 
 [dependencies]
-tempoch-core = { path = "../tempoch-core", version = "0.5.0" }
+tempoch-core = { path = "../tempoch-core", version = "0.5.1" }
 
 [dev-dependencies]
 chrono = "0.4.44"

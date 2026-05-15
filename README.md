@@ -179,21 +179,21 @@ the horizon. Use the exported `DELTA_T_PREDICTION_HORIZON_MJD` typed
 
 ```toml
 [dependencies]
-tempoch = "0.5.0"
+tempoch = "0.5.1"
 ```
 
 Enable `serde` if you want to serialize typed times and periods:
 
 ```toml
 [dependencies]
-tempoch = { version = "0.5.0", features = ["serde"] }
+tempoch = { version = "0.5.1", features = ["serde"] }
 ```
 
 The `serde` feature composes with the ordinary runtime refresh behavior:
 
 ```toml
 [dependencies]
-tempoch = { version = "0.5.0", features = ["serde", "runtime-data-fetch"] }
+tempoch = { version = "0.5.1", features = ["serde", "runtime-data-fetch"] }
 ```
 
 ## Serde
