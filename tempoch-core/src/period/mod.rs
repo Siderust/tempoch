@@ -278,11 +278,22 @@ impl<T: Copy + PartialOrd> Interval<T> {
         merged
     }
 
-    pub fn length(&self) -> qtty::Second
+    pub fn length<U>(&self) -> qtty::Quantity<U>
     where
-        T: core::ops::Sub<Output = qtty::Second>,
+        T: core::ops::Sub<Output = qtty::Quantity<U>>,
+        U: qtty::time::TimeUnit,
     {
         self.end - self.start
+    }
+
+    /// Backward-compatible alias for [`Self::length`].
+    #[inline]
+    pub fn duration<U>(&self) -> qtty::Quantity<U>
+    where
+        T: core::ops::Sub<Output = qtty::Quantity<U>>,
+        U: qtty::time::TimeUnit,
+    {
+        self.length()
     }
 }
 
@@ -447,6 +458,16 @@ mod tests {
         );
 
         assert_eq!(p.length(), qtty::Second::new(21_600.0));
+    }
+
+    #[test]
+    fn period_length_returns_days_for_mjd() {
+        let p = Period::<TT>::new(
+            ModifiedJulianDate::<TT>::new(51_544.5),
+            ModifiedJulianDate::<TT>::new(51_545.25),
+        );
+
+        assert_eq!(p.length(), Day::new(0.75));
     }
 
     #[test]
