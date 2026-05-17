@@ -172,6 +172,68 @@ impl<S: CoordinateScale> Time<S> {
     pub(crate) fn raw_j2000_seconds(self) -> Second {
         self.total_seconds()
     }
+
+    /// Convert this instant to a Julian Date on the same scale.
+    ///
+    /// This is a named shorthand for `self.to::<JD>()`.
+    #[inline]
+    pub fn to_jd(self) -> crate::format::JulianDate<S> {
+        self.to::<crate::format::JD>()
+    }
+
+    /// Convert this instant to a Modified Julian Date on the same scale.
+    ///
+    /// This is a named shorthand for `self.to::<MJD>()`.
+    #[inline]
+    pub fn to_mjd(self) -> crate::format::ModifiedJulianDate<S> {
+        self.to::<crate::format::MJD>()
+    }
+
+    /// Convert this instant to J2000-second encoding on the same scale.
+    ///
+    /// This is a named shorthand for `self.to::<J2000s>()`.
+    #[inline]
+    pub fn to_j2000_seconds(self) -> crate::format::J2000Seconds<S> {
+        self.to::<crate::format::J2000s>()
+    }
+
+    /// Shift this instant forward by a typed duration.
+    ///
+    /// This is a named shorthand for `self + delta`.
+    #[inline]
+    pub fn shifted_by<U>(self, delta: qtty::Quantity<U>) -> Self
+    where
+        U: qtty::time::TimeUnit,
+    {
+        self + delta
+    }
+
+    /// Shift this instant backward by a typed duration.
+    ///
+    /// This is a named shorthand for `self - delta`.
+    #[inline]
+    pub fn shifted_back_by<U>(self, delta: qtty::Quantity<U>) -> Self
+    where
+        U: qtty::time::TimeUnit,
+    {
+        self - delta
+    }
+
+    /// Duration from `other` to `self`.
+    ///
+    /// This is a named shorthand for `self - other`.
+    #[inline]
+    pub fn duration_since(self, other: Self) -> Second {
+        self - other
+    }
+
+    /// Duration from `self` to `other`.
+    ///
+    /// This is a named shorthand for `other - self`.
+    #[inline]
+    pub fn duration_until(self, other: Self) -> Second {
+        other - self
+    }
 }
 
 impl<S: Scale> Time<S> {
@@ -240,39 +302,63 @@ impl<S: CoordinateScale> core::ops::Sub for Time<S> {
     }
 }
 
-impl<S: CoordinateScale> core::ops::Add<Second> for Time<S> {
+impl<S: CoordinateScale, U> core::ops::Add<qtty::Quantity<U>> for Time<S>
+where
+    U: qtty::time::TimeUnit,
+{
     type Output = Self;
 
     #[inline]
-    fn add(self, rhs: Second) -> Self {
+    fn add(self, rhs: qtty::Quantity<U>) -> Self {
+        self.add_seconds_internal(rhs.to::<qtty::unit::Second>())
+    }
+}
+
+impl<S: CoordinateScale, U> core::ops::Sub<qtty::Quantity<U>> for Time<S>
+where
+    U: qtty::time::TimeUnit,
+{
+    type Output = Self;
+
+    #[inline]
+    fn sub(self, rhs: qtty::Quantity<U>) -> Self {
+        self.sub_seconds_internal(rhs.to::<qtty::unit::Second>())
+    }
+}
+
+impl<S: CoordinateScale, U> core::ops::AddAssign<qtty::Quantity<U>> for Time<S>
+where
+    U: qtty::time::TimeUnit,
+{
+    #[inline]
+    fn add_assign(&mut self, rhs: qtty::Quantity<U>) {
+        *self = self.add_seconds_internal(rhs.to::<qtty::unit::Second>());
+    }
+}
+
+impl<S: CoordinateScale, U> core::ops::SubAssign<qtty::Quantity<U>> for Time<S>
+where
+    U: qtty::time::TimeUnit,
+{
+    #[inline]
+    fn sub_assign(&mut self, rhs: qtty::Quantity<U>) {
+        *self = self.sub_seconds_internal(rhs.to::<qtty::unit::Second>());
+    }
+}
+
+impl<S: CoordinateScale> Time<S> {
+    #[inline]
+    fn add_seconds_internal(self, rhs: Second) -> Self {
         Self {
             instant: self.instant + rhs,
         }
     }
-}
-
-impl<S: CoordinateScale> core::ops::Sub<Second> for Time<S> {
-    type Output = Self;
 
     #[inline]
-    fn sub(self, rhs: Second) -> Self {
+    fn sub_seconds_internal(self, rhs: Second) -> Self {
         Self {
             instant: self.instant - rhs,
         }
-    }
-}
-
-impl<S: CoordinateScale> core::ops::AddAssign<Second> for Time<S> {
-    #[inline]
-    fn add_assign(&mut self, rhs: Second) {
-        *self = *self + rhs;
-    }
-}
-
-impl<S: CoordinateScale> core::ops::SubAssign<Second> for Time<S> {
-    #[inline]
-    fn sub_assign(&mut self, rhs: Second) {
-        *self = *self - rhs;
     }
 }
 
@@ -330,6 +416,17 @@ mod tests {
     }
 
     #[test]
+    fn add_days_and_seconds_to_time() {
+        let t = Time::<TT>::from_raw_j2000_seconds(Second::new(1_000_000.0)).unwrap();
+        let t_plus_day = t + qtty::Day::new(1.0);
+        let t_plus_seconds = t + Second::new(86_400.0);
+        assert!(
+            (t_plus_day.raw_j2000_seconds() - t_plus_seconds.raw_j2000_seconds()).abs()
+                < Second::new(1e-12)
+        );
+    }
+
+    #[test]
     #[allow(clippy::clone_on_copy)]
     fn scale_axis_debug_and_time_formatting_are_stable() {
         let axis = ScaleAxis::<TT>(PhantomData);
@@ -362,5 +459,28 @@ mod tests {
             Time::<TT>::from_raw_j2000_seconds(Second::new(f64::NAN)),
             Err(ConversionError::NonFinite)
         ));
+    }
+
+    #[test]
+    fn named_format_helpers_match_generic_conversion_targets() {
+        let tt = Time::<TT>::from_raw_j2000_seconds(Second::new(12_345.0)).unwrap();
+        assert_eq!(tt.to_jd(), tt.to::<crate::format::JD>());
+        assert_eq!(tt.to_mjd(), tt.to::<crate::format::MJD>());
+        assert_eq!(tt.to_j2000_seconds(), tt.to::<crate::format::J2000s>());
+        assert_eq!(tt.shifted_by(Second::new(3.0)), tt + Second::new(3.0));
+        assert_eq!(tt.shifted_back_by(Second::new(3.0)), tt - Second::new(3.0));
+        assert_eq!(
+            tt.duration_since(tt.shifted_back_by(Second::new(1.0))),
+            Second::new(1.0)
+        );
+        assert_eq!(
+            tt.duration_until(tt.shifted_by(Second::new(1.0))),
+            Second::new(1.0)
+        );
+
+        let utc = Time::<UTC>::from_raw_j2000_seconds(Second::new(12_345.0)).unwrap();
+        assert_eq!(utc.to_jd(), utc.to::<crate::format::JD>());
+        assert_eq!(utc.to_mjd(), utc.to::<crate::format::MJD>());
+        assert_eq!(utc.to_j2000_seconds(), utc.to::<crate::format::J2000s>());
     }
 }

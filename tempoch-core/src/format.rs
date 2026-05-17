@@ -21,17 +21,21 @@
 
 use core::fmt;
 use core::marker::PhantomData;
+use core::ops::{Add, AddAssign, Sub, SubAssign};
 
 use crate::context::TimeContext;
 use crate::encoding::{
-    j2000_seconds_to_jd, j2000_seconds_to_mjd, jd_to_j2000_seconds, mjd_to_j2000_seconds,
+    j2000_seconds_to_jd, j2000_seconds_to_mjd, jd_to_j2000_seconds, jd_to_julian_centuries,
+    mjd_to_j2000_seconds,
 };
 use crate::error::ConversionError;
 use crate::scale::conversion::InfallibleScaleConvert;
-use crate::scale::{CoordinateScale, Scale, TAI, UTC};
+use crate::scale::{CoordinateScale, Scale, TAI, TT, UTC};
 use crate::sealed::Sealed;
 use crate::target::{ContextConversionTarget, ConversionTarget, InfallibleConversionTarget};
 use crate::time::Time;
+use chrono::{DateTime, Utc};
+use qtty::time::TimeUnit;
 use qtty::{Day, Quantity, Second, Unit};
 
 /// Marker trait for an external time encoding such as JD or Unix time.
@@ -211,6 +215,16 @@ impl<S: Scale, F: TimeFormat> EncodedTime<S, F> {
         }
     }
 
+    /// Construct an encoded instant from a scalar in this format's natural unit.
+    ///
+    /// This is a convenience wrapper around [`Self::try_new`] for the common
+    /// case where the caller already has a plain floating-point value.
+    #[inline]
+    pub fn new(value: f64) -> Self {
+        assert!(value.is_finite(), "encoded time value must be finite");
+        Self::from_raw_unchecked(Quantity::<F::Unit>::new(value))
+    }
+
     /// Construct from a raw typed quantity without checking for finiteness.
     ///
     /// For use in `const` contexts. The caller must ensure `raw` is finite;
@@ -231,11 +245,268 @@ impl<S: Scale, F: TimeFormat> EncodedTime<S, F> {
     pub const fn quantity(self) -> Quantity<F::Unit> {
         self.raw
     }
+
+    /// Return the earlier of two encoded instants.
+    #[inline]
+    pub fn min(self, other: Self) -> Self {
+        if self <= other {
+            self
+        } else {
+            other
+        }
+    }
+
+    /// Return the later of two encoded instants.
+    #[inline]
+    pub fn max(self, other: Self) -> Self {
+        if self >= other {
+            self
+        } else {
+            other
+        }
+    }
+
+    /// Midpoint between two encoded instants on the same scale and format.
+    #[inline]
+    pub fn mean(self, other: Self) -> Self {
+        let value = (self.raw.value() + other.raw.value()) * 0.5;
+        Self::new_unchecked(Quantity::<F::Unit>::new(value))
+    }
 }
 
 impl<S: Scale> EncodedTime<S, JD> {
     /// J2000.0 epoch as a Julian Date on scale `S` (JD 2 451 545.0).
     pub const J2000: Self = Self::from_raw_unchecked(crate::constats::J2000_JD_TT.raw());
+
+    /// Raw Julian Date value.
+    #[inline]
+    pub fn jd_value(self) -> f64 {
+        self.raw().value()
+    }
+
+    /// Julian centuries since J2000.0 from the raw JD value.
+    #[inline]
+    pub fn julian_centuries(self) -> f64 {
+        jd_to_julian_centuries(self.raw())
+    }
+
+    /// Convert this Julian Date to the same-scale Modified Julian Date.
+    #[inline]
+    pub fn to_mjd(self) -> EncodedTime<S, MJD>
+    where
+        S: CoordinateScale,
+    {
+        self.to::<MJD>()
+    }
+}
+
+impl<S: Scale> EncodedTime<S, MJD> {
+    /// Raw Modified Julian Date value.
+    #[inline]
+    pub fn mjd_value(self) -> f64 {
+        self.raw().value()
+    }
+
+    /// Convert this Modified Julian Date to the same-scale Julian Date.
+    #[inline]
+    pub fn to_jd(self) -> EncodedTime<S, JD>
+    where
+        S: CoordinateScale,
+    {
+        self.to::<JD>()
+    }
+}
+
+impl EncodedTime<TT, JD> {
+    /// Build a TT Julian Date from a UTC `chrono` timestamp.
+    #[inline]
+    pub fn try_from_chrono(dt: DateTime<Utc>) -> Result<Self, ConversionError> {
+        Ok(Time::<UTC>::try_from_chrono(dt)?.to::<TT>().to::<JD>())
+    }
+
+    /// Build a TT Julian Date from a UTC `chrono` timestamp.
+    #[track_caller]
+    #[inline]
+    pub fn from_chrono(dt: DateTime<Utc>) -> Self {
+        Self::try_from_chrono(dt).expect("UTC conversion failed; use try_from_chrono")
+    }
+
+    /// Build a TT Julian Date from a UTC `chrono` timestamp using an explicit context.
+    #[inline]
+    pub fn try_from_chrono_with(
+        dt: DateTime<Utc>,
+        ctx: &TimeContext,
+    ) -> Result<Self, ConversionError> {
+        Ok(Time::<UTC>::try_from_chrono_with(dt, ctx)?
+            .to::<TT>()
+            .to::<JD>())
+    }
+
+    /// Build a TT Julian Date from a UTC `chrono` timestamp using an explicit context.
+    #[track_caller]
+    #[inline]
+    pub fn from_chrono_with(dt: DateTime<Utc>, ctx: &TimeContext) -> Self {
+        Self::try_from_chrono_with(dt, ctx)
+            .expect("UTC conversion failed; use try_from_chrono_with")
+    }
+
+    /// Convert a TT Julian Date to a UTC `chrono` timestamp.
+    #[inline]
+    pub fn try_to_chrono(self) -> Result<DateTime<Utc>, ConversionError> {
+        self.to_time().to::<UTC>().try_to_chrono()
+    }
+
+    /// Convert a TT Julian Date to a UTC `chrono` timestamp.
+    #[inline]
+    pub fn to_chrono(self) -> Option<DateTime<Utc>> {
+        self.try_to_chrono().ok()
+    }
+
+    /// Convert a TT Julian Date to a UTC `chrono` timestamp using an explicit context.
+    #[inline]
+    pub fn try_to_chrono_with(self, ctx: &TimeContext) -> Result<DateTime<Utc>, ConversionError> {
+        self.to_time().to::<UTC>().try_to_chrono_with(ctx)
+    }
+
+    /// Convert a TT Julian Date to a UTC `chrono` timestamp using an explicit context.
+    #[inline]
+    pub fn to_chrono_with(self, ctx: &TimeContext) -> Option<DateTime<Utc>> {
+        self.try_to_chrono_with(ctx).ok()
+    }
+}
+
+impl EncodedTime<TT, MJD> {
+    /// Build a TT Modified Julian Date from a UTC `chrono` timestamp.
+    #[inline]
+    pub fn try_from_chrono(dt: DateTime<Utc>) -> Result<Self, ConversionError> {
+        Ok(Time::<UTC>::try_from_chrono(dt)?.to::<TT>().to::<MJD>())
+    }
+
+    /// Build a TT Modified Julian Date from a UTC `chrono` timestamp.
+    #[track_caller]
+    #[inline]
+    pub fn from_chrono(dt: DateTime<Utc>) -> Self {
+        Self::try_from_chrono(dt).expect("UTC conversion failed; use try_from_chrono")
+    }
+
+    /// Build a TT Modified Julian Date from a UTC `chrono` timestamp using an explicit context.
+    #[inline]
+    pub fn try_from_chrono_with(
+        dt: DateTime<Utc>,
+        ctx: &TimeContext,
+    ) -> Result<Self, ConversionError> {
+        Ok(Time::<UTC>::try_from_chrono_with(dt, ctx)?
+            .to::<TT>()
+            .to::<MJD>())
+    }
+
+    /// Build a TT Modified Julian Date from a UTC `chrono` timestamp using an explicit context.
+    #[track_caller]
+    #[inline]
+    pub fn from_chrono_with(dt: DateTime<Utc>, ctx: &TimeContext) -> Self {
+        Self::try_from_chrono_with(dt, ctx)
+            .expect("UTC conversion failed; use try_from_chrono_with")
+    }
+
+    /// Convert a TT Modified Julian Date to a UTC `chrono` timestamp.
+    #[inline]
+    pub fn try_to_chrono(self) -> Result<DateTime<Utc>, ConversionError> {
+        self.to_time().to::<UTC>().try_to_chrono()
+    }
+
+    /// Convert a TT Modified Julian Date to a UTC `chrono` timestamp.
+    #[inline]
+    pub fn to_chrono(self) -> Option<DateTime<Utc>> {
+        self.try_to_chrono().ok()
+    }
+
+    /// Convert a TT Modified Julian Date to a UTC `chrono` timestamp using an explicit context.
+    #[inline]
+    pub fn try_to_chrono_with(self, ctx: &TimeContext) -> Result<DateTime<Utc>, ConversionError> {
+        self.to_time().to::<UTC>().try_to_chrono_with(ctx)
+    }
+
+    /// Convert a TT Modified Julian Date to a UTC `chrono` timestamp using an explicit context.
+    #[inline]
+    pub fn to_chrono_with(self, ctx: &TimeContext) -> Option<DateTime<Utc>> {
+        self.try_to_chrono_with(ctx).ok()
+    }
+}
+
+impl From<DateTime<Utc>> for EncodedTime<TT, MJD> {
+    #[inline]
+    fn from(value: DateTime<Utc>) -> Self {
+        Self::from_chrono(value)
+    }
+}
+
+// Also provide From/TryFrom for JD (Julian Date) for symmetry.
+impl From<DateTime<Utc>> for EncodedTime<TT, JD> {
+    #[inline]
+    fn from(value: DateTime<Utc>) -> Self {
+        Self::from_chrono(value)
+    }
+}
+
+impl<S: CoordinateScale, F, U> Add<Quantity<U>> for EncodedTime<S, F>
+where
+    F: InfallibleFormatForScale<S>,
+    U: TimeUnit,
+{
+    type Output = Self;
+
+    #[inline]
+    fn add(self, rhs: Quantity<U>) -> Self::Output {
+        Self::from_time_infallible(self.to_time() + rhs.to::<qtty::unit::Second>())
+    }
+}
+
+impl<S: CoordinateScale, F, U> Sub<Quantity<U>> for EncodedTime<S, F>
+where
+    F: InfallibleFormatForScale<S>,
+    U: TimeUnit,
+{
+    type Output = Self;
+
+    #[inline]
+    fn sub(self, rhs: Quantity<U>) -> Self::Output {
+        Self::from_time_infallible(self.to_time() - rhs.to::<qtty::unit::Second>())
+    }
+}
+
+impl<S: CoordinateScale, F> Sub for EncodedTime<S, F>
+where
+    F: InfallibleFormatForScale<S>,
+    F::Unit: TimeUnit,
+{
+    type Output = Quantity<F::Unit>;
+
+    #[inline]
+    fn sub(self, rhs: Self) -> Self::Output {
+        (self.to_time() - rhs.to_time()).to::<F::Unit>()
+    }
+}
+
+impl<S: CoordinateScale, F, U> AddAssign<Quantity<U>> for EncodedTime<S, F>
+where
+    F: InfallibleFormatForScale<S>,
+    U: TimeUnit,
+{
+    #[inline]
+    fn add_assign(&mut self, rhs: Quantity<U>) {
+        *self = *self + rhs;
+    }
+}
+
+impl<S: CoordinateScale, F, U> SubAssign<Quantity<U>> for EncodedTime<S, F>
+where
+    F: InfallibleFormatForScale<S>,
+    U: TimeUnit,
+{
+    #[inline]
+    fn sub_assign(&mut self, rhs: Quantity<U>) {
+        *self = *self - rhs;
+    }
 }
 
 impl<S: Scale, F> EncodedTime<S, F>
@@ -630,6 +901,13 @@ mod tests {
     fn encoded_time_quantity_is_alias_for_raw() {
         let jd = JulianDate::<TT>::try_new(Day::new(2_451_545.5)).unwrap();
         assert_eq!(jd.raw(), jd.quantity());
+    }
+
+    #[test]
+    fn encoded_time_new_accepts_scalar_values() {
+        let jd = JulianDate::<TT>::new(2_460_000.5);
+
+        assert_eq!(jd.raw(), Day::new(2_460_000.5));
     }
 
     #[test]

@@ -29,6 +29,12 @@
 //! - `TAI` exposes GPS transport helpers
 //! - unified conversion targets are available through `time.to::<Target>()`,
 //!   `time.try_to::<Target>()`, and `time.to_with::<Target>(&ctx)`
+//! - named same-scale helpers such as `time.to_jd()` / `time.to_mjd()` /
+//!   `time.to_j2000_seconds()` keep the common encoded forms out of the generic
+//!   target syntax
+//! - named arithmetic helpers such as `time.shifted_by(delta)` and
+//!   `time.duration_since(other)` wrap the affine operators when method syntax
+//!   reads better
 //!
 //! See [`constats`] for typed epoch and offset constants.
 

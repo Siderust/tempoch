@@ -19,6 +19,25 @@ fn utc_roundtrip_j2000_is_stable() {
 }
 
 #[test]
+fn tt_encoded_dates_support_chrono_roundtrips() {
+    let datetime = DateTime::from_timestamp(1_784_617_200, 0).unwrap();
+
+    let jd = JulianDate::<TT>::from_chrono(datetime);
+    let mjd = ModifiedJulianDate::<TT>::from_chrono(datetime);
+
+    let jd_back = jd.to_chrono().unwrap();
+    let mjd_back = mjd.to_chrono().unwrap();
+
+    let jd_delta_ns =
+        jd_back.timestamp_nanos_opt().unwrap() - datetime.timestamp_nanos_opt().unwrap();
+    let mjd_delta_ns =
+        mjd_back.timestamp_nanos_opt().unwrap() - datetime.timestamp_nanos_opt().unwrap();
+
+    assert!(jd_delta_ns.abs() < 50_000);
+    assert!(mjd_delta_ns.abs() < 50_000);
+}
+
+#[test]
 fn ut1_context_roundtrip_near_j2000() {
     let ctx = TimeContext::new();
     let tt = J2000Seconds::<TT>::try_new(Second::new(0.0))
@@ -57,6 +76,38 @@ fn public_constats_epochs_are_usable() {
         ((j2000.to::<J2000s>().raw() - tai_s.to::<J2000s>().raw()) - TT_MINUS_TAI).abs()
             < Second::new(1e-12)
     );
+}
+
+#[test]
+fn encoded_date_helpers_and_assign_arithmetic_are_available() {
+    let mut jd = JulianDate::<TT>::try_new(J2000_JD_TT.raw()).unwrap();
+    jd += Day::new(2.0);
+    jd -= Day::new(0.5);
+
+    assert_eq!(jd.jd_value(), 2_451_546.5);
+    assert_eq!(jd.to_mjd().mjd_value(), jd.jd_value() - 2_400_000.5);
+    assert!(
+        (JulianDate::<TT>::try_new(Day::new(2_451_545.0))
+            .unwrap()
+            .julian_centuries())
+        .abs()
+            < 1e-12
+    );
+
+    let mut mjd = ModifiedJulianDate::<TT>::try_new(Day::new(51_544.5)).unwrap();
+    mjd += Day::new(1.0);
+    mjd -= Day::new(0.25);
+    assert_eq!(mjd.to_jd().jd_value(), 2_451_545.75);
+}
+
+#[test]
+fn encoded_date_min_max_and_mean_are_available() {
+    let a = JulianDate::<TT>::try_new(Day::new(2_451_545.0)).unwrap();
+    let b = JulianDate::<TT>::try_new(Day::new(2_451_547.0)).unwrap();
+
+    assert_eq!(a.min(b), a);
+    assert_eq!(a.max(b), b);
+    assert_eq!(a.mean(b).jd_value(), 2_451_546.0);
 }
 
 #[test]
