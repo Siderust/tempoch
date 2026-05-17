@@ -1,0 +1,502 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Vallés Puig, Ramon
+
+//! `Time<S, F>` — canonical instant with compensated precision and a format tag.
+
+use core::fmt;
+use core::marker::PhantomData;
+use core::ops::{Add, AddAssign, Sub, SubAssign};
+
+use crate::earth::context::TimeContext;
+use crate::encoding::jd_to_julian_centuries;
+use crate::format::{J2000s, TimeFormat};
+use crate::foundation::error::ConversionError;
+use crate::model::scale::conversion::{ContextScaleConvert, InfallibleScaleConvert};
+use crate::model::scale::{CoordinateScale, Scale, UTC};
+use crate::model::target::{ContextConversionTarget, ConversionTarget, InfallibleConversionTarget};
+use crate::{FormatForScale, InfallibleFormatForScale};
+use affn::algebra::{Space, SplitPoint1};
+use qtty::time::TimeUnit;
+use qtty::unit::Second as SecondUnit;
+use qtty::{Quantity, Second};
+
+/// Split-axis scalars must not be NaN; ±∞ may be stored but many conversions still reject them.
+#[inline]
+fn coordinate_pair_ok(hi: f64, lo: f64) -> bool {
+    !hi.is_nan() && !lo.is_nan()
+}
+
+#[derive(Copy, Clone)]
+pub(crate) struct ScaleAxis<S: Scale>(PhantomData<fn() -> S>);
+
+impl<S: Scale> fmt::Debug for ScaleAxis<S> {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("ScaleAxis").field(&S::NAME).finish()
+    }
+}
+
+impl<S: Scale> Space for ScaleAxis<S> {}
+
+/// A point in time on scale `S`, tagged with external format phantom `F`.
+///
+/// The default `F` is [`J2000s`], so `Time<S>` in code is `Time<S, J2000s>`:
+/// SI seconds since J2000.0 TT on the scale's coordinate axis.
+///
+/// Storage is always a compensated `(hi, lo)` pair of seconds. The format tag
+/// does not duplicate storage; it only types the API (`raw()`, conversions, …).
+///
+/// # Preconditions
+///
+/// **NaN must never appear** in encoded scalars or storage components — behavior is undefined if it does.
+/// **±∞** may be carried when callers use instants as sentinels; operations that require finite coordinates
+/// (ΔT loops, UTC civil decoding, POSIX Unix mapping, …) may still return [`ConversionError::NonFinite`].
+pub struct Time<S: Scale, F: TimeFormat = J2000s> {
+    instant: SplitPoint1<ScaleAxis<S>, SecondUnit>,
+    _fmt: PhantomData<fn() -> F>,
+}
+
+impl<S: Scale, F: TimeFormat> Copy for Time<S, F> {}
+
+impl<S: Scale, F: TimeFormat> Clone for Time<S, F> {
+    #[inline]
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<S: Scale, F: TimeFormat> PartialEq for Time<S, F> {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.split_seconds() == other.split_seconds()
+    }
+}
+
+impl<S: Scale, F: TimeFormat> PartialOrd for Time<S, F> {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        let (self_hi, self_lo) = self.split_seconds();
+        let (other_hi, other_lo) = other.split_seconds();
+        match self_hi.partial_cmp(&other_hi) {
+            Some(core::cmp::Ordering::Equal) => self_lo.partial_cmp(&other_lo),
+            ordering => ordering,
+        }
+    }
+}
+
+impl<S: Scale, F: TimeFormat> fmt::Debug for Time<S, F> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (hi, lo) = self.split_seconds();
+        f.debug_struct("Time")
+            .field("scale", &S::NAME)
+            .field("format", &F::NAME)
+            .field("hi_s", &hi)
+            .field("lo_s", &lo)
+            .finish()
+    }
+}
+
+impl<S: CoordinateScale, F> fmt::Display for Time<S, F>
+where
+    F: InfallibleFormatForScale<S>,
+    qtty::Quantity<F::Unit>: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if F::NAME == J2000s::NAME {
+            write!(f, "{} {:.9}", S::NAME, self.total_seconds().value())
+        } else {
+            fmt::Display::fmt(&F::from_time(*self), f)
+        }
+    }
+}
+
+impl fmt::Display for Time<UTC, crate::format::Unix> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.try_raw_with(&TimeContext::new()) {
+            Ok(q) => fmt::Display::fmt(&q, f),
+            Err(_) => f.write_str("Unix(<invalid for display>)"),
+        }
+    }
+}
+
+impl<S: CoordinateScale, F> fmt::LowerExp for Time<S, F>
+where
+    F: InfallibleFormatForScale<S>,
+    qtty::Quantity<F::Unit>: fmt::LowerExp,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::LowerExp::fmt(&F::from_time(*self), f)
+    }
+}
+
+impl<S: CoordinateScale, F> fmt::UpperExp for Time<S, F>
+where
+    F: InfallibleFormatForScale<S>,
+    qtty::Quantity<F::Unit>: fmt::UpperExp,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::UpperExp::fmt(&F::from_time(*self), f)
+    }
+}
+
+impl<S: Scale, F: TimeFormat> Time<S, F> {
+    #[inline]
+    pub(crate) fn from_split(hi: Second, lo: Second) -> Self {
+        debug_assert!(
+            coordinate_pair_ok(hi.value(), lo.value()),
+            "time split pair must not contain NaN"
+        );
+        let instant = SplitPoint1::new(hi, lo);
+        let (hi, lo) = instant.coordinate().pair();
+        debug_assert!(
+            coordinate_pair_ok(hi.value(), lo.value()),
+            "time split pair must not contain NaN"
+        );
+        Self {
+            instant,
+            _fmt: PhantomData,
+        }
+    }
+
+    #[inline]
+    pub(crate) fn try_from_split(hi: Second, lo: Second) -> Result<Self, ConversionError> {
+        if coordinate_pair_ok(hi.value(), lo.value()) {
+            Ok(Self::from_split(hi, lo))
+        } else {
+            Err(ConversionError::NonFinite)
+        }
+    }
+
+    /// Same instant, different format tag (zero cost).
+    #[inline]
+    pub fn reinterpret<G: TimeFormat>(self) -> Time<S, G> {
+        Time {
+            instant: self.instant,
+            _fmt: PhantomData,
+        }
+    }
+
+    /// SI J2000-second tagged view of the same instant.
+    #[inline]
+    pub fn to_j2000s(self) -> Time<S, J2000s> {
+        self.reinterpret()
+    }
+
+    #[inline]
+    pub(crate) fn split_seconds(self) -> (Second, Second) {
+        self.instant.coordinate().pair()
+    }
+
+    #[inline]
+    pub(crate) fn total_seconds(self) -> Second {
+        self.instant.coordinate().total()
+    }
+
+    /// Raw internal storage pair in J2000-TT seconds on the instance scale.
+    #[inline]
+    pub fn raw_seconds_pair(self) -> (Second, Second) {
+        self.split_seconds()
+    }
+}
+
+impl<S: CoordinateScale> Time<S, J2000s> {
+    /// Build from J2000 TT seconds on the scale's coordinate axis.
+    #[inline]
+    pub fn from_raw_j2000_seconds(seconds: Second) -> Result<Self, ConversionError> {
+        Self::try_from_split(seconds, Second::new(0.0))
+    }
+
+    /// Build from a split J2000-second pair on the scale's coordinate axis.
+    #[inline]
+    pub fn try_from_raw_j2000_seconds_split(
+        hi: Second,
+        lo: Second,
+    ) -> Result<Self, ConversionError> {
+        Self::try_from_split(hi, lo)
+    }
+
+    #[inline]
+    pub(crate) fn raw_j2000_seconds(self) -> Second {
+        self.total_seconds()
+    }
+
+    /// Shift this instant forward by a typed duration.
+    #[inline]
+    pub fn shifted_by<U>(self, delta: qtty::Quantity<U>) -> Self
+    where
+        U: TimeUnit,
+    {
+        self + delta
+    }
+
+    /// Shift this instant backward by a typed duration.
+    #[inline]
+    pub fn shifted_back_by<U>(self, delta: qtty::Quantity<U>) -> Self
+    where
+        U: TimeUnit,
+    {
+        self - delta
+    }
+
+    /// Duration from `other` to `self`.
+    #[inline]
+    pub fn duration_since(self, other: Self) -> Second {
+        self - other
+    }
+
+    /// Duration from `self` to `other`.
+    #[inline]
+    pub fn duration_until(self, other: Self) -> Second {
+        other - self
+    }
+}
+
+impl<S: CoordinateScale, F: InfallibleFormatForScale<S>> Time<S, F> {
+    /// Encoded scalar for this format (derived from split storage).
+    #[inline]
+    pub fn raw(self) -> Quantity<F::Unit> {
+        F::from_time(self)
+    }
+
+    /// Alias for [`Self::raw`].
+    #[inline]
+    pub fn quantity(self) -> Quantity<F::Unit> {
+        F::from_time(self)
+    }
+}
+
+impl<S: CoordinateScale, F> Time<S, F>
+where
+    F: FormatForScale<S>,
+{
+    #[inline]
+    pub fn try_raw_with(self, ctx: &TimeContext) -> Result<Quantity<F::Unit>, ConversionError> {
+        F::try_from_time(self, ctx)
+    }
+}
+
+impl<S: Scale, F: TimeFormat> Time<S, F> {
+    /// Unified infallible conversion to a scale/view target.
+    #[allow(private_bounds)]
+    #[inline]
+    pub fn to<T>(self) -> T::Output
+    where
+        T: InfallibleConversionTarget<S, F>,
+    {
+        T::convert(self)
+    }
+
+    /// Unified fallible conversion to a scale/view target.
+    #[allow(private_bounds)]
+    #[inline]
+    pub fn try_to<T>(self) -> Result<T::Output, ConversionError>
+    where
+        T: ConversionTarget<S, F>,
+    {
+        T::try_convert(self)
+    }
+
+    /// Unified context-backed conversion to a scale/view target.
+    #[allow(private_bounds)]
+    #[inline]
+    pub fn to_with<T>(self, ctx: &TimeContext) -> Result<T::Output, ConversionError>
+    where
+        T: ContextConversionTarget<S, F>,
+    {
+        T::convert_with(self, ctx)
+    }
+
+    /// Infallible scale conversion; preserves format tag `F`.
+    #[allow(private_bounds)]
+    #[inline]
+    pub fn to_scale<S2: Scale>(self) -> Time<S2, F>
+    where
+        S: InfallibleScaleConvert<S2>,
+    {
+        let (hi, lo) = self.split_seconds();
+        let (new_hi, new_lo) = <S as InfallibleScaleConvert<S2>>::convert(hi, lo);
+        Time::from_split(new_hi, new_lo)
+    }
+
+    /// Context-required scale conversion (UT1 routes); preserves `F`.
+    #[allow(private_bounds)]
+    #[inline]
+    pub fn to_scale_with<S2: Scale>(self, ctx: &TimeContext) -> Result<Time<S2, F>, ConversionError>
+    where
+        S: ContextScaleConvert<S2>,
+    {
+        let (hi, lo) = self.split_seconds();
+        let (new_hi, new_lo) = <S as ContextScaleConvert<S2>>::convert_with(hi, lo, ctx)?;
+        Ok(Time::from_split(new_hi, new_lo))
+    }
+}
+
+impl<S: Scale, F: FormatForScale<S>> Time<S, F> {
+    /// Fallible constructor from an encoded scalar.
+    ///
+    /// Only surfaces **domain** failures from format decoding (UTC policy, leap seconds, ranges, …).
+    /// Scalar hygiene is a caller precondition: **NaN must not be passed**; ±∞ is accepted only where the format decoder tolerates it.
+    #[inline]
+    pub fn try_new(raw: Quantity<F::Unit>) -> Result<Self, ConversionError> {
+        F::try_into_time(raw, &TimeContext::new())
+    }
+
+    /// Like [`Self::try_new`], but uses `ctx` for UTC / POSIX decoding policy.
+    #[inline]
+    pub fn try_new_with(
+        raw: Quantity<F::Unit>,
+        ctx: &TimeContext,
+    ) -> Result<Self, ConversionError> {
+        F::try_into_time(raw, ctx)
+    }
+}
+
+impl<S: Scale, F: InfallibleFormatForScale<S>> Time<S, F> {
+    /// Infallible constructor from the raw scalar value for format `F`.
+    ///
+    /// # Panics
+    ///
+    /// If `value` is **NaN**. ±∞ is allowed as storage when callers use sentinel instants.
+    #[track_caller]
+    #[inline]
+    pub fn new(value: f64) -> Self {
+        assert!(
+            !value.is_nan(),
+            "time scalar must not be NaN (±∞ is allowed)"
+        );
+        F::into_time(Quantity::<F::Unit>::new(value))
+    }
+}
+
+impl<S: CoordinateScale, F: InfallibleFormatForScale<S>> Time<S, F> {
+    #[inline]
+    pub fn min(self, other: Self) -> Self {
+        if self <= other {
+            self
+        } else {
+            other
+        }
+    }
+
+    #[inline]
+    pub fn max(self, other: Self) -> Self {
+        if self >= other {
+            self
+        } else {
+            other
+        }
+    }
+
+    #[inline]
+    pub fn mean(self, other: Self) -> Self {
+        let t = self.to_j2000s() + ((other.to_j2000s() - self.to_j2000s()) * 0.5);
+        t.reinterpret()
+    }
+}
+
+impl<S: Scale> Time<S, crate::format::JD> {
+    /// TT J2000.0 as a Julian Date on scale `S` (JD 2 451 545.0).
+    #[inline]
+    pub fn jd_epoch_tt() -> Self
+    where
+        S: CoordinateScale,
+    {
+        Time::<S, J2000s>::from_raw_j2000_seconds(Second::new(0.0))
+            .expect("J2000 origin")
+            .reinterpret()
+    }
+
+    #[inline]
+    pub fn value(self) -> f64
+    where
+        S: CoordinateScale,
+    {
+        self.raw().value()
+    }
+
+    #[inline]
+    pub fn julian_centuries(self) -> f64
+    where
+        S: CoordinateScale,
+    {
+        jd_to_julian_centuries(self.raw())
+    }
+}
+
+impl<S: Scale> Time<S, crate::format::MJD> {
+    #[inline]
+    pub fn value(self) -> f64
+    where
+        S: CoordinateScale,
+    {
+        self.raw().value()
+    }
+}
+
+impl<S: CoordinateScale, F, U> Add<Quantity<U>> for Time<S, F>
+where
+    F: InfallibleFormatForScale<S>,
+    U: TimeUnit,
+{
+    type Output = Self;
+
+    #[inline]
+    fn add(self, rhs: Quantity<U>) -> Self::Output {
+        Self {
+            instant: self.instant + rhs.to::<SecondUnit>(),
+            _fmt: PhantomData,
+        }
+    }
+}
+
+impl<S: CoordinateScale, F, U> Sub<Quantity<U>> for Time<S, F>
+where
+    F: InfallibleFormatForScale<S>,
+    U: TimeUnit,
+{
+    type Output = Self;
+
+    #[inline]
+    fn sub(self, rhs: Quantity<U>) -> Self::Output {
+        Self {
+            instant: self.instant - rhs.to::<SecondUnit>(),
+            _fmt: PhantomData,
+        }
+    }
+}
+
+impl<S: CoordinateScale, F> Sub for Time<S, F>
+where
+    F: InfallibleFormatForScale<S>,
+    F::Unit: TimeUnit,
+{
+    type Output = Quantity<F::Unit>;
+
+    #[inline]
+    fn sub(self, rhs: Self) -> Self::Output {
+        let delta: Second = self.instant - rhs.instant;
+        delta.to::<F::Unit>()
+    }
+}
+
+impl<S: CoordinateScale, F, U> AddAssign<Quantity<U>> for Time<S, F>
+where
+    F: InfallibleFormatForScale<S>,
+    U: TimeUnit,
+{
+    #[inline]
+    fn add_assign(&mut self, rhs: Quantity<U>) {
+        *self = *self + rhs;
+    }
+}
+
+impl<S: CoordinateScale, F, U> SubAssign<Quantity<U>> for Time<S, F>
+where
+    F: InfallibleFormatForScale<S>,
+    U: TimeUnit,
+{
+    #[inline]
+    fn sub_assign(&mut self, rhs: Quantity<U>) {
+        *self = *self - rhs;
+    }
+}

@@ -7,7 +7,7 @@ use crate::context::TempochContext;
 use crate::error::TempochStatus;
 use crate::time::TempochUtc;
 use crate::{catch_panic, QttyQuantity, UnitId};
-use qtty::{Day, Second};
+use qtty::Second;
 use tempoch::{
     ConversionError, FormatForScale, GpsTime, J2000Seconds, Time, TimeContext, Unix, UnixTime, JD,
     MJD, TAI, TCB, TCG, TDB, TT, UT1, UTC,
@@ -194,7 +194,10 @@ fn decode_unix_to_target(
     target: TempochScaleTag,
     ctx: &TimeContext,
 ) -> Result<TempochTime, ConversionError> {
-    let utc = UnixTime::try_new(Second::new(raw_seconds))?.to_time_with(ctx)?;
+    if raw_seconds.is_nan() {
+        return Err(ConversionError::NonFinite);
+    }
+    let utc = UnixTime::try_new(Second::new(raw_seconds))?.to_j2000s();
     match target {
         TempochScaleTag::TT => Ok(TempochTime::from_time(utc.to::<TT>())),
         TempochScaleTag::TAI => Ok(TempochTime::from_time(utc.to::<TAI>())),
@@ -211,7 +214,10 @@ fn decode_gps_to_target(
     target: TempochScaleTag,
     ctx: &TimeContext,
 ) -> Result<TempochTime, ConversionError> {
-    let tai = GpsTime::try_new(Second::new(raw_seconds))?.to_time();
+    if raw_seconds.is_nan() {
+        return Err(ConversionError::NonFinite);
+    }
+    let tai = GpsTime::new(raw_seconds).to_j2000s();
     match target {
         TempochScaleTag::TT => Ok(TempochTime::from_time(tai.to::<TT>())),
         TempochScaleTag::TAI => Ok(TempochTime::from_time(tai)),
@@ -591,16 +597,31 @@ pub unsafe extern "C" fn tempoch_time_from_format(
         let ctx = unsafe { context_or_default(context) };
         let decoded = match format {
             TempochFormatTag::JD => with_scale!(scale, Scale, {
-                tempoch::JulianDate::<Scale>::try_new(Day::new(raw))
-                    .map(|encoded| TempochTime::from_time(encoded.to_time()))
+                if raw.is_nan() {
+                    Err(ConversionError::NonFinite)
+                } else {
+                    Ok(TempochTime::from_time(
+                        tempoch::JulianDate::<Scale>::new(raw).to_j2000s(),
+                    ))
+                }
             }),
             TempochFormatTag::MJD => with_scale!(scale, Scale, {
-                tempoch::ModifiedJulianDate::<Scale>::try_new(Day::new(raw))
-                    .map(|encoded| TempochTime::from_time(encoded.to_time()))
+                if raw.is_nan() {
+                    Err(ConversionError::NonFinite)
+                } else {
+                    Ok(TempochTime::from_time(
+                        tempoch::ModifiedJulianDate::<Scale>::new(raw).to_j2000s(),
+                    ))
+                }
             }),
             TempochFormatTag::J2000Seconds => with_scale!(scale, Scale, {
-                J2000Seconds::<Scale>::try_new(Second::new(raw))
-                    .map(|encoded| TempochTime::from_time(encoded.to_time()))
+                if raw.is_nan() {
+                    Err(ConversionError::NonFinite)
+                } else {
+                    Ok(TempochTime::from_time(
+                        J2000Seconds::<Scale>::new(raw).to_j2000s(),
+                    ))
+                }
             }),
             TempochFormatTag::Unix => decode_unix_to_target(raw, scale, ctx.as_ref()),
             TempochFormatTag::GPS => decode_gps_to_target(raw, scale, ctx.as_ref()),

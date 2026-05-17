@@ -10,12 +10,10 @@ after_includes = """
 """
 
 [export]
-# Keep tempoch-owned ABI metadata visible even when the generic entry points
-# accept raw integers instead of Rust enums directly.
+# Keep tempoch-owned ABI metadata visible for the split scale/format ABI.
 include = [
   "TempochContext",
   "TempochFormatTag",
-  "TempochScaleId",
   "TempochScaleTag",
   "TempochStatus",
   "TempochTime",
@@ -27,7 +25,6 @@ include = [
 exclude = ["QttyQuantity", "UnitId", "DimensionId", "QttyDerivedQuantity"]
 
 [export.rename]
-"TempochScaleId" = "tempoch_scale_id_t"
 "TempochScaleTag" = "tempoch_scale_tag_t"
 "TempochFormatTag" = "tempoch_format_tag_t"
 "TempochStatus" = "tempoch_status_t"
