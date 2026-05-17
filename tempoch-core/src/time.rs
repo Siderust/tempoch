@@ -173,30 +173,6 @@ impl<S: CoordinateScale> Time<S> {
         self.total_seconds()
     }
 
-    /// Convert this instant to a Julian Date on the same scale.
-    ///
-    /// This is a named shorthand for `self.to::<JD>()`.
-    #[inline]
-    pub fn to_jd(self) -> crate::format::JulianDate<S> {
-        self.to::<crate::format::JD>()
-    }
-
-    /// Convert this instant to a Modified Julian Date on the same scale.
-    ///
-    /// This is a named shorthand for `self.to::<MJD>()`.
-    #[inline]
-    pub fn to_mjd(self) -> crate::format::ModifiedJulianDate<S> {
-        self.to::<crate::format::MJD>()
-    }
-
-    /// Convert this instant to J2000-second encoding on the same scale.
-    ///
-    /// This is a named shorthand for `self.to::<J2000s>()`.
-    #[inline]
-    pub fn to_j2000_seconds(self) -> crate::format::J2000Seconds<S> {
-        self.to::<crate::format::J2000s>()
-    }
-
     /// Shift this instant forward by a typed duration.
     ///
     /// This is a named shorthand for `self + delta`.
@@ -464,9 +440,6 @@ mod tests {
     #[test]
     fn named_format_helpers_match_generic_conversion_targets() {
         let tt = Time::<TT>::from_raw_j2000_seconds(Second::new(12_345.0)).unwrap();
-        assert_eq!(tt.to_jd(), tt.to::<crate::format::JD>());
-        assert_eq!(tt.to_mjd(), tt.to::<crate::format::MJD>());
-        assert_eq!(tt.to_j2000_seconds(), tt.to::<crate::format::J2000s>());
         assert_eq!(tt.shifted_by(Second::new(3.0)), tt + Second::new(3.0));
         assert_eq!(tt.shifted_back_by(Second::new(3.0)), tt - Second::new(3.0));
         assert_eq!(
@@ -478,9 +451,5 @@ mod tests {
             Second::new(1.0)
         );
 
-        let utc = Time::<UTC>::from_raw_j2000_seconds(Second::new(12_345.0)).unwrap();
-        assert_eq!(utc.to_jd(), utc.to::<crate::format::JD>());
-        assert_eq!(utc.to_mjd(), utc.to::<crate::format::MJD>());
-        assert_eq!(utc.to_j2000_seconds(), utc.to::<crate::format::J2000s>());
     }
 }
