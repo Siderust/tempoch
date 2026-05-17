@@ -277,6 +277,13 @@ impl<T: Copy + PartialOrd> Interval<T> {
         }
         merged
     }
+
+    pub fn length(&self) -> T
+    where
+        T: core::ops::Sub<Output = T>,
+    {
+        self.end - self.start
+    }
 }
 
 /// Gaps inside `outer` that are not covered by any interval in `periods`.
