@@ -12,10 +12,10 @@ use crate::encoding::jd_to_julian_centuries;
 use crate::format::{J2000s, TimeFormat};
 use crate::foundation::error::ConversionError;
 use crate::model::scale::conversion::{ContextScaleConvert, InfallibleScaleConvert};
-use crate::model::scale::{CoordinateScale, Scale, UTC};
+use crate::model::scale::{CoordinateScale, Scale, TT, UTC};
 use crate::model::target::{ContextConversionTarget, ConversionTarget, InfallibleConversionTarget};
 use crate::{FormatForScale, InfallibleFormatForScale};
-use affn::algebra::{Space, SplitPoint1};
+use affn::algebra::{Space, SplitPoint1, SplitQuantity};
 use qtty::time::TimeUnit;
 use qtty::unit::Second as SecondUnit;
 use qtty::{Quantity, Second};
@@ -392,6 +392,17 @@ impl<S: CoordinateScale, F: InfallibleFormatForScale<S>> Time<S, F> {
         let t = self.to_j2000s() + ((other.to_j2000s() - self.to_j2000s()) * 0.5);
         t.reinterpret()
     }
+}
+
+/// TT Julian date at J2000.0 (`JD 2 451 545.0`); matches [`Self::jd_epoch_tt`], usable in `const`.
+impl Time<TT, crate::format::JD> {
+    pub const JD_EPOCH_J2000_0: Self = Self {
+        instant: SplitPoint1::from_split(SplitQuantity::from_normalized_parts(
+            Second::new(0.0),
+            Second::new(0.0),
+        )),
+        _fmt: PhantomData,
+    };
 }
 
 impl<S: Scale> Time<S, crate::format::JD> {
