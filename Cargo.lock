@@ -990,6 +990,7 @@ name = "tempoch-time-data"
 version = "0.1.2"
 dependencies = [
  "chrono",
+ "qtty",
  "serde_json",
  "sha2",
  "ureq",

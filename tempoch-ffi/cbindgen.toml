@@ -10,24 +10,36 @@ after_includes = """
 """
 
 [export]
-# Keep tempoch-owned ABI metadata visible even when the generic entry points
-# accept raw integers instead of Rust enums directly.
+# Enumerations and structs used by the split scale/format C++ wrapper, plus
+# named constant accessors from `constats.rs` (cbindgen does not emit `extern "C"`
+# fns unless they are listed here when `include` is set).
 include = [
   "TempochContext",
   "TempochFormatTag",
-  "TempochScaleId",
   "TempochScaleTag",
   "TempochStatus",
   "TempochTime",
   "TempochUtc",
   "TempochPeriodMjd",
   "TempochEopValues",
+  "tempoch_const_j2000_jd_tt",
+  "tempoch_const_julian_year_days",
+  "tempoch_const_utc_defined_from_mjd",
+  "tempoch_const_gps_epoch_jd_utc",
+  "tempoch_const_unix_epoch_jd",
+  "tempoch_const_unix_epoch_mjd",
+  "tempoch_const_gps_epoch_jd_tai",
+  "tempoch_const_gps_epoch_tai_minus_utc_seconds",
+  "tempoch_const_delta_t_prediction_horizon_mjd",
+  "tempoch_const_eop_start_mjd",
+  "tempoch_const_eop_end_mjd",
+  "tempoch_const_eop_observed_end_mjd",
+  "tempoch_const_modern_delta_t_observed_end_mjd",
 ]
 # Exclude qtty-ffi types — they come from qtty_ffi.h (included via after_includes)
 exclude = ["QttyQuantity", "UnitId", "DimensionId", "QttyDerivedQuantity"]
 
 [export.rename]
-"TempochScaleId" = "tempoch_scale_id_t"
 "TempochScaleTag" = "tempoch_scale_tag_t"
 "TempochFormatTag" = "tempoch_format_tag_t"
 "TempochStatus" = "tempoch_status_t"

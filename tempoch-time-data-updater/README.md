@@ -1,11 +1,11 @@
 # tempoch-time-data-updater
 
 `tempoch-time-data-updater` is the maintenance CLI that regenerates the
-checked-in time-data tables used by `tempoch-core`.
+checked-in time-data tables used by `tempoch`.
 
 It fetches authoritative upstream timekeeping data, parses it into the Rust
 crate's internal representation, and rewrites the generated modules under
-[`tempoch-core/src/generated`](/home/valles/workspace/siderust/rust/tempoch/tempoch-core/src/generated).
+[`tempoch-time-data/src/generated`](/home/valles/workspace/siderust/rust/tempoch/tempoch-time-data/src/generated).
 The updater is now a thin wrapper over the shared `tempoch-time-data`
 support crate, so compile-time regeneration and runtime refresh use the same
 fetch/parse/build pipeline. In particular, parsing is centralized in
@@ -23,9 +23,9 @@ The updater downloads four upstream datasets:
 
 From those sources it generates:
 
-- `tempoch-core/src/generated/time_data.rs`
-- `tempoch-core/src/generated/eop_data.rs`
-- `tempoch-core/src/generated/time_data.provenance.json`
+- `tempoch-time-data/src/generated/time_data.rs`
+- `tempoch-time-data/src/generated/eop_data.rs`
+- `tempoch-time-data/src/generated/time_data.provenance.json`
 
 The generated Rust modules are the data that `tempoch` compiles into the
 library. The updater does not add new public concepts on its own; it exists to
@@ -65,7 +65,7 @@ At a high level, the tool does the following:
 4. Applies a C0 continuity offset at the observed/predicted `Delta T`
    boundary so the generated series does not jump at the stitch point.
 5. Hands that validated bundle to the generator.
-6. Renders Rust source files for `tempoch-core`.
+6. Renders Rust source files for `tempoch-time-data`.
 7. Writes a provenance sidecar containing the source hashes.
 
 There are a few implementation details worth knowing:
@@ -88,7 +88,7 @@ From the Rust workspace root:
 cargo run -p tempoch-time-data-updater
 ```
 
-That refreshes the generated files in `tempoch-core/src/generated/`.
+That refreshes the generated files in `tempoch-time-data/src/generated/`.
 
 To verify whether the committed generated files are current without rewriting
 them:
@@ -129,7 +129,7 @@ When the Monday refresh commits new generated files to `main`, a second
 GitHub Actions job (`publish`) automatically:
 
 1. Runs a **WIP guard** — checks for any commits on `main` since the last
-   version tag that touch files outside `tempoch-core/src/generated/`.  If
+   version tag that touch files outside `tempoch-time-data/src/generated/`.  If
    such commits exist, the publish is skipped with a warning so that
    unreviewed feature work is not shipped inadvertently.
 2. **Bumps the patch version** across all four publishable crates

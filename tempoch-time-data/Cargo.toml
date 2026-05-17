@@ -13,6 +13,7 @@ fetch = ["dep:serde_json", "dep:sha2", "dep:ureq"]
 
 [dependencies]
 chrono = "0.4.43"
+qtty = "0.8.1"
 serde_json = { version = "1", optional = true }
 sha2 = { version = "0.10", optional = true }
 ureq = { version = "2.10", optional = true }

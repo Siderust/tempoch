@@ -32,18 +32,16 @@ impl TempochPeriodMjd {
     }
 
     fn try_to_period(&self) -> Result<MjdPeriod, TempochStatus> {
-        let start = ModifiedJulianDate::<TT>::try_new(Day::new(self.start_mjd))
-            .map(|e| e.to_time())
-            .map_err(|_| TempochStatus::InvalidPeriod)?;
-        let end = ModifiedJulianDate::<TT>::try_new(Day::new(self.end_mjd))
-            .map(|e| e.to_time())
-            .map_err(|_| TempochStatus::InvalidPeriod)?;
+        if self.start_mjd.is_nan() || self.end_mjd.is_nan() {
+            return Err(TempochStatus::InvalidPeriod);
+        }
+        let start = ModifiedJulianDate::<TT>::new(self.start_mjd).to_j2000s();
+        let end = ModifiedJulianDate::<TT>::new(self.end_mjd).to_j2000s();
         Interval::try_new(start, end).map_err(|_| TempochStatus::InvalidPeriod)
     }
 }
 
-/// Create a new MJD period. Returns `InvalidPeriod` if the endpoints are
-/// non-finite or `start_mjd > end_mjd`.
+/// Create a new MJD period. Returns `InvalidPeriod` when an endpoint is NaN or `start_mjd > end_mjd`.
 ///
 /// # Safety
 /// `out` must be a valid, writable pointer to `TempochPeriodMjd`.

@@ -3,89 +3,106 @@
 
 //! Typed astronomical time primitives.
 //!
-//! The central type is [`Time<S>`], where `S` is a [`Scale`] marker
-//! (`TT`, `TAI`, `UTC`, `UT1`, `TDB`, `TCG`, `TCB`).
+//! The central type is [`Time<S, F>`] (default `F` = [`J2000s`]), where `S` is a [`Scale`]
+//! marker (`TT`, `TAI`, `UTC`, `UT1`, `TDB`, `TCG`, `TCB`) and `F` is a [`TimeFormat`]
+//! tag (`JD`, `MJD`, [`J2000s`], [`Unix`], [`GPS`]).
 //!
 //! `tempoch` makes a few explicit modeling decisions:
 //!
-//! - [`Time<S>`] is an instant on a scale-specific axis, not a bare scalar.
+//! - [`Time<S, F>`] is an instant on a scale-specific axis; `F` only types external
+//!   views (`raw()`, conversion targets), not a second storage layout.
 //! - Time arithmetic follows affine rules: instant minus instant yields a
 //!   duration; shifting an instant by a duration yields another instant.
-//! - Internal storage is a compensated `(hi, lo)` pair of J2000-based seconds
+//! - Internal storage is always a compensated `(hi, lo)` pair of J2000-based seconds
 //!   so large epoch values can retain small corrections and sub-second detail.
-//! - `JD`, `MJD`, `J2000s`, `Unix`, and `GPS` are conversion targets,
-//!   not independent storage models.
+//! - `JD`, `MJD`, `J2000s`, `Unix`, and `GPS` are conversion targets, not alternate
+//!   stored encodings.
 //! - `UTC` keeps special civil semantics: it is stored as a continuous instant
 //!   and interpreted through the active UTC-TAI table when civil labels are
 //!   needed.
 //!
-//! The old format-generic storage model has been replaced with explicit
-//! constructors and accessors:
+//! - [`Time::new`] builds from a raw scalar when `F` is [`InfallibleFormatForScale`](crate::InfallibleFormatForScale) for `S` (**NaN panics**; ±∞ allowed at rest). POSIX [`Unix`] instants still use [`Time::try_new`] / [`Time::try_new_with`] because decoding depends on leap-second tables.
+//! - [`Time::try_new`] / [`Time::try_new_with`] surface **domain** decode failures only (UTC policy, leap seconds, …); callers must not pass **NaN**.
+//! - `UTC`: civil (`chrono`) and POSIX ([`Unix`]); `TAI`: GPS ([`GPS`])
+//! - Unified targets: [`Time::to`], [`Time::try_to`], [`Time::to_with`]. Prefer
+//!   [`try_to`](Time::try_to) or [`to_with`](Time::to_with) for [`Unix`] so positive
+//!   leap-second instants are rejected when they are not representable as POSIX.
+//! - [`Time::to_j2000s`], [`Time::reinterpret`], and aliases
+//!   such as [`crate::JulianDate`].
+//! - [`JulianDate`], [`ModifiedJulianDate`], [`UnixTime`], and [`GpsTime`] implement [`Into`] into default-tagged
+//!   [`Time<S>`] / [`Time<UTC>`] / [`Time<TAI>`], so APIs such as [`Period::try_new`](crate::Period) accept encoded
+//!   endpoints without spelling [`Time::to_j2000s`]. [`J2000Seconds<S>`] is already [`Time<S>`]; no conversion needed.
 //!
-//! - built-in coordinate scales expose J2000-second, JD, and MJD
-//!   constructors/accessors
-//! - `UTC` exposes both raw instant-axis helpers and civil/transport APIs
-//!   (`chrono`, POSIX)
-//! - `TAI` exposes GPS transport helpers
-//! - unified conversion targets are available through `time.to::<Target>()`,
-//!   `time.try_to::<Target>()`, and `time.to_with::<Target>(&ctx)`
+//! See [`constats`] for epoch [`Time`] helpers, day/second scratch constants, and offsets.
 //!
-//! See [`constats`] for typed epoch and offset constants.
+//! # Module map
+//!
+//! - [`foundation`]: shared sealed traits, typed constants, and error types.
+//! - [`model`]: [`Time`], scale markers, and conversion targets.
+//! - [`format`]: external format markers and format conversion traits.
+//! - `encoding`: crate-local JD/MJD/J2000/Unix arithmetic helpers.
+//! - [`earth`]: ΔT, EOP, and [`TimeContext`] Earth-rotation policy.
+//! - [`data`]: runtime access to bundled and optionally refreshed time-data tables.
+//! - [`period`]: interval and period-list algebra.
+//! - [`features`]: optional serde/tagged/time-instant integration helpers.
+//!
+//! Reference modules:
+//!
+//! - [`earth::delta_t`]: piecewise ΔT (`TT - UT1`) model and modern tabular segment.
+//! - [`earth::eop`]: public EOP sampling API over bundled IERS series.
+//! - [`earth::context`]: immutable time-data snapshot plus conversion policy.
 
-mod civil;
-pub mod constats;
-mod context;
-pub mod coord;
-mod data;
-mod delta_t;
+pub mod data;
+pub mod earth;
 pub(crate) mod encoding;
-pub mod eop;
-pub mod error;
-mod ext;
+pub mod features;
 pub mod format;
-pub(crate) mod generated;
-mod interval;
-pub mod scalar;
-mod scale;
-mod sealed;
-mod target;
-mod time;
+pub mod foundation;
+pub mod model;
+pub mod period;
 
-#[cfg(feature = "serde")]
-#[path = "serde.rs"]
-mod serde_impl;
-#[cfg(feature = "serde")]
-pub mod tagged;
+// Compiled tables live in `tempoch-time-data`; these are crate-local shims for tests and helpers.
+#[allow(unused_imports)]
+pub(crate) use tempoch_time_data::generated::{eop_data, time_data};
+#[allow(unused_imports)]
+pub(crate) use tempoch_time_data::generated::{MODERN_DELTA_T_END_MJD, MODERN_DELTA_T_START_MJD};
 
-pub use constats::{
-    GPS_EPOCH_JD_TAI, GPS_EPOCH_JD_UTC, GPS_EPOCH_TAI_MINUS_UTC, JULIAN_YEAR_DAYS,
-    UTC_DEFINED_FROM_MJD,
-};
-pub use context::TimeContext;
-pub use coord::{Coord, Offset};
+pub use earth::eop;
+pub use foundation::{constats, error};
+
 #[cfg(feature = "runtime-data-fetch")]
-pub use data::active::{
+pub use data::runtime_data::{
     fetch_latest_time_data, refresh_runtime_time_data, update_runtime_time_data,
 };
-pub use delta_t::{delta_t_seconds, delta_t_seconds_extrapolated, DELTA_T_PREDICTION_HORIZON_MJD};
-pub use error::{ConversionError, TimeDataError};
-pub use ext::TimeInstant;
-pub use format::{
-    EncodedTime, FormatForScale, GpsTime, InfallibleFormatForScale, J2000Seconds, J2000s,
-    JulianDate, ModifiedJulianDate, TimeFormat, Unix, UnixTime, GPS, JD, MJD,
+pub use earth::context::TimeContext;
+pub use earth::delta_t::{
+    delta_t_seconds, delta_t_seconds_extrapolated, DELTA_T_PREDICTION_HORIZON_MJD,
 };
-pub use generated::{
+pub use features::TimeInstant;
+pub use format::{
+    FormatForScale, GpsTime, InfallibleFormatForScale, J2000Seconds, J2000s, JulianDate,
+    ModifiedJulianDate, TimeFormat, Unix, UnixTime, GPS, JD, MJD,
+};
+pub use foundation::constats::{
+    gps_epoch_jd_tai, gps_epoch_jd_utc, gps_epoch_tai, iau_time_epoch_t0_jd, j2000_jd_tt,
+    tdb_tt_model_high_accuracy_end_jd, tdb_tt_model_high_accuracy_start_jd, unix_epoch_jd,
+    unix_epoch_mjd, utc_defined_from_mjd, GPS_EPOCH_JD_TAI_DAY, GPS_EPOCH_JD_UTC_DAY,
+    GPS_EPOCH_TAI_MINUS_UTC, GPS_EPOCH_TAI_SECONDS, IAU_TIME_EPOCH_T0_JD_DAY, J2000_JD_TT_DAY,
+    JULIAN_YEAR_DAYS, TDB_TT_MODEL_HIGH_ACCURACY_END_JD_DAY,
+    TDB_TT_MODEL_HIGH_ACCURACY_START_JD_DAY, TT_MINUS_TAI, UNIX_EPOCH_JD_DAY, UNIX_EPOCH_MJD_DAY,
+    UTC_DEFINED_FROM_MJD_DAY,
+};
+pub use foundation::error::{ConversionError, TimeDataError};
+pub use model::scale::{ContinuousScale, CoordinateScale, Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
+pub use model::target::{ContextConversionTarget, ConversionTarget, InfallibleConversionTarget};
+pub use model::time::Time;
+pub use period::{complement_within, Interval, InvalidIntervalError, Period, PeriodListError};
+pub use tempoch_time_data::generated::{
     EOP_END_MJD, EOP_OBSERVED_END_MJD, EOP_START_MJD, MODERN_DELTA_T_OBSERVED_END_MJD,
 };
-pub use interval::{
-    complement_within, Interval, InvalidIntervalError, InvalidPeriodError, Period, PeriodListError,
-};
-pub use scalar::{
-    scalar_add_days, scalar_difference_in_days, time_tt_from_scalar, time_tt_to_scalar, ScaleKind,
-};
-pub use scale::{ContinuousScale, CoordinateScale, Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
-pub use target::{ContextConversionTarget, ConversionTarget, InfallibleConversionTarget};
-pub use time::Time;
+
+#[cfg(feature = "serde")]
+pub use features::tagged;
 
 #[cfg(test)]
 mod size_tests {
