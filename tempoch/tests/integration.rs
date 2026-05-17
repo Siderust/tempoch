@@ -84,8 +84,8 @@ fn encoded_date_helpers_and_assign_arithmetic_are_available() {
     jd += Day::new(2.0);
     jd -= Day::new(0.5);
 
-    assert_eq!(jd.jd_value(), 2_451_546.5);
-    assert_eq!(jd.to_mjd().mjd_value(), jd.jd_value() - 2_400_000.5);
+    assert_eq!(jd.value(), 2_451_546.5);
+    assert_eq!(jd.to::<MJD>().value(), jd.value() - 2_400_000.5);
     assert!(
         (JulianDate::<TT>::try_new(Day::new(2_451_545.0))
             .unwrap()
@@ -97,7 +97,7 @@ fn encoded_date_helpers_and_assign_arithmetic_are_available() {
     let mut mjd = ModifiedJulianDate::<TT>::try_new(Day::new(51_544.5)).unwrap();
     mjd += Day::new(1.0);
     mjd -= Day::new(0.25);
-    assert_eq!(mjd.to_jd().jd_value(), 2_451_545.75);
+    assert_eq!(mjd.to::<JD>().value(), 2_451_545.75);
 }
 
 #[test]
@@ -107,7 +107,7 @@ fn encoded_date_min_max_and_mean_are_available() {
 
     assert_eq!(a.min(b), a);
     assert_eq!(a.max(b), b);
-    assert_eq!(a.mean(b).jd_value(), 2_451_546.0);
+    assert_eq!(a.mean(b).value(), 2_451_546.0);
 }
 
 #[test]

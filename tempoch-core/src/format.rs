@@ -280,7 +280,7 @@ impl<S: Scale> EncodedTime<S, JD> {
 
     /// Raw Julian Date value.
     #[inline]
-    pub fn jd_value(self) -> f64 {
+    pub fn value(self) -> f64 {
         self.raw().value()
     }
 
@@ -289,31 +289,13 @@ impl<S: Scale> EncodedTime<S, JD> {
     pub fn julian_centuries(self) -> f64 {
         jd_to_julian_centuries(self.raw())
     }
-
-    /// Convert this Julian Date to the same-scale Modified Julian Date.
-    #[inline]
-    pub fn to_mjd(self) -> EncodedTime<S, MJD>
-    where
-        S: CoordinateScale,
-    {
-        self.to::<MJD>()
-    }
 }
 
 impl<S: Scale> EncodedTime<S, MJD> {
     /// Raw Modified Julian Date value.
     #[inline]
-    pub fn mjd_value(self) -> f64 {
+    pub fn value(self) -> f64 {
         self.raw().value()
-    }
-
-    /// Convert this Modified Julian Date to the same-scale Julian Date.
-    #[inline]
-    pub fn to_jd(self) -> EncodedTime<S, JD>
-    where
-        S: CoordinateScale,
-    {
-        self.to::<JD>()
     }
 }
 
