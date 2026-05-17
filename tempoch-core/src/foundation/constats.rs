@@ -195,4 +195,24 @@ mod tests {
         assert!(gps_epoch_tai().raw().is_finite());
         assert!(DELTA_T_PREDICTION_HORIZON_MJD.value().is_finite());
     }
+
+    #[test]
+    fn helper_constructors_match_exported_scalar_constants() {
+        assert_eq!(j2000_jd_tt().raw(), J2000_JD_TT_DAY);
+        assert_eq!(unix_epoch_jd().raw(), UNIX_EPOCH_JD_DAY);
+        assert_eq!(unix_epoch_mjd().raw(), UNIX_EPOCH_MJD_DAY);
+        assert_eq!(gps_epoch_jd_utc().raw(), GPS_EPOCH_JD_UTC_DAY);
+        assert_eq!(gps_epoch_jd_tai().raw(), GPS_EPOCH_JD_TAI_DAY);
+        assert_eq!(iau_time_epoch_t0_jd().raw(), IAU_TIME_EPOCH_T0_JD_DAY);
+        assert_eq!(
+            tdb_tt_model_high_accuracy_start_jd().raw(),
+            TDB_TT_MODEL_HIGH_ACCURACY_START_JD_DAY
+        );
+        assert_eq!(
+            tdb_tt_model_high_accuracy_end_jd().raw(),
+            TDB_TT_MODEL_HIGH_ACCURACY_END_JD_DAY
+        );
+        assert_eq!(gps_epoch_tai().raw(), GPS_EPOCH_TAI_SECONDS);
+        assert_eq!(utc_defined_from_mjd().raw(), UTC_DEFINED_FROM_MJD_DAY);
+    }
 }

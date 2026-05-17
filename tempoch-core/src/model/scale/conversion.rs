@@ -464,4 +464,145 @@ mod tests {
             mjd_to_date_string(eop_end),
         );
     }
+
+    #[test]
+    fn infallible_scale_conversions_cover_all_supported_pairs() {
+        let tt = crate::Time::<TT>::new(12_345.678_9);
+        let tai = tt.to_scale::<TAI>();
+        let tdb = tt.to_scale::<TDB>();
+        let tcg = tt.to_scale::<TCG>();
+        let tcb = tt.to_scale::<TCB>();
+        let utc = tt.to_scale::<UTC>();
+
+        assert!((tai.to_scale::<TT>().raw().value() - tt.raw().value()).abs() < 1e-9);
+        assert!((tdb.to_scale::<TT>().raw().value() - tt.raw().value()).abs() < 1e-6);
+        assert!((tcg.to_scale::<TT>().raw().value() - tt.raw().value()).abs() < 1e-6);
+        assert!((tcb.to_scale::<TT>().raw().value() - tt.raw().value()).abs() < 1e-6);
+        assert!((utc.to_scale::<TT>().raw().value() - tt.raw().value()).abs() < 1e-9);
+
+        let tai_tdb = tai.to_scale::<TDB>();
+        let tai_tcg = tai.to_scale::<TCG>();
+        let tai_tcb = tai.to_scale::<TCB>();
+        let tdb_tai = tdb.to_scale::<TAI>();
+        let tdb_tcg = tdb.to_scale::<TCG>();
+        let tcg_tai = tcg.to_scale::<TAI>();
+        let tcg_tdb = tcg.to_scale::<TDB>();
+        let tcg_tcb = tcg.to_scale::<TCB>();
+        let tcb_tai = tcb.to_scale::<TAI>();
+        let tcb_tcg = tcb.to_scale::<TCG>();
+
+        assert!((tai_tdb.to_scale::<TT>().raw().value() - tt.raw().value()).abs() < 1e-6);
+        assert!((tai_tcg.to_scale::<TT>().raw().value() - tt.raw().value()).abs() < 1e-6);
+        assert!((tai_tcb.to_scale::<TT>().raw().value() - tt.raw().value()).abs() < 1e-6);
+        assert!((tdb_tai.to_scale::<TT>().raw().value() - tt.raw().value()).abs() < 1e-6);
+        assert!((tdb_tcg.to_scale::<TT>().raw().value() - tt.raw().value()).abs() < 1e-6);
+        assert!((tcg_tai.to_scale::<TT>().raw().value() - tt.raw().value()).abs() < 1e-6);
+        assert!((tcg_tdb.to_scale::<TT>().raw().value() - tt.raw().value()).abs() < 1e-6);
+        assert!((tcg_tcb.to_scale::<TT>().raw().value() - tt.raw().value()).abs() < 1e-6);
+        assert!((tcb_tai.to_scale::<TT>().raw().value() - tt.raw().value()).abs() < 1e-6);
+        assert!((tcb_tcg.to_scale::<TT>().raw().value() - tt.raw().value()).abs() < 1e-6);
+        assert_eq!(
+            utc.to_scale::<TAI>(),
+            utc.to_scale::<TAI>().to_scale::<UTC>().to_scale::<TAI>()
+        );
+    }
+
+    #[test]
+    fn context_scale_conversions_cover_ut1_routes_and_errors() {
+        let ctx = TimeContext::with_builtin_eop();
+        let tt = crate::Time::<TT>::new(0.0);
+        let ut1 = tt.to_scale_with::<UT1>(&ctx).unwrap();
+
+        assert!(
+            (ut1.to_scale_with::<TT>(&ctx).unwrap().raw().value() - tt.raw().value()).abs() < 1e-9
+        );
+        assert!(
+            (ut1.to_scale_with::<TAI>(&ctx)
+                .unwrap()
+                .to_scale::<TT>()
+                .raw()
+                .value()
+                - tt.raw().value())
+            .abs()
+                < 1e-9
+        );
+        assert!(
+            (ut1.to_scale_with::<TDB>(&ctx)
+                .unwrap()
+                .to_scale::<TT>()
+                .raw()
+                .value()
+                - tt.raw().value())
+            .abs()
+                < 1e-6
+        );
+        assert!(
+            (ut1.to_scale_with::<TCG>(&ctx)
+                .unwrap()
+                .to_scale::<TT>()
+                .raw()
+                .value()
+                - tt.raw().value())
+            .abs()
+                < 1e-6
+        );
+        assert!(
+            (ut1.to_scale_with::<TCB>(&ctx)
+                .unwrap()
+                .to_scale::<TT>()
+                .raw()
+                .value()
+                - tt.raw().value())
+            .abs()
+                < 1e-6
+        );
+        assert!(
+            (ut1.to_scale_with::<UTC>(&ctx)
+                .unwrap()
+                .to_scale::<TT>()
+                .raw()
+                .value()
+                - tt.raw().value())
+            .abs()
+                < 1e-9
+        );
+
+        let utc = crate::Time::<UTC>::new(0.0);
+        assert_eq!(
+            <UTC as ContextScaleConvert<UTC>>::convert_with(
+                Second::new(1.0),
+                Second::new(-0.25),
+                &ctx
+            )
+            .unwrap(),
+            (Second::new(1.0), Second::new(-0.25))
+        );
+        assert!(matches!(
+            <UT1 as ContextScaleConvert<TT>>::convert_with(
+                Second::new(f64::INFINITY),
+                Second::new(0.0),
+                &ctx
+            ),
+            Err(ConversionError::NonFinite)
+        ));
+        assert!(matches!(
+            <TT as ContextScaleConvert<UT1>>::convert_with(
+                Second::new(f64::INFINITY),
+                Second::new(0.0),
+                &ctx
+            ),
+            Err(ConversionError::NonFinite)
+        ));
+        assert!(
+            (utc.to_scale_with::<UT1>(&ctx)
+                .unwrap()
+                .to_scale_with::<UTC>(&ctx)
+                .unwrap()
+                .raw()
+                .value()
+                - utc.raw().value())
+            .abs()
+                < 1e-9
+        );
+    }
 }

@@ -526,4 +526,79 @@ mod tests {
             "observed end must be before prediction horizon"
         );
     }
+
+    #[test]
+    fn interpolation_helpers_cover_bounds_and_empty_inputs() {
+        assert!(interpolate_modern_delta_t_points(&[], Day::new(0.0)).is_none());
+        assert!(interpolate_modern_delta_t(MODERN_DELTA_T_START_MJD - Day::new(1.0)).is_none());
+        assert!(interpolate_modern_delta_t(MODERN_DELTA_T_END_MJD + Day::new(1.0)).is_none());
+
+        let first = MODERN_DELTA_T_POINTS[0];
+        let second = MODERN_DELTA_T_POINTS[1];
+        let midpoint = Day::new((first.0 + second.0) * 0.5);
+        let interpolated = interpolate_modern_delta_t(midpoint).unwrap();
+        let expected = 0.5 * (first.1 + second.1);
+        assert!((interpolated.value() - expected).abs() < 1e-12);
+
+        let sample = [(10.0, 1.0), (12.0, 5.0), (14.0, 9.0)];
+        assert_eq!(
+            interpolate_modern_delta_t_points(&sample, Day::new(10.0)).unwrap(),
+            Second::new(1.0)
+        );
+        assert_eq!(
+            interpolate_modern_delta_t_points(&sample, Day::new(11.0)).unwrap(),
+            Second::new(3.0)
+        );
+        assert!(interpolate_modern_delta_t_points(&sample, Day::new(9.0)).is_none());
+        assert!(interpolate_modern_delta_t_points(&sample, Day::new(15.0)).is_none());
+    }
+
+    #[test]
+    fn dispatch_helpers_cover_all_regimes() {
+        let ancient =
+            delta_t_seconds_from_modern_points(jd(2_000_000.0), &MODERN_DELTA_T_POINTS).unwrap();
+        let medieval =
+            delta_t_seconds_from_modern_points(jd(2_200_000.0), &MODERN_DELTA_T_POINTS).unwrap();
+        let table =
+            delta_t_seconds_from_modern_points(jd(2_415_020.5), &MODERN_DELTA_T_POINTS).unwrap();
+        let modern =
+            delta_t_seconds_from_modern_points(jd(2_451_545.0), &MODERN_DELTA_T_POINTS).unwrap();
+
+        assert!(ancient.value().is_finite());
+        assert!(medieval.value().is_finite());
+        assert!(table.value().is_finite());
+        assert!(modern.value().is_finite());
+        assert!(matches!(
+            delta_t_seconds_from_modern_points(jd(2_600_000.0), &MODERN_DELTA_T_POINTS),
+            Err(ConversionError::Ut1HorizonExceeded)
+        ));
+        assert!(matches!(
+            delta_t_seconds_from_modern_points(jd(2_451_545.0), &[]),
+            Err(ConversionError::Ut1HorizonExceeded)
+        ));
+    }
+
+    #[test]
+    fn tail_fit_and_extrapolated_paths_are_finite_and_consistent() {
+        let (a, b, c, origin) = compute_tail_fit_coefficients();
+        assert!(a.value().is_finite());
+        assert!(b.is_finite());
+        assert!(c.is_finite());
+
+        let at_origin = quadratic_tail_fit_delta_t_seconds(origin);
+        let via_extrapolated = delta_t_extrapolated(origin + Day::new(10.0));
+        let via_public = delta_t_seconds_extrapolated(jd(origin.value()
+            + crate::foundation::constats::JD_MINUS_MJD.value()
+            + 10.0));
+
+        assert!((at_origin - a).abs() < Second::new(1e-9));
+        assert!(via_extrapolated.value().is_finite());
+        assert!(via_public.value().is_finite());
+    }
+
+    #[test]
+    fn table_clamps_cleanly_past_last_knot() {
+        let late = delta_t_table(JD_TABLE_START_1620 + BIENNIAL_STEP_D * (TERMS as f64 + 50.0));
+        assert!(late.value().is_finite());
+    }
 }

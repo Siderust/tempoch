@@ -9,8 +9,8 @@
 
 use tempoch::{
     DELTA_T_PREDICTION_HORIZON_MJD, GPS_EPOCH_JD_TAI_DAY, GPS_EPOCH_JD_UTC_DAY,
-    GPS_EPOCH_TAI_MINUS_UTC, JULIAN_YEAR_DAYS, MODERN_DELTA_T_OBSERVED_END_MJD,
-    UTC_DEFINED_FROM_MJD_DAY,
+    GPS_EPOCH_TAI_MINUS_UTC, JULIAN_YEAR_DAYS, MODERN_DELTA_T_OBSERVED_END_MJD, UNIX_EPOCH_JD_DAY,
+    UNIX_EPOCH_MJD_DAY, UTC_DEFINED_FROM_MJD_DAY,
 };
 
 /// J2000.0 epoch as JD(TT) — 2 451 545.0.
@@ -35,6 +35,18 @@ pub extern "C" fn tempoch_const_utc_defined_from_mjd() -> f64 {
 #[no_mangle]
 pub extern "C" fn tempoch_const_gps_epoch_jd_utc() -> f64 {
     GPS_EPOCH_JD_UTC_DAY.value()
+}
+
+/// Unix epoch Julian Date on the UTC axis (`1970-01-01T00:00:00 UTC`).
+#[no_mangle]
+pub extern "C" fn tempoch_const_unix_epoch_jd() -> f64 {
+    UNIX_EPOCH_JD_DAY.value()
+}
+
+/// Unix epoch Modified Julian Day on the UTC axis.
+#[no_mangle]
+pub extern "C" fn tempoch_const_unix_epoch_mjd() -> f64 {
+    UNIX_EPOCH_MJD_DAY.value()
 }
 
 /// GPS epoch expressed as a Julian Day on the TAI axis.
@@ -97,6 +109,16 @@ mod tests {
     #[test]
     fn utc_defined_from_mjd_is_canonical() {
         assert_eq!(tempoch_const_utc_defined_from_mjd(), 37_300.0);
+    }
+
+    #[test]
+    fn unix_epoch_jd_is_canonical() {
+        assert_eq!(tempoch_const_unix_epoch_jd(), 2_440_587.5);
+    }
+
+    #[test]
+    fn unix_epoch_mjd_is_canonical() {
+        assert_eq!(tempoch_const_unix_epoch_mjd(), 40_587.0);
     }
 
     #[test]

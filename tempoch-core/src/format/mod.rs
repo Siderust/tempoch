@@ -316,4 +316,75 @@ mod tests {
         assert_eq!(Unix::NAME, "Unix");
         assert_eq!(GPS::NAME, "GPS");
     }
+
+    #[test]
+    fn chrono_helpers_with_explicit_context_cover_tt_encoded_formats() {
+        let ctx = TimeContext::new().allow_pre_definition_utc();
+        let dt =
+            ::chrono::DateTime::<::chrono::Utc>::from_timestamp(946_728_123, 250_000_000).unwrap();
+
+        let jd = JulianDate::<TT>::try_from_chrono_with(dt, &ctx).unwrap();
+        let mjd = ModifiedJulianDate::<TT>::from_chrono_with(dt, &ctx);
+        let j2k = J2000Seconds::<TT>::from(dt);
+
+        let jd_back = jd.try_to_chrono_with(&ctx).unwrap();
+        let mjd_back = mjd.to_chrono_with(&ctx).unwrap();
+        let j2k_back = j2k.to_chrono().unwrap();
+
+        assert!(
+            (jd_back.timestamp_nanos_opt().unwrap() - dt.timestamp_nanos_opt().unwrap()).abs()
+                < 50_000
+        );
+        assert!(
+            (mjd_back.timestamp_nanos_opt().unwrap() - dt.timestamp_nanos_opt().unwrap()).abs()
+                < 50_000
+        );
+        assert!(
+            (j2k_back.timestamp_nanos_opt().unwrap() - dt.timestamp_nanos_opt().unwrap()).abs()
+                < 50_000
+        );
+    }
+
+    #[test]
+    fn format_trait_impls_cover_j2000_jd_mjd_and_gps() {
+        let ctx = TimeContext::new();
+        let tt = J2000Seconds::<TT>::new(123.5);
+        let tai = crate::Time::<TAI>::new(456.75);
+
+        let j2000 = <J2000s as crate::format::FormatForScale<TT>>::try_from_time(tt, &ctx).unwrap();
+        assert_eq!(j2000, tt.raw());
+        assert_eq!(
+            <J2000s as crate::format::FormatForScale<TT>>::try_into_time(j2000, &ctx).unwrap(),
+            tt
+        );
+
+        let jd = <JD as crate::format::FormatForScale<TT>>::try_from_time(tt, &ctx).unwrap();
+        let mjd = <MJD as crate::format::FormatForScale<TT>>::try_from_time(tt, &ctx).unwrap();
+        assert!(
+            (<JD as crate::format::FormatForScale<TT>>::try_into_time(jd, &ctx)
+                .unwrap()
+                .to_j2000s()
+                .raw()
+                .value()
+                - tt.raw().value())
+            .abs()
+                < 1e-4
+        );
+        assert!(
+            (<MJD as crate::format::FormatForScale<TT>>::try_into_time(mjd, &ctx)
+                .unwrap()
+                .to_j2000s()
+                .raw()
+                .value()
+                - tt.raw().value())
+            .abs()
+                < 1e-4
+        );
+
+        let gps = <GPS as crate::format::FormatForScale<TAI>>::try_from_time(tai, &ctx).unwrap();
+        assert_eq!(
+            <GPS as crate::format::FormatForScale<TAI>>::try_into_time(gps, &ctx).unwrap(),
+            tai.to::<GPS>()
+        );
+    }
 }

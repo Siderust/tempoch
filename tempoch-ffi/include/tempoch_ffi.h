@@ -200,6 +200,12 @@ extern "C" {
 // GPS epoch as a Julian Day on the UTC axis (1980-01-06T00:00:00 UTC).
  double tempoch_const_gps_epoch_jd_utc(void);
 
+// Unix epoch Julian Date on the UTC axis (`1970-01-01T00:00:00 UTC`).
+ double tempoch_const_unix_epoch_jd(void);
+
+// Unix epoch Modified Julian Day on the UTC axis.
+ double tempoch_const_unix_epoch_mjd(void);
+
 // GPS epoch expressed as a Julian Day on the TAI axis.
  double tempoch_const_gps_epoch_jd_tai(void);
 
