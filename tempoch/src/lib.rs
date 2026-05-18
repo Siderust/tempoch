@@ -9,23 +9,28 @@
 //! - [`Scale`] markers such as [`TT`], [`TAI`], [`UTC`], and [`UT1`]
 //! - unified conversion targets via `time.to::<Target>()`, `try_to`, and
 //!   `to_with`
-//! - [`constats`] for typed epoch and offset constants
+//! - [`constats`] for epoch [`Time`] helpers plus [`qtty::Day`] / [`qtty::Second`]
+//!   scratch constants
 
-pub use tempoch_core::scalar;
-pub use tempoch_core::scalar::{
-    scalar_add_days, scalar_difference_in_days, time_tt_from_scalar, time_tt_to_scalar,
-};
 pub use tempoch_core::{
     complement_within, constats, delta_t_seconds, delta_t_seconds_extrapolated, eop,
-    ContextConversionTarget, ContinuousScale, ConversionError, ConversionTarget, Coord,
-    CoordinateScale, EncodedTime, FormatForScale, GpsTime, InfallibleConversionTarget,
-    InfallibleFormatForScale, Interval, InvalidIntervalError, InvalidPeriodError, J2000Seconds,
-    J2000s, JulianDate, ModifiedJulianDate, Offset, Period, PeriodListError, Scale, ScaleKind,
-    Time, TimeContext, TimeDataError, TimeFormat, TimeInstant, Unix, UnixTime,
+    gps_epoch_jd_tai, gps_epoch_jd_utc, gps_epoch_tai, iau_time_epoch_t0_jd, j2000_jd_tt,
+    tdb_tt_model_high_accuracy_end_jd, tdb_tt_model_high_accuracy_start_jd, unix_epoch_jd,
+    unix_epoch_mjd, utc_defined_from_mjd, ContextConversionTarget, ContinuousScale,
+    ConversionError, ConversionTarget, CoordinateScale, FormatForScale, GpsTime,
+    InfallibleConversionTarget, InfallibleFormatForScale, Interval, InvalidIntervalError,
+    J2000Seconds, J2000s, JulianDate, ModifiedJulianDate, Period, PeriodListError, Scale, Time,
+    TimeContext, TimeDataError, TimeFormat, TimeInstant, Unix, UnixTime,
     DELTA_T_PREDICTION_HORIZON_MJD, EOP_END_MJD, EOP_OBSERVED_END_MJD, EOP_START_MJD, GPS,
-    GPS_EPOCH_JD_TAI, GPS_EPOCH_JD_UTC, GPS_EPOCH_TAI_MINUS_UTC, JD, JULIAN_YEAR_DAYS, MJD,
-    MODERN_DELTA_T_OBSERVED_END_MJD, TAI, TCB, TCG, TDB, TT, UT1, UTC, UTC_DEFINED_FROM_MJD,
+    GPS_EPOCH_JD_TAI_DAY, GPS_EPOCH_JD_UTC_DAY, GPS_EPOCH_TAI_MINUS_UTC, GPS_EPOCH_TAI_SECONDS,
+    IAU_TIME_EPOCH_T0_JD_DAY, J2000_JD_TT_DAY, JD, JULIAN_YEAR_DAYS, MJD,
+    MODERN_DELTA_T_OBSERVED_END_MJD, TAI, TCB, TCG, TDB, TDB_TT_MODEL_HIGH_ACCURACY_END_JD_DAY,
+    TDB_TT_MODEL_HIGH_ACCURACY_START_JD_DAY, TT, TT_MINUS_TAI, UNIX_EPOCH_JD_DAY,
+    UNIX_EPOCH_MJD_DAY, UT1, UTC, UTC_DEFINED_FROM_MJD_DAY,
 };
+
+/// Historical name for [`Time<S, F>`] after the format-parameter merge.
+pub type EncodedTime<S, F> = Time<S, F>;
 #[cfg(feature = "runtime-data-fetch")]
 pub use tempoch_core::{
     fetch_latest_time_data, refresh_runtime_time_data, update_runtime_time_data,

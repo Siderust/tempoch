@@ -1,14 +1,11 @@
 use qtty::Second;
 use tempoch::{
-    constats::J2000_JD_TT, J2000s, JulianDate, Time, TimeContext, JD, TAI, TCB, TCG, TDB, TT, UT1,
-    UTC,
+    J2000s, JulianDate, Time, TimeContext, J2000_JD_TT_DAY, JD, TAI, TCB, TCG, TDB, TT, UT1, UTC,
 };
 
 fn main() {
     let ctx = TimeContext::new();
-    let tt = JulianDate::<TT>::try_new(J2000_JD_TT.raw())
-        .unwrap()
-        .to_time();
+    let tt = JulianDate::<TT>::new(J2000_JD_TT_DAY.value()).to_j2000s();
 
     let tai: Time<TAI> = tt.to::<TAI>();
     let utc: Time<UTC> = tt.to::<UTC>();

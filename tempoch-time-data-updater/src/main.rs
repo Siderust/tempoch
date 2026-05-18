@@ -24,7 +24,7 @@ fn workspace_root() -> PathBuf {
 
 fn generated_dir() -> PathBuf {
     workspace_root()
-        .join("tempoch-core")
+        .join("tempoch-time-data")
         .join("src")
         .join("generated")
 }
@@ -258,7 +258,7 @@ fn print_usage() {
     eprintln!(
         "Usage: tempoch-time-data-updater [--check]\n\
          \n\
-         Regenerate tempoch-core/src/generated/{{time_data,eop_data}}.rs and the\n\
+         Regenerate tempoch-time-data/src/generated/{{time_data,eop_data}}.rs and the\n\
          provenance sidecar from upstream sources.\n\
          With --check, exit non-zero if any committed generated file is out of date."
     );
@@ -490,13 +490,13 @@ mod tests {
         let paths = default_output_paths();
         assert!(paths
             .time_data
-            .ends_with("tempoch-core/src/generated/time_data.rs"));
+            .ends_with("tempoch-time-data/src/generated/time_data.rs"));
         assert!(paths
             .eop_data
-            .ends_with("tempoch-core/src/generated/eop_data.rs"));
+            .ends_with("tempoch-time-data/src/generated/eop_data.rs"));
         assert!(paths
             .provenance_sidecar
-            .ends_with("tempoch-core/src/generated/time_data.provenance.json"));
+            .ends_with("tempoch-time-data/src/generated/time_data.provenance.json"));
     }
 
     #[test]

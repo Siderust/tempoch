@@ -82,43 +82,6 @@ enum tempoch_format_tag_t
 typedef int32_t tempoch_format_tag_t;
 #endif // __cplusplus
 
-// Time scale identifier for generic dispatch functions.
-//
-// In the C ABI, callers pass raw `int32_t` values and must validate them
-// before dispatch.
-//
-enum tempoch_scale_id_t
-#ifdef __cplusplus
-  : int32_t
-#endif // __cplusplus
- {
-  // Julian Date (TT), expressed in days.
-  TEMPOCH_SCALE_ID_T_JD = 0,
-  // Modified Julian Date (TT), expressed in days.
-  TEMPOCH_SCALE_ID_T_MJD = 1,
-  // Barycentric Dynamical Time, expressed as Julian days on the TDB axis.
-  TEMPOCH_SCALE_ID_T_TDB = 2,
-  // Terrestrial Time, expressed as Julian days on the TT axis.
-  TEMPOCH_SCALE_ID_T_TT = 3,
-  // International Atomic Time, expressed as Julian days on the TAI axis.
-  TEMPOCH_SCALE_ID_T_TAI = 4,
-  // Geocentric Coordinate Time, expressed as Julian days on the TCG axis.
-  TEMPOCH_SCALE_ID_T_TCG = 5,
-  // Barycentric Coordinate Time, expressed as Julian days on the TCB axis.
-  TEMPOCH_SCALE_ID_T_TCB = 6,
-  // GPS time, expressed in days since the GPS epoch.
-  TEMPOCH_SCALE_ID_T_GPS = 7,
-  // Universal Time UT1, expressed as Julian days on the UT1 axis.
-  TEMPOCH_SCALE_ID_T_UT = 8,
-  // Julian Ephemeris Date, numerically equal to JD(TT) in this ABI.
-  TEMPOCH_SCALE_ID_T_JDE = 9,
-  // Unix / POSIX time in seconds since 1970-01-01T00:00:00 UTC.
-  TEMPOCH_SCALE_ID_T_UNIX_TIME = 10,
-};
-#ifndef __cplusplus
-typedef int32_t tempoch_scale_id_t;
-#endif // __cplusplus
-
 // Scale tags used by the split-instant C ABI.
 //
 enum tempoch_scale_tag_t
@@ -190,6 +153,14 @@ typedef struct tempoch_period_mjd_t {
   double end_mjd;
 } tempoch_period_mjd_t;
 
+// Split J2000-second instant on a scale-specific axis.
+typedef struct tempoch_time_t {
+  // High part of the compensated J2000-second pair.
+  double hi_seconds;
+  // Low residual part of the compensated J2000-second pair.
+  double lo_seconds;
+} tempoch_time_t;
+
 // UTC date-time breakdown for C interop.
 typedef struct tempoch_utc_t {
   // Calendar year (e.g. 2026).
@@ -208,21 +179,13 @@ typedef struct tempoch_utc_t {
   uint32_t nanosecond;
 } tempoch_utc_t;
 
-// Split J2000-second instant on a scale-specific axis.
-typedef struct tempoch_time_t {
-  // High part of the compensated J2000-second pair.
-  double hi_seconds;
-  // Low residual part of the compensated J2000-second pair.
-  double lo_seconds;
-} tempoch_time_t;
-
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
 
 // Returns the tempoch-ffi ABI version (major*10000 + minor*100 + patch).
 //
-// Current ABI line: 0.4.x -> 400
+// Current ABI line: 0.6.x -> 600
  uint32_t tempoch_ffi_version(void);
 
 // J2000.0 epoch as JD(TT) — 2 451 545.0.
@@ -236,6 +199,12 @@ extern "C" {
 
 // GPS epoch as a Julian Day on the UTC axis (1980-01-06T00:00:00 UTC).
  double tempoch_const_gps_epoch_jd_utc(void);
+
+// Unix epoch Julian Date on the UTC axis (`1970-01-01T00:00:00 UTC`).
+ double tempoch_const_unix_epoch_jd(void);
+
+// Unix epoch Modified Julian Day on the UTC axis.
+ double tempoch_const_unix_epoch_mjd(void);
 
 // GPS epoch expressed as a Julian Day on the TAI axis.
  double tempoch_const_gps_epoch_jd_tai(void);
@@ -299,8 +268,7 @@ tempoch_status_t tempoch_context_allow_pre_definition_utc(const struct tempoch_c
 // `out` must be a valid, writable pointer to `TempochEopValues`.
  tempoch_status_t tempoch_eop_at(double mjd_utc, struct tempoch_eop_values_t *out);
 
-// Create a new MJD period. Returns `InvalidPeriod` if the endpoints are
-// non-finite or `start_mjd > end_mjd`.
+// Create a new MJD period. Returns `InvalidPeriod` when an endpoint is NaN or `start_mjd > end_mjd`.
 //
 // # Safety
 // `out` must be a valid, writable pointer to `TempochPeriodMjd`.
@@ -448,258 +416,6 @@ tempoch_status_t tempoch_period_list_normalize(const struct tempoch_period_mjd_t
                                                uintptr_t count,
                                                struct tempoch_period_mjd_t **out,
                                                uintptr_t *out_count);
-
-// Create a Julian Date from a raw `double`.
- double tempoch_jd_new(double value);
-
-// Return the J2000.0 epoch as a Julian Date (2451545.0).
- double tempoch_jd_j2000(void);
-
-// Convert a Julian Date to a Modified Julian Date.
- double tempoch_jd_to_mjd(double jd);
-
-// Create a Julian Date from a UTC date-time.
-//
-// # Safety
-// `out` must be a valid, writable pointer to `double`.
- tempoch_status_t tempoch_jd_from_utc(struct tempoch_utc_t utc, double *out);
-
-// Convert a Julian Date to a UTC breakdown.
-//
-// # Safety
-// `out` must be a valid, writable pointer to `TempochUtc`.
- tempoch_status_t tempoch_jd_to_utc(double jd, struct tempoch_utc_t *out);
-
-// Create a Modified Julian Date from a raw `double`.
- double tempoch_mjd_new(double value);
-
-// Convert a Modified Julian Date to a Julian Date.
- double tempoch_mjd_to_jd(double mjd);
-
-// Create a Modified Julian Date from a UTC date-time.
-//
-// # Safety
-// `out` must be a valid, writable pointer to `double`.
- tempoch_status_t tempoch_mjd_from_utc(struct tempoch_utc_t utc, double *out);
-
-// Convert a Modified Julian Date to a UTC breakdown.
-//
-// # Safety
-// `out` must be a valid, writable pointer to `TempochUtc`.
- tempoch_status_t tempoch_mjd_to_utc(double mjd, struct tempoch_utc_t *out);
-
-// Compute the difference between two Julian Dates in days (jd1 − jd2).
- double tempoch_jd_difference(double jd1, double jd2);
-
-// Add a duration in days to a Julian Date.
- double tempoch_jd_add_days(double jd, double days);
-
-// Compute the difference between two Modified Julian Dates in days (mjd1 − mjd2).
- double tempoch_mjd_difference(double mjd1, double mjd2);
-
-// Add a duration in days to a Modified Julian Date.
- double tempoch_mjd_add_days(double mjd, double days);
-
-// Compute Julian centuries since J2000 for a given Julian Date.
- double tempoch_jd_julian_centuries(double jd);
-
-// Compute the difference between two Julian Dates as a `QttyQuantity` in days.
- qtty_quantity_t tempoch_jd_difference_qty(double jd1, double jd2);
-
-// Add a `QttyQuantity` duration (time-compatible) to a Julian Date.
-//
-// Returns `InvalidDurationUnit` if the quantity cannot be converted to days.
-//
-// # Safety
-// `out` must be a valid, writable pointer to `double`.
- tempoch_status_t tempoch_jd_add_qty(double jd, qtty_quantity_t duration, double *out);
-
-// Compute the difference between two Modified Julian Dates as a `QttyQuantity` in days.
- qtty_quantity_t tempoch_mjd_difference_qty(double mjd1, double mjd2);
-
-// Add a `QttyQuantity` duration (time-compatible) to a Modified Julian Date.
-//
-// Returns `InvalidDurationUnit` if the quantity cannot be converted to days.
-//
-// # Safety
-// `out` must be a valid, writable pointer to `double`.
- tempoch_status_t tempoch_mjd_add_qty(double mjd, qtty_quantity_t duration, double *out);
-
-// Compute Julian centuries since J2000 as a `QttyQuantity`.
- qtty_quantity_t tempoch_jd_julian_centuries_qty(double jd);
-
-// Convert a Julian Date (TT) to TDB.
- double tempoch_jd_to_tdb(double jd);
-
-// Convert TDB back to Julian Date (TT).
- double tempoch_tdb_to_jd(double tdb);
-
-// Convert a Julian Date (TT) to TT (identity).
- double tempoch_jd_to_tt(double jd);
-
-// Convert TT back to Julian Date (TT).
- double tempoch_tt_to_jd(double tt);
-
-// Convert a Julian Date (TT) to TAI.
- double tempoch_jd_to_tai(double jd);
-
-// Convert TAI back to Julian Date (TT).
- double tempoch_tai_to_jd(double tai);
-
-// Convert a Julian Date (TT) to TCG.
- double tempoch_jd_to_tcg(double jd);
-
-// Convert TCG back to Julian Date (TT).
- double tempoch_tcg_to_jd(double tcg);
-
-// Convert a Julian Date (TT) to TCB.
- double tempoch_jd_to_tcb(double jd);
-
-// Convert TCB back to Julian Date (TT).
- double tempoch_tcb_to_jd(double tcb);
-
-// Convert a Julian Date (TT) to GPS Time.
- double tempoch_jd_to_gps(double jd);
-
-// Convert GPS Time back to Julian Date (TT).
- double tempoch_gps_to_jd(double gps);
-
-// Convert a Julian Date (TT) to Universal Time UT1.
- double tempoch_jd_to_ut(double jd);
-
-// Convert Universal Time UT1 back to Julian Date (TT).
- double tempoch_ut_to_jd(double ut);
-
-// Convert a Julian Date (TT) to Julian Ephemeris Date.
- double tempoch_jd_to_jde(double jd);
-
-// Convert Julian Ephemeris Date back to Julian Date (TT).
- double tempoch_jde_to_jd(double jde);
-
-// Convert a Julian Date (TT) to Unix time in **seconds** since 1970-01-01T00:00:00 UTC.
-//
-// The result is a standard Unix timestamp suitable for passing to C `gmtime()`,
-// Python `datetime.fromtimestamp()`, etc. Internally the conversion routes
-// through the compiled UTC-TAI history.
-//
-// Round-tripping `Unix -> JD -> Unix` is expected to stay within a few
-// microseconds. Callers should not assume nanosecond-exact reversibility
-// through the JD(TT) axis.
-//
-// Returns `NaN` if `jd` is non-finite or cannot be represented by the
-// compiled UTC civil-time model.
- double tempoch_jd_to_unix(double jd);
-
-// Convert Unix time in **seconds** since 1970-01-01T00:00:00 UTC back to Julian Date (TT).
-//
-// Accepts a standard Unix timestamp (seconds, not days). The conversion
-// uses the compiled UTC-TAI history for leap-second handling.
-//
-// Round-tripping `Unix -> JD -> Unix` is expected to stay within a few
-// microseconds. Callers should not assume nanosecond-exact reversibility
-// through the JD(TT) axis.
-//
-// Returns `NaN` if `unix_ts` is non-finite or outside the supported UTC civil range.
- double tempoch_unix_to_jd(double unix_ts);
-
-// Create a Unix timestamp from seconds since 1970-01-01T00:00:00 UTC.
-//
-// This is a convenience identity for the C ABI: the returned `double` is
-// the same value, confirming that the FFI Unix convention is **seconds**.
-// Use [`tempoch_unix_to_jd`] when you need the corresponding Julian Date.
- double tempoch_unix_from_seconds(double seconds);
-
-// Extract the Unix timestamp in seconds from a value previously obtained
-// via [`tempoch_jd_to_unix`] or [`tempoch_unix_from_seconds`].
-//
-// This is also a convenience identity confirming the seconds convention.
- double tempoch_unix_to_seconds(double unix_ts);
-
-// Return ΔT = TT − UT1 in seconds for a Julian Date.
-//
-// For dates within the compiled data range this is the observed/predicted
-// value from USNO data. For dates beyond [`tempoch::DELTA_T_PREDICTION_HORIZON_MJD`]
-// the result is a quadratic tail-fit extrapolation; accuracy degrades
-// rapidly past the horizon. The value is never `NaN`; non-finite `jd`
-// (infinity or NaN) returns `0.0`.
- double tempoch_delta_t_seconds(double jd);
-
-// Return ΔT = TT − UT1 in seconds for a Julian Date, without unsupported
-// extrapolation.
-//
-// # Safety
-// `out` must be a valid, writable pointer to `double`.
- tempoch_status_t tempoch_delta_t_seconds_checked(double jd, double *out);
-
-// Convert a `double` time value from one scale to another.
-//
-// # Safety
-// `out` must be a valid, writable pointer to `double`.
-
-tempoch_status_t tempoch_time_convert(double value,
-                                      int32_t from_scale_id,
-                                      int32_t to_scale_id,
-                                      double *out);
-
-// Convert a UTC date-time to a value in any supported scale.
-//
-// # Safety
-// `out` must be a valid, writable pointer to `double`.
- tempoch_status_t tempoch_time_from_utc(struct tempoch_utc_t utc, int32_t scale_id, double *out);
-
-// Convert a time value in any supported scale to UTC.
-//
-// # Safety
-// `out` must be a valid, writable pointer to `TempochUtc`.
- tempoch_status_t tempoch_time_to_utc(double value, int32_t scale_id, struct tempoch_utc_t *out);
-
-// Compute a same-scale duration in days.
-//
-// # Safety
-// `out` must be a valid, writable pointer to `double`.
-
-tempoch_status_t tempoch_time_difference_days(double lhs,
-                                              double rhs,
-                                              int32_t scale_id,
-                                              double *out);
-
-// Compute a same-scale duration as a day-valued `QttyQuantity`.
-//
-// # Safety
-// `out` must be a valid, writable pointer to `qtty_quantity_t`.
-
-tempoch_status_t tempoch_time_difference_qty(double lhs,
-                                             double rhs,
-                                             int32_t scale_id,
-                                             qtty_quantity_t *out);
-
-// Add a same-scale duration in days.
-//
-// # Safety
-// `out` must be a valid, writable pointer to `double`.
- tempoch_status_t tempoch_time_add_days(double value, int32_t scale_id, double days, double *out);
-
-// Add a same-scale duration from a time-compatible `QttyQuantity`.
-//
-// # Safety
-// `out` must be a valid, writable pointer to `double`.
-
-tempoch_status_t tempoch_time_add_qty(double value,
-                                      int32_t scale_id,
-                                      qtty_quantity_t duration,
-                                      double *out);
-
-// Convert a Julian Date to any scale, writing the result into `out`.
-//
-// # Safety
-// `out` must be a valid, writable pointer to `double`.
- tempoch_status_t tempoch_jd_to_scale(double jd, int32_t scale_id, double *out);
-
-// Convert a value in any scale to a Julian Date, writing the result into `out`.
-//
-// # Safety
-// `out` must be a valid, writable pointer to `double`.
- tempoch_status_t tempoch_scale_to_jd(double value, int32_t scale_id, double *out);
 
 // Validate and normalize a split J2000-second pair.
 //

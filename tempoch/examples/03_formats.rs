@@ -1,37 +1,25 @@
 //! Constructor/accessor showcase for the scale-only API.
 
-use qtty::{Day, Second};
+use qtty::Second;
 use tempoch::{
-    constats::{J2000_JD_TT, UNIX_EPOCH_JD, UNIX_EPOCH_MJD},
-    J2000Seconds, J2000s, JulianDate, ModifiedJulianDate, Time, TimeContext, Unix, UnixTime, JD,
-    MJD, TT, UTC,
+    J2000Seconds, J2000s, JulianDate, ModifiedJulianDate, Time, Unix, UnixTime, J2000_JD_TT_DAY,
+    JD, MJD, TT, UNIX_EPOCH_JD_DAY, UNIX_EPOCH_MJD_DAY, UTC,
 };
 
 fn main() {
-    let ctx = TimeContext::new();
-    let j2000_tt = J2000Seconds::<TT>::try_new(Second::new(0.0))
-        .unwrap()
-        .to_time();
-    let sample_tt = J2000Seconds::<TT>::try_new(Second::new(123_456.789))
-        .unwrap()
-        .to_time();
+    // `J2000Seconds<S>` is `Time<S>` with an explicit alias — no relabel step.
+    let j2000_tt = J2000Seconds::<TT>::new(0.0);
+    let sample_tt = J2000Seconds::<TT>::new(123_456.789);
 
-    let j2000_from_jd = JulianDate::<TT>::try_new(J2000_JD_TT.raw())
-        .unwrap()
-        .to_time();
-    let unix_epoch_jd = JulianDate::<TT>::try_new(UNIX_EPOCH_JD.raw())
-        .unwrap()
-        .to_time();
-    let half_day_jd = JulianDate::<TT>::try_new(Day::new(2_451_545.5))
-        .unwrap()
-        .to_time();
-    let unix_epoch_mjd = ModifiedJulianDate::<TT>::try_new(UNIX_EPOCH_MJD.raw())
-        .unwrap()
-        .to_time();
+    // Keep JD/MJD scalars in their typed aliases; unified `.to::<Target>()` works on any `Time<S, F>`.
+    let j2000_from_jd = JulianDate::<TT>::new(J2000_JD_TT_DAY.value());
+    let unix_epoch_jd = JulianDate::<TT>::new(UNIX_EPOCH_JD_DAY.value());
+    let half_day_jd = JulianDate::<TT>::new(2_451_545.5);
+    let unix_epoch_mjd = ModifiedJulianDate::<TT>::new(UNIX_EPOCH_MJD_DAY.value());
 
-    let utc = UnixTime::try_new(Second::new(1_700_000_000.25))
-        .and_then(|e| e.to_time_with(&ctx))
-        .unwrap();
+    let utc: Time<UTC> = UnixTime::try_new(Second::new(1_700_000_000.25))
+        .unwrap()
+        .into();
 
     println!("J2000 TT seconds  : {:.9}", j2000_tt.to::<J2000s>());
     println!("Sample TT JD      : {:.9}", sample_tt.to::<JD>());

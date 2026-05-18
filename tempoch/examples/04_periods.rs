@@ -1,10 +1,7 @@
-use qtty::Day;
 use tempoch::{Interval, ModifiedJulianDate, Period, TT};
 
 fn mjd(value: f64) -> tempoch::Time<TT> {
-    ModifiedJulianDate::<TT>::try_new(Day::new(value))
-        .unwrap()
-        .to_time()
+    ModifiedJulianDate::<TT>::new(value).to_j2000s()
 }
 
 fn main() {
