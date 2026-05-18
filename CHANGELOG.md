@@ -3,10 +3,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.1]
+## [Unreleased]
+
+## [0.6.0] - 2026-05-17
+
+### Added
+
+- `Time::try_from_raw_j2000_seconds_split` for constructing instants while preserving the compensated `(hi, lo)` J2000-second representation (primarily for FFI and adapter layers).
+- FFI opaque conversion contexts (`TempochContext`) mirroring Rust `TimeContext` defaults, builtin-EOP UT1 policy, and optional pre-definition UTC extrapolation.
+- FFI typed split-time helpers encoding/decoding `(scale, format)` tagged instants across JD, MJD, J2000 seconds, Unix, and GPS transport formats (including UT1 and POSIX Unix decode routes that take an explicit context snapshot).
 
 ### Changed
-- some ffi where outdated
+
+- Raised the packaged `tempoch-time-data` dependency to **0.1.2** (updated embedded UTC-TAI / ΔT / EOP tables).
+- Expanded `tempoch_ffi.h` for the new symbols; `tempoch_ffi_version()` now reports **600** for this release line.
+
+## [0.5.1] - 2026-05-17
+
+### Changed
+
+- Corrected outdated FFI declarations and regenerated `tempoch_ffi.h`.
 
 ## [0.5.0]
 

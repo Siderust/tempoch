@@ -506,7 +506,7 @@ fn generic_time_add_qty() {
 
 #[test]
 fn ffi_version() {
-    assert_eq!(tempoch_ffi_version(), 500);
+    assert_eq!(tempoch_ffi_version(), 600);
 }
 
 #[test]

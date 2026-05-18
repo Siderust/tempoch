@@ -222,7 +222,7 @@ extern "C" {
 
 // Returns the tempoch-ffi ABI version (major*10000 + minor*100 + patch).
 //
-// Current ABI line: 0.4.x -> 400
+// Current ABI line: 0.6.x -> 600
  uint32_t tempoch_ffi_version(void);
 
 // J2000.0 epoch as JD(TT) — 2 451 545.0.
@@ -236,6 +236,12 @@ extern "C" {
 
 // GPS epoch as a Julian Day on the UTC axis (1980-01-06T00:00:00 UTC).
  double tempoch_const_gps_epoch_jd_utc(void);
+
+// Unix epoch as a Julian Date on the UTC axis (`1970-01-01T00:00:00 UTC`, JD 2 440 587.5).
+ double tempoch_const_unix_epoch_jd(void);
+
+// Unix epoch as a Modified Julian Day on the UTC axis (`1970-01-01T00:00:00 UTC`, MJD 40 587.0).
+ double tempoch_const_unix_epoch_mjd(void);
 
 // GPS epoch expressed as a Julian Day on the TAI axis.
  double tempoch_const_gps_epoch_jd_tai(void);
