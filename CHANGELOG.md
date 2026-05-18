@@ -3,11 +3,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] - 2026-05-18
 
 ### Added
 
 - `From`/`Into` from `JulianDate<S>`, `ModifiedJulianDate<S>`, `UnixTime`, and `GpsTime` into default-tagged `Time<S>` / `Time<UTC>` / `Time<TAI>` (same instant as `Time::to_j2000s`), so `Period::try_new` / `Interval::try_new` accept encoded endpoints directly.
+- `Interval::length<U>()` for requesting interval durations in any `qtty` time unit supported by the endpoint difference type, with `Interval::duration<U>()` kept as the backward-compatible alias.
+- `Time<TT, JD>::JD_EPOCH_J2000_0` plus the typed epoch helpers in `tempoch::constats` / `tempoch_core::foundation::constats` (`j2000_jd_tt`, `unix_epoch_jd`, `gps_epoch_tai`, `tdb_tt_model_high_accuracy_*`, and related day/second constants).
 
 ### Breaking
 
@@ -25,6 +27,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   the crate root (`tempoch::JD`, `tempoch::Period`, etc.). Users who depended on
   `tempoch::format::*` or `tempoch::period::*` paths should migrate to the flat
   root or depend on `tempoch-core` directly.
+
+### Changed
+
+- `Time<S, F>` is now the canonical storage model throughout `tempoch-core`; the format tag is a typed external view over the same split J2000-second storage rather than a separate storage representation.
+- The crate layout was reorganized around `foundation`, `model`, `earth`, `period`, and `features`, with the generated bundled tables living under `tempoch-time-data`.
+- README and numbered examples were updated to use `.to_j2000s()`, `Into<Time<_>>`, and the new typed epoch helpers instead of the removed `to_time*` helpers and older constant forms.
 
 ### Internal
 
