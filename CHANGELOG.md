@@ -48,6 +48,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Changed
 - Some FFI entries were outdated and have been corrected.
 
+- Refreshed generated time tables (fetched 2026-05-18):
+  - Earth Orientation Parameters finals2000A (IERS)
+
 ## [0.5.0] - 2026-05-17
 
 ### Breaking
