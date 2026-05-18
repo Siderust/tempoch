@@ -5,32 +5,60 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
-## [0.6.0] - 2026-05-17
+## [0.6.0] - 2026-05-18
 
 ### Added
 
-- `Time::try_from_raw_j2000_seconds_split` for constructing instants while preserving the compensated `(hi, lo)` J2000-second representation (primarily for FFI and adapter layers).
-- FFI opaque conversion contexts (`TempochContext`) mirroring Rust `TimeContext` defaults, builtin-EOP UT1 policy, and optional pre-definition UTC extrapolation.
-- FFI typed split-time helpers encoding/decoding `(scale, format)` tagged instants across JD, MJD, J2000 seconds, Unix, and GPS transport formats (including UT1 and POSIX Unix decode routes that take an explicit context snapshot).
+- `From`/`Into` from `JulianDate<S>`, `ModifiedJulianDate<S>`, `UnixTime`, and `GpsTime` into default-tagged `Time<S>` / `Time<UTC>` / `Time<TAI>` (same instant as `Time::to_j2000s`), so `Period::try_new` / `Interval::try_new` accept encoded endpoints directly.
+- `Interval::length<U>()` for requesting interval durations in any `qtty` time unit supported by the endpoint difference type, with `Interval::duration<U>()` kept as the backward-compatible alias.
+- `Time<TT, JD>::JD_EPOCH_J2000_0` plus the typed epoch helpers in `tempoch::constats` / `tempoch_core::foundation::constats` (`j2000_jd_tt`, `unix_epoch_jd`, `gps_epoch_tai`, `tdb_tt_model_high_accuracy_*`, and related day/second constants).
+
+### Breaking
+
+- Removed `Time::to_time` and `Time::to_time_with`; use `Time::to_j2000s()` for the canonical
+  `Time<S, J2000s>` tag (`to_time_with` ignored context except for API shape).
+- Removed `Coord<S, F>` and `Offset<S, F>` from `tempoch-core`. Epochs are either
+  `Time<S, F>` via helpers in `foundation::constats` / `tempoch::constats`
+  (`j2000_jd_tt`, `unix_epoch_jd`, …) or bare `qtty::Day` / `qtty::Second`
+  constants (`J2000_JD_TT_DAY`, `GPS_EPOCH_TAI_SECONDS`, …). Replace
+  `J2000_JD_TT.raw()` with `J2000_JD_TT_DAY` or `j2000_jd_tt().raw()`.
+- `DELTA_T_PREDICTION_HORIZON_MJD` is now a plain `qtty::Day` (same numeric value
+  as before); drop `.raw()` when comparing against other `Day` quantities.
+- Removed `tempoch::format`, `tempoch::period`, and `tempoch::features` sub-module
+  shim paths from the `tempoch` facade crate. All public types are available at
+  the crate root (`tempoch::JD`, `tempoch::Period`, etc.). Users who depended on
+  `tempoch::format::*` or `tempoch::period::*` paths should migrate to the flat
+  root or depend on `tempoch-core` directly.
 
 ### Changed
 
-- Raised the packaged `tempoch-time-data` dependency to **0.1.2** (updated embedded UTC-TAI / ΔT / EOP tables).
-- Expanded `tempoch_ffi.h` for the new symbols; `tempoch_ffi_version()` now reports **600** for this release line.
+- `Time<S, F>` is now the canonical storage model throughout `tempoch-core`; the format tag is a typed external view over the same split J2000-second storage rather than a separate storage representation.
+- The crate layout was reorganized around `foundation`, `model`, `earth`, `period`, and `features`, with the generated bundled tables living under `tempoch-time-data`.
+- README and numbered examples were updated to use `.to_j2000s()`, `Into<Time<_>>`, and the new typed epoch helpers instead of the removed `to_time*` helpers and older constant forms.
+
+### Internal
+
+- Format marker types (`JD`, `MJD`, `J2000s`, `Unix`, `GPS`) moved from
+  `tempoch_core::encoding` to `tempoch_core::format::markers`; the public
+  surface at `tempoch_core::format::{JD, MJD, …}` is unchanged.
+- `format/mod.rs` split into focused sub-files (`traits.rs`, `encoded_time.rs`,
+  `impls.rs`, `markers.rs`).
+- `period/mod.rs` error types extracted to `period/error.rs`.
 
 ## [0.5.1] - 2026-05-17
 
 ### Changed
+- Some FFI entries were outdated and have been corrected.
 
-- Corrected outdated FFI declarations and regenerated `tempoch_ffi.h`.
+- Refreshed generated time tables (fetched 2026-05-18):
+  - Earth Orientation Parameters finals2000A (IERS)
 
-## [0.5.0]
+## [0.5.0] - 2026-05-17
 
 ### Breaking
 
 - Renamed `TimeRepresentation` → `TimeFormat`; canonical module is now
-  `format` (was `representation`). The old names are still re-exported from
-  the crate root with deprecation notices for migration.
+  `format` (was `representation`).
 - Renamed `RepresentationForScale<S>` → `FormatForScale<S>`.
 - Renamed `InfallibleRepresentationForScale<S>` →
   `InfallibleFormatForScale<S>`.
@@ -41,13 +69,6 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   `Coord<TT, JD>`.
 - Updated all constants in `tempoch::constats` to the new parameter order:
   `J2000_JD_TT: Coord<TT, JD>`, `GPS_EPOCH_JD_TAI: Coord<TAI, JD>`, etc.
-- Renamed `ScaleKind` variants to follow the `<Format><Scale>` pattern:
-  - `Tdb` → `JdTdb`
-  - `Tai` → `JdTai`
-  - `Tcg` → `JdTcg`
-  - `Tcb` → `JdTcb`
-  - `Ut1` → `JdUt1`
-  - `GpsDays` → `JdGps`
 
 ### Changed
 
@@ -56,7 +77,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - `Coord` module documentation updated to clarify the `<S, F>` ordering
   convention.
 - `tempoch_core::format` is now the canonical public module for format
-  traits and markers; `tempoch_core::representation` is a re-export shim.
+  traits and markers.
 
 ## [0.4.5] - 2026-05-11
 
@@ -64,9 +85,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - Refreshed generated time tables (fetched 2026-05-11):
   - Earth Orientation Parameters finals2000A (IERS)
-# Changelog
 
-## [0.4.4 - 2026-05-09]
+## [0.4.4] - 2026-05-09
 
 ### Changed
 

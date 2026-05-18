@@ -1,22 +1,15 @@
 //! Serde round-trip examples for `Time<S>` and `Period<S>`.
 
-use qtty::Second;
 use tempoch::{
     tagged::{TaggedPeriod, TaggedTime},
     J2000Seconds, J2000s, Period, Time, TT,
 };
 
 fn main() {
-    let tt = J2000Seconds::<TT>::try_new(Second::new(42.5))
-        .unwrap()
-        .to_time();
+    let tt = J2000Seconds::<TT>::new(42.5).to_j2000s();
     let window = Period::<TT>::new(
-        J2000Seconds::<TT>::try_new(Second::new(61_000.0))
-            .unwrap()
-            .to_time(),
-        J2000Seconds::<TT>::try_new(Second::new(61_001.0))
-            .unwrap()
-            .to_time(),
+        J2000Seconds::<TT>::new(61_000.0).to_j2000s(),
+        J2000Seconds::<TT>::new(61_001.0).to_j2000s(),
     );
 
     let tt_json = serde_json::to_string(&tt).unwrap();

@@ -28,6 +28,7 @@ Typed astronomical time primitives for Rust.
   - `.to_with::<UT1>(&ctx)` for context-backed UT1 routes, or `.try_to::<UT1>()` shorthand (snapshots active data at call time)
   - `.to::<JD>()`, `.to::<MJD>()`, `.to::<J2000s>()` for coordinate views
   - `.try_to::<Unix>()` and `.to::<GPS>()` for transport encodings
+- `JulianDate<S>`, `ModifiedJulianDate<S>`, `UnixTime`, and `GpsTime` implement `Into<Time<_>>` (same instant as `.to_j2000s()`), so `Period::<S>::new(...)` / `try_new(...)` accept encoded endpoints directly; `J2000Seconds<S>` is already `Time<S>`.
 - UTC conversion through `chrono`, leap-second aware over the official history
   (1961-01-01 onward). Requests for dates before the UTC standard was defined
   return `ConversionError::UtcBeforeDefinition` by default; opt in to the
@@ -44,15 +45,15 @@ Typed astronomical time primitives for Rust.
   constants.
 - TT↔TDB conversion via the built-in seven-term Fairhead–Bretagnon
   approximation from USNO Circular 179. The crate documents about 10 µs
-  accuracy only inside the public
-  `constats::TDB_TT_MODEL_HIGH_ACCURACY_START_JD` →
-  `constats::TDB_TT_MODEL_HIGH_ACCURACY_END_JD` interval (about 1600-01-01 to
-  2200-01-01 TT).
+  accuracy only inside the public interval bracketed by
+  [`tdb_tt_model_high_accuracy_start_jd`] / [`tdb_tt_model_high_accuracy_end_jd`]
+  in [`tempoch::constats`] (day literals also exposed as
+  `TDB_TT_MODEL_HIGH_ACCURACY_*_JD_DAY`; roughly 1600-01-01 to 2200-01-01 TT).
 - Julian Day, Modified Julian Day, and SI-second views via `JD`, `MJD`, and
   `J2000s` conversion targets on every built-in scale, including UTC's stored
   instant axis.
-- Unix/POSIX timestamps via `UnixTime::try_new(sec).and_then(|e| e.to_time_with(&ctx))` and `.try_to::<Unix>()`.
-- GPS transport values via `GpsTime::try_new(sec).map(|e| e.to_time())` and `.to::<GPS>()`.
+- Unix/POSIX timestamps via `UnixTime::try_new(sec).map(Into::into)` and `.try_to::<Unix>()`.
+- GPS transport values via `GpsTime::try_new(sec).map(Into::into)` and `.to::<GPS>()`.
 - Compiled time-data tables generated from official UTC-TAI and Delta T
   sources.
 - Optional `serde` support for `Time<S>` as `{"hi","lo"}` and
@@ -61,14 +62,16 @@ Typed astronomical time primitives for Rust.
   carry the scale name.
 - Automatic runtime freshness backed by a cached time-data bundle, while
   keeping the same public API.
-- Public typed epoch/offset constants under `tempoch::constats`, such as
-  `J2000_JD_TT`, `TT_MINUS_TAI`, and `DELTA_T_PREDICTION_HORIZON_MJD`.
+- Public typed epochs under `tempoch::constats`: [`Time`] helpers such as
+  [`j2000_jd_tt`], [`qtty::Day`] literals such as [`J2000_JD_TT_DAY`], offsets like
+  [`TT_MINUS_TAI`], and the ΔT horizon marker [`DELTA_T_PREDICTION_HORIZON_MJD`]
+  (`qtty::Day`).
 - A utility `Interval<T>` type for half-open time ranges over `Time<A>`,
   with intersection, normalization, validation, and complement helpers.
 
 ## Compiled Tables And Official References
 
-The generated tables under `tempoch-core/src/generated/` are tied to explicit
+The generated tables under `tempoch-time-data/src/generated/` are tied to explicit
 authoritative sources:
 
 | Generated table | Purpose | Official reference | Canonical upstream |
@@ -145,21 +148,18 @@ Two orthogonal phantom-type axes drive all typed time values in `tempoch`:
 
 The two are always kept separate:
 
-- [`Time<S>`] stores no format; it is a raw J2000-based compensated pair on
-  scale `S`.
+- [`Time<S>`] defaults to tag [`J2000s`] and stores the compensated J2000-second
+  pair on scale `S`; [`reinterpret`] selects another [`TimeFormat`] view without
+  changing storage.
 - [`EncodedTime<S, F>`] (and its aliases `JulianDate<S>`, `ModifiedJulianDate<S>`,
-  etc.) pair a scale with a format for I/O and coordinate constants.
-- [`Coord<S, F>`] is the typed low-level counterpart used for compile-time
-  constants (`J2000_JD_TT: Coord<TT, JD>`, etc.).
+  etc.) pair a scale with a format for I/O.
+- Crate epochs are expressed either as [`Time<S, F>`] via helpers in
+  [`tempoch::constats`] (for example [`j2000_jd_tt`]) or as plain [`qtty::Day`] /
+  [`qtty::Second`] constants such as [`J2000_JD_TT_DAY`] and [`GPS_EPOCH_TAI_SECONDS`]
+  when you only need the scalar encodings.
 
 The type parameter order is always **Scale first, Format second** — matching
-the reading direction "JD on TT" → `Coord<TT, JD>` / `EncodedTime<TT, JD>`.
-
-`ScaleKind` variant names follow the same `<Format><Scale>` pattern:
-`JdTt`, `MjdTt`, `JdTdb`, `JdTai`, `JdTcg`, `JdTcb`, `JdGps`, `JdUt1`,
-`Unix`.
-
-
+the reading direction "JD on TT" → [`EncodedTime<TT, JD>`] / [`JulianDate<TT>`].
 
 `UTC` is a civil scale with leap-second labeling, so it cannot be treated as a
 simple uniform scalar everywhere. `tempoch` keeps the internal instant storage
@@ -213,10 +213,10 @@ use tempoch::{
     J2000Seconds, Period, TT,
 };
 
-let tt = J2000Seconds::<TT>::try_new(Second::new(42.5)).unwrap().to_time();
+let tt = J2000Seconds::<TT>::try_new(Second::new(42.5)).unwrap();
 let period = Period::<TT>::new(
     tt,
-    J2000Seconds::<TT>::try_new(Second::new(43.5)).unwrap().to_time(),
+    J2000Seconds::<TT>::try_new(Second::new(43.5)).unwrap(),
 );
 
 assert_eq!(serde_json::to_string(&tt).unwrap(), r#"{"hi":42.5,"lo":0.0}"#);
@@ -255,27 +255,27 @@ use qtty::Day;
 use tempoch::{ModifiedJulianDate, Period, TT};
 
 let day = Period::<TT>::new(
-  ModifiedJulianDate::<TT>::try_new(Day::new(61_000.0)).unwrap().to_time(),
-  ModifiedJulianDate::<TT>::try_new(Day::new(61_001.0)).unwrap().to_time(),
+  ModifiedJulianDate::<TT>::try_new(Day::new(61_000.0)).unwrap(),
+  ModifiedJulianDate::<TT>::try_new(Day::new(61_001.0)).unwrap(),
 );
 let a = vec![
   Period::<TT>::new(
-    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.1)).unwrap().to_time(),
-    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.4)).unwrap().to_time(),
+    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.1)).unwrap(),
+    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.4)).unwrap(),
   ),
   Period::<TT>::new(
-    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.6)).unwrap().to_time(),
-    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.9)).unwrap().to_time(),
+    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.6)).unwrap(),
+    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.9)).unwrap(),
   ),
 ];
 let b = vec![
   Period::<TT>::new(
-    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.2)).unwrap().to_time(),
-    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.3)).unwrap().to_time(),
+    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.2)).unwrap(),
+    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.3)).unwrap(),
   ),
   Period::<TT>::new(
-    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.7)).unwrap().to_time(),
-    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.8)).unwrap().to_time(),
+    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.7)).unwrap(),
+    ModifiedJulianDate::<TT>::try_new(Day::new(61_000.8)).unwrap(),
   ),
 ];
 
@@ -321,11 +321,10 @@ use tempoch::{JD, JulianDate, Time, TimeContext, UnixTime, Unix, TT, UT1, UTC};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ctx = TimeContext::with_builtin_eop();
-    let tt = JulianDate::<TT>::try_new(Day::new(2_460_000.25))?.to_time();
+    let tt: Time<TT> = JulianDate::<TT>::try_new(Day::new(2_460_000.25))?.into();
     let ut1: Time<UT1> = tt.to_with::<UT1>(&ctx)?;
 
-    let unix = UnixTime::try_new(Second::new(1_700_000_000.0))
-        .and_then(|e| e.to_time_with(&ctx))?;
+    let unix = UnixTime::try_new(Second::new(1_700_000_000.0)).map(Into::into)?;
     let back = unix.try_to::<Unix>()?;
 
     println!("UT1 JD     : {:.9}", ut1.to::<JD>());
@@ -336,7 +335,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Time Data Updates
 
-The compile-time path still uses checked-in generated tables in `tempoch-core`.
+The compile-time path still uses checked-in generated tables in `tempoch-time-data`.
 The dedicated Rust CLI `tempoch-time-data-updater` regenerates those committed
 files from the official UTC-TAI, Delta T, and IERS finals2000A.all sources.
 Its fetch/parse/build pipeline now reuses the same shared support crate that

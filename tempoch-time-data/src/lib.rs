@@ -4,6 +4,8 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use std::fmt;
 
+pub mod generated;
+
 pub const TEMPOCH_DATA_DIR_ENV: &str = "TEMPOCH_DATA_DIR";
 pub const UTC_TAI_HISTORY_URL: &str = "https://hpiers.obspm.fr/eoppc/bul/bulc/UTC-TAI.history";
 pub const DELTA_T_OBSERVED_URL: &str = "https://maia.usno.navy.mil/ser7/deltat.data";
@@ -168,6 +170,40 @@ impl TimeDataBundle {
             provenance,
         ))
     }
+}
+
+/// Build the checked-in bundled time-data snapshot shipped with the crate.
+pub fn bundled_time_data() -> TimeDataBundle {
+    TimeDataBundle::new(
+        generated::time_data::UTC_TAI_SEGMENTS
+            .iter()
+            .map(|segment| UtcTaiSegment {
+                start_mjd: segment.start_mjd,
+                end_mjd: segment.end_mjd,
+                base_seconds: segment.base_seconds,
+                reference_mjd: segment.reference_mjd,
+                slope_seconds_per_day: segment.slope_seconds_per_day,
+            })
+            .collect(),
+        generated::time_data::MODERN_DELTA_T_POINTS.to_vec(),
+        generated::MODERN_DELTA_T_OBSERVED_END_MJD.value(),
+        generated::eop_data::EOP_POINTS
+            .iter()
+            .map(|point| EopPoint {
+                mjd: point.mjd,
+                pm_observed: point.pm_observed,
+                ut1_observed: point.ut1_observed,
+                nutation_observed: point.nutation_observed,
+                pm_xp_arcsec: point.pm_xp_arcsec,
+                pm_yp_arcsec: point.pm_yp_arcsec,
+                ut1_minus_utc_seconds: point.ut1_minus_utc_seconds,
+                lod_milliseconds: point.lod_milliseconds,
+                dx_milliarcsec: point.dx_milliarcsec,
+                dy_milliarcsec: point.dy_milliarcsec,
+            })
+            .collect(),
+        TimeDataProvenance::new("compiled", "compiled", "compiled", "compiled", "compiled"),
+    )
 }
 
 #[derive(Debug)]

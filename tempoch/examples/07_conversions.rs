@@ -7,8 +7,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ctx = TimeContext::with_builtin_eop();
 
     // Start from a civil/transport representation.
-    let utc =
-        UnixTime::try_new(Second::new(1_700_000_000.25)).and_then(|e| e.to_time_with(&ctx))?;
+    let utc = UnixTime::try_new(Second::new(1_700_000_000.25))?.to_j2000s();
 
     // Convert across continuous scales.
     let tai: Time<TAI> = utc.to::<TAI>();
@@ -18,7 +17,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // TAI also exposes the GPS bridge.
     let gps: GpsTime = tai.to::<GPS>();
-    let tai_from_gps: Time<TAI> = gps.to_time();
+    let tai_from_gps: Time<TAI> = gps.to_j2000s();
 
     println!("UTC chrono   : {}", utc.to_chrono().unwrap());
     println!("UTC unix     : {:.3}", utc.try_to::<Unix>()?);

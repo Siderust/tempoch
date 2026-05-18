@@ -5,13 +5,12 @@
 //!
 //! All values are returned as plain `double`s so that C and C++ consumers
 //! can use them without depending on the Rust type system.  Each function
-//! wraps the corresponding typed constant from `tempoch` / `tempoch_core`.
+//! wraps the corresponding crate constant from `tempoch` / `tempoch_core`.
 
 use tempoch::{
-    constats::{UNIX_EPOCH_JD, UNIX_EPOCH_MJD},
-    DELTA_T_PREDICTION_HORIZON_MJD, EOP_END_MJD, EOP_OBSERVED_END_MJD, EOP_START_MJD,
-    GPS_EPOCH_JD_TAI, GPS_EPOCH_JD_UTC, GPS_EPOCH_TAI_MINUS_UTC, JULIAN_YEAR_DAYS,
-    MODERN_DELTA_T_OBSERVED_END_MJD, UTC_DEFINED_FROM_MJD,
+    DELTA_T_PREDICTION_HORIZON_MJD, GPS_EPOCH_JD_TAI_DAY, GPS_EPOCH_JD_UTC_DAY,
+    GPS_EPOCH_TAI_MINUS_UTC, JULIAN_YEAR_DAYS, MODERN_DELTA_T_OBSERVED_END_MJD, UNIX_EPOCH_JD_DAY,
+    UNIX_EPOCH_MJD_DAY, UTC_DEFINED_FROM_MJD_DAY,
 };
 
 /// J2000.0 epoch as JD(TT) — 2 451 545.0.
@@ -29,31 +28,31 @@ pub extern "C" fn tempoch_const_julian_year_days() -> f64 {
 /// First MJD covered by the built-in UTC-TAI segment table (1961-01-01).
 #[no_mangle]
 pub extern "C" fn tempoch_const_utc_defined_from_mjd() -> f64 {
-    UTC_DEFINED_FROM_MJD.raw().value()
+    UTC_DEFINED_FROM_MJD_DAY.value()
 }
 
 /// GPS epoch as a Julian Day on the UTC axis (1980-01-06T00:00:00 UTC).
 #[no_mangle]
 pub extern "C" fn tempoch_const_gps_epoch_jd_utc() -> f64 {
-    GPS_EPOCH_JD_UTC.raw().value()
+    GPS_EPOCH_JD_UTC_DAY.value()
 }
 
-/// Unix epoch as a Julian Date on the UTC axis (`1970-01-01T00:00:00 UTC`, JD 2 440 587.5).
+/// Unix epoch Julian Date on the UTC axis (`1970-01-01T00:00:00 UTC`).
 #[no_mangle]
 pub extern "C" fn tempoch_const_unix_epoch_jd() -> f64 {
-    UNIX_EPOCH_JD.raw().value()
+    UNIX_EPOCH_JD_DAY.value()
 }
 
-/// Unix epoch as a Modified Julian Day on the UTC axis (`1970-01-01T00:00:00 UTC`, MJD 40 587.0).
+/// Unix epoch Modified Julian Day on the UTC axis.
 #[no_mangle]
 pub extern "C" fn tempoch_const_unix_epoch_mjd() -> f64 {
-    UNIX_EPOCH_MJD.raw().value()
+    UNIX_EPOCH_MJD_DAY.value()
 }
 
 /// GPS epoch expressed as a Julian Day on the TAI axis.
 #[no_mangle]
 pub extern "C" fn tempoch_const_gps_epoch_jd_tai() -> f64 {
-    GPS_EPOCH_JD_TAI.raw().value()
+    GPS_EPOCH_JD_TAI_DAY.value()
 }
 
 /// Exact TAI − UTC offset at the GPS epoch, in seconds (19.0).
@@ -66,25 +65,25 @@ pub extern "C" fn tempoch_const_gps_epoch_tai_minus_utc_seconds() -> f64 {
 /// available from the compiled USNO data.
 #[no_mangle]
 pub extern "C" fn tempoch_const_delta_t_prediction_horizon_mjd() -> f64 {
-    DELTA_T_PREDICTION_HORIZON_MJD.raw().value()
+    DELTA_T_PREDICTION_HORIZON_MJD.value()
 }
 
 /// First MJD covered by the compiled IERS EOP series.
 #[no_mangle]
 pub extern "C" fn tempoch_const_eop_start_mjd() -> f64 {
-    EOP_START_MJD.value()
+    tempoch::EOP_START_MJD.value()
 }
 
 /// Last MJD covered by the compiled IERS EOP series.
 #[no_mangle]
 pub extern "C" fn tempoch_const_eop_end_mjd() -> f64 {
-    EOP_END_MJD.value()
+    tempoch::EOP_END_MJD.value()
 }
 
 /// Last MJD with *observed* (Bulletin C04) EOP data in the compiled series.
 #[no_mangle]
 pub extern "C" fn tempoch_const_eop_observed_end_mjd() -> f64 {
-    EOP_OBSERVED_END_MJD.value()
+    tempoch::EOP_OBSERVED_END_MJD.value()
 }
 
 /// Last MJD with modern observed ΔT data (post-1955 atomic-clock era).
@@ -113,11 +112,6 @@ mod tests {
     }
 
     #[test]
-    fn gps_epoch_jd_utc_is_canonical() {
-        assert_eq!(tempoch_const_gps_epoch_jd_utc(), 2_444_244.5);
-    }
-
-    #[test]
     fn unix_epoch_jd_is_canonical() {
         assert_eq!(tempoch_const_unix_epoch_jd(), 2_440_587.5);
     }
@@ -125,6 +119,11 @@ mod tests {
     #[test]
     fn unix_epoch_mjd_is_canonical() {
         assert_eq!(tempoch_const_unix_epoch_mjd(), 40_587.0);
+    }
+
+    #[test]
+    fn gps_epoch_jd_utc_is_canonical() {
+        assert_eq!(tempoch_const_gps_epoch_jd_utc(), 2_444_244.5);
     }
 
     #[test]
