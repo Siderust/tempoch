@@ -59,6 +59,8 @@ pub unsafe extern "C" fn tempoch_period_mjd_new(
         if candidate.try_to_period().is_err() {
             return TempochStatus::InvalidPeriod;
         }
+        // SAFETY: `out` was checked for null and the function safety contract
+        // requires it to point to writable `TempochPeriodMjd` storage.
         unsafe { *out = candidate };
         TempochStatus::Ok
     })
@@ -103,6 +105,9 @@ pub unsafe extern "C" fn tempoch_period_mjd_intersection(
         };
         match pa.intersection(&pb) {
             Some(result) => {
+                // SAFETY: `out` was checked for null and the function safety
+                // contract requires it to point to writable
+                // `TempochPeriodMjd` storage.
                 unsafe { *out = TempochPeriodMjd::from_period(&result) };
                 TempochStatus::Ok
             }
@@ -121,6 +126,10 @@ pub unsafe extern "C" fn tempoch_period_mjd_intersection(
 #[no_mangle]
 pub unsafe extern "C" fn tempoch_period_mjd_free(ptr: *mut TempochPeriodMjd, count: usize) {
     if !ptr.is_null() && count > 0 {
+        // SAFETY: The function safety contract requires `ptr` and `count` to
+        // come from one tempoch-ffi allocation returned by `periods_to_heap`.
+        // Rebuilding the same boxed slice transfers ownership back to Rust and
+        // drops it exactly once.
         unsafe {
             let _ = Box::from_raw(std::ptr::slice_from_raw_parts_mut(ptr, count));
         }
@@ -166,6 +175,8 @@ fn periods_to_heap(
     let count = boxed.len();
     let ptr = boxed.as_mut_ptr();
     std::mem::forget(boxed);
+    // SAFETY: All callers check `out` and `out_count` for null before calling
+    // this helper and the public function contracts require both to be writable.
     unsafe {
         *out = ptr;
         *out_count = count;
@@ -213,6 +224,10 @@ pub unsafe extern "C" fn tempoch_period_mjd_union(
             Err(status) => return status,
         };
         let result = pa.union(&pb);
+        // SAFETY: `out` and `out_count` were checked for null. The function
+        // safety contract requires `out` to point to a two-element writable
+        // array and `out_count` to writable `usize` storage; `union` returns at
+        // most two intervals.
         unsafe {
             *out_count = result.len();
             for (i, p) in result.iter().enumerate() {
@@ -341,6 +356,9 @@ pub unsafe extern "C" fn tempoch_period_list_intersect(
             } else if ptr.is_null() {
                 Err(TempochStatus::NullPointer)
             } else {
+                // SAFETY: This branch is reached only when `ptr` is non-null
+                // and `cnt > 0`; the public function contract requires it to
+                // point to `cnt` initialized `TempochPeriodMjd` values.
                 unsafe { slice_to_periods(ptr, cnt) }
             }
         };
@@ -393,6 +411,9 @@ pub unsafe extern "C" fn tempoch_period_list_union(
             } else if ptr.is_null() {
                 Err(TempochStatus::NullPointer)
             } else {
+                // SAFETY: This branch is reached only when `ptr` is non-null
+                // and `cnt > 0`; the public function contract requires it to
+                // point to `cnt` initialized `TempochPeriodMjd` values.
                 unsafe { slice_to_periods(ptr, cnt) }
             }
         };

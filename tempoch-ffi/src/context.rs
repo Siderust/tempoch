@@ -27,6 +27,8 @@ pub unsafe extern "C" fn tempoch_context_create_default(
         let ctx = Box::new(TempochContext {
             inner: TimeContext::new(),
         });
+        // SAFETY: `out` was checked for null and the function safety contract
+        // requires it to point to writable storage for one context handle.
         unsafe { *out = Box::into_raw(ctx) };
         TempochStatus::Ok
     })
@@ -47,6 +49,8 @@ pub unsafe extern "C" fn tempoch_context_create_with_builtin_eop(
         let ctx = Box::new(TempochContext {
             inner: TimeContext::with_builtin_eop(),
         });
+        // SAFETY: `out` was checked for null and the function safety contract
+        // requires it to point to writable storage for one context handle.
         unsafe { *out = Box::into_raw(ctx) };
         TempochStatus::Ok
     })
@@ -68,6 +72,8 @@ pub unsafe extern "C" fn tempoch_context_allow_pre_definition_utc(
         }
         let derived = unsafe { (*handle).inner.clone().allow_pre_definition_utc() };
         let ctx = Box::new(TempochContext { inner: derived });
+        // SAFETY: `out` was checked for null and the function safety contract
+        // requires it to point to writable storage for one context handle.
         unsafe { *out = Box::into_raw(ctx) };
         TempochStatus::Ok
     })
