@@ -71,7 +71,9 @@ pub unsafe extern "C" fn tempoch_eop_at(mjd_utc: f64, out: *mut TempochEopValues
         }
         match eop::builtin_eop_at(Day::new(mjd_utc)) {
             Some(v) => {
-                // TODO: justify soundness — add doc comment before publishing
+                // SAFETY: `out` was checked for null and the function safety
+                // contract requires it to point to writable
+                // `TempochEopValues` storage.
                 unsafe {
                     *out = TempochEopValues {
                         mjd_utc: v.mjd_utc.value(),

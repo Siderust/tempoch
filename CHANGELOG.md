@@ -10,6 +10,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - `tempoch-ffi`: marked `publish = false` in `Cargo.toml`. FFI crates are not
   published by default; publish only when C API/ABI changes are intentional.
   See `tempoch-ffi/README.md` for the manual publish procedure.
+- `tempoch-ffi`: replaced publishing-blocking unsafe-block TODO markers with
+  explicit `SAFETY` rationales for caller-provided output pointers.
 
 
 ## [0.6.0] - 2026-05-18

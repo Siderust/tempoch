@@ -480,7 +480,9 @@ pub unsafe extern "C" fn tempoch_time_new(
             Second::new(lo_seconds),
         ) {
             Ok(time) => {
-                // TODO: justify soundness — add doc comment before publishing
+                // SAFETY: `out` was checked for null and the function safety
+                // contract requires it to point to writable `TempochTime`
+                // storage.
                 unsafe { *out = TempochTime::from_time(time) };
                 TempochStatus::Ok
             }
@@ -523,7 +525,9 @@ pub unsafe extern "C" fn tempoch_time_scale_convert(
         };
         match converted {
             Ok(time) => {
-                // TODO: justify soundness — add doc comment before publishing
+                // SAFETY: `out` was checked for null and the function safety
+                // contract requires it to point to writable `TempochTime`
+                // storage.
                 unsafe { *out = time };
                 TempochStatus::Ok
             }
@@ -566,7 +570,8 @@ pub unsafe extern "C" fn tempoch_time_to_format(
         };
         match encoded {
             Ok(raw) => {
-                // TODO: justify soundness — add doc comment before publishing
+                // SAFETY: `out` was checked for null and the function safety
+                // contract requires it to point to writable `f64` storage.
                 unsafe { *out = raw };
                 TempochStatus::Ok
             }
@@ -631,7 +636,9 @@ pub unsafe extern "C" fn tempoch_time_from_format(
         };
         match decoded {
             Ok(time) => {
-                // TODO: justify soundness — add doc comment before publishing
+                // SAFETY: `out` was checked for null and the function safety
+                // contract requires it to point to writable `TempochTime`
+                // storage.
                 unsafe { *out = time };
                 TempochStatus::Ok
             }
@@ -660,7 +667,9 @@ pub unsafe extern "C" fn tempoch_time_from_civil(
         let ctx = unsafe { context_or_default(context) };
         match Time::<UTC>::try_from_chrono_with(dt, ctx.as_ref()) {
             Ok(time) => {
-                // TODO: justify soundness — add doc comment before publishing
+                // SAFETY: `out` was checked for null and the function safety
+                // contract requires it to point to writable `TempochTime`
+                // storage.
                 unsafe { *out = TempochTime::from_time(time) };
                 TempochStatus::Ok
             }
@@ -686,7 +695,9 @@ pub unsafe extern "C" fn tempoch_time_to_civil(
         let ctx = unsafe { context_or_default(context) };
         match split_time::<UTC>(value).and_then(|time| time.try_to_chrono_with(ctx.as_ref())) {
             Ok(dt) => {
-                // TODO: justify soundness — add doc comment before publishing
+                // SAFETY: `out` was checked for null and the function safety
+                // contract requires it to point to writable `TempochUtc`
+                // storage.
                 unsafe { *out = TempochUtc::from_chrono(&dt) };
                 TempochStatus::Ok
             }
@@ -718,7 +729,9 @@ pub unsafe extern "C" fn tempoch_time_add_seconds(
             Second::new(value.lo_seconds),
         ) {
             Ok(time) => {
-                // TODO: justify soundness — add doc comment before publishing
+                // SAFETY: `out` was checked for null and the function safety
+                // contract requires it to point to writable `TempochTime`
+                // storage.
                 unsafe { *out = TempochTime::from_time(time + seconds) };
                 TempochStatus::Ok
             }
@@ -755,7 +768,8 @@ pub unsafe extern "C" fn tempoch_time_difference_seconds(
             Ok(v) => v,
             Err(err) => return status_from_conversion(err),
         };
-        // TODO: justify soundness — add doc comment before publishing
+        // SAFETY: `out` was checked for null and the function safety contract
+        // requires it to point to writable `f64` storage.
         unsafe { *out = (lhs_time - rhs_time).value() };
         TempochStatus::Ok
     })
