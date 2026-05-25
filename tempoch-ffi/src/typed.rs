@@ -480,6 +480,7 @@ pub unsafe extern "C" fn tempoch_time_new(
             Second::new(lo_seconds),
         ) {
             Ok(time) => {
+                // TODO: justify soundness — add doc comment before publishing
                 unsafe { *out = TempochTime::from_time(time) };
                 TempochStatus::Ok
             }
@@ -522,6 +523,7 @@ pub unsafe extern "C" fn tempoch_time_scale_convert(
         };
         match converted {
             Ok(time) => {
+                // TODO: justify soundness — add doc comment before publishing
                 unsafe { *out = time };
                 TempochStatus::Ok
             }
@@ -564,6 +566,7 @@ pub unsafe extern "C" fn tempoch_time_to_format(
         };
         match encoded {
             Ok(raw) => {
+                // TODO: justify soundness — add doc comment before publishing
                 unsafe { *out = raw };
                 TempochStatus::Ok
             }
@@ -628,6 +631,7 @@ pub unsafe extern "C" fn tempoch_time_from_format(
         };
         match decoded {
             Ok(time) => {
+                // TODO: justify soundness — add doc comment before publishing
                 unsafe { *out = time };
                 TempochStatus::Ok
             }
@@ -656,6 +660,7 @@ pub unsafe extern "C" fn tempoch_time_from_civil(
         let ctx = unsafe { context_or_default(context) };
         match Time::<UTC>::try_from_chrono_with(dt, ctx.as_ref()) {
             Ok(time) => {
+                // TODO: justify soundness — add doc comment before publishing
                 unsafe { *out = TempochTime::from_time(time) };
                 TempochStatus::Ok
             }
@@ -681,6 +686,7 @@ pub unsafe extern "C" fn tempoch_time_to_civil(
         let ctx = unsafe { context_or_default(context) };
         match split_time::<UTC>(value).and_then(|time| time.try_to_chrono_with(ctx.as_ref())) {
             Ok(dt) => {
+                // TODO: justify soundness — add doc comment before publishing
                 unsafe { *out = TempochUtc::from_chrono(&dt) };
                 TempochStatus::Ok
             }
@@ -712,6 +718,7 @@ pub unsafe extern "C" fn tempoch_time_add_seconds(
             Second::new(value.lo_seconds),
         ) {
             Ok(time) => {
+                // TODO: justify soundness — add doc comment before publishing
                 unsafe { *out = TempochTime::from_time(time + seconds) };
                 TempochStatus::Ok
             }
@@ -748,6 +755,7 @@ pub unsafe extern "C" fn tempoch_time_difference_seconds(
             Ok(v) => v,
             Err(err) => return status_from_conversion(err),
         };
+        // TODO: justify soundness — add doc comment before publishing
         unsafe { *out = (lhs_time - rhs_time).value() };
         TempochStatus::Ok
     })

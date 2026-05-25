@@ -59,6 +59,7 @@ pub unsafe extern "C" fn tempoch_period_mjd_new(
         if candidate.try_to_period().is_err() {
             return TempochStatus::InvalidPeriod;
         }
+        // TODO: justify soundness — add doc comment before publishing
         unsafe { *out = candidate };
         TempochStatus::Ok
     })
@@ -103,6 +104,7 @@ pub unsafe extern "C" fn tempoch_period_mjd_intersection(
         };
         match pa.intersection(&pb) {
             Some(result) => {
+                // TODO: justify soundness — add doc comment before publishing
                 unsafe { *out = TempochPeriodMjd::from_period(&result) };
                 TempochStatus::Ok
             }
@@ -121,6 +123,7 @@ pub unsafe extern "C" fn tempoch_period_mjd_intersection(
 #[no_mangle]
 pub unsafe extern "C" fn tempoch_period_mjd_free(ptr: *mut TempochPeriodMjd, count: usize) {
     if !ptr.is_null() && count > 0 {
+        // TODO: justify soundness — add doc comment before publishing
         unsafe {
             let _ = Box::from_raw(std::ptr::slice_from_raw_parts_mut(ptr, count));
         }
@@ -166,6 +169,7 @@ fn periods_to_heap(
     let count = boxed.len();
     let ptr = boxed.as_mut_ptr();
     std::mem::forget(boxed);
+    // TODO: justify soundness — add doc comment before publishing
     unsafe {
         *out = ptr;
         *out_count = count;
@@ -213,6 +217,7 @@ pub unsafe extern "C" fn tempoch_period_mjd_union(
             Err(status) => return status,
         };
         let result = pa.union(&pb);
+        // TODO: justify soundness — add doc comment before publishing
         unsafe {
             *out_count = result.len();
             for (i, p) in result.iter().enumerate() {
@@ -341,6 +346,7 @@ pub unsafe extern "C" fn tempoch_period_list_intersect(
             } else if ptr.is_null() {
                 Err(TempochStatus::NullPointer)
             } else {
+                // TODO: justify soundness — add doc comment before publishing
                 unsafe { slice_to_periods(ptr, cnt) }
             }
         };
@@ -393,6 +399,7 @@ pub unsafe extern "C" fn tempoch_period_list_union(
             } else if ptr.is_null() {
                 Err(TempochStatus::NullPointer)
             } else {
+                // TODO: justify soundness — add doc comment before publishing
                 unsafe { slice_to_periods(ptr, cnt) }
             }
         };

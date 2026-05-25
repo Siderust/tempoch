@@ -27,6 +27,7 @@ pub unsafe extern "C" fn tempoch_context_create_default(
         let ctx = Box::new(TempochContext {
             inner: TimeContext::new(),
         });
+        // TODO: justify soundness — add doc comment before publishing
         unsafe { *out = Box::into_raw(ctx) };
         TempochStatus::Ok
     })
@@ -47,6 +48,7 @@ pub unsafe extern "C" fn tempoch_context_create_with_builtin_eop(
         let ctx = Box::new(TempochContext {
             inner: TimeContext::with_builtin_eop(),
         });
+        // TODO: justify soundness — add doc comment before publishing
         unsafe { *out = Box::into_raw(ctx) };
         TempochStatus::Ok
     })
@@ -68,6 +70,7 @@ pub unsafe extern "C" fn tempoch_context_allow_pre_definition_utc(
         }
         let derived = unsafe { (*handle).inner.clone().allow_pre_definition_utc() };
         let ctx = Box::new(TempochContext { inner: derived });
+        // TODO: justify soundness — add doc comment before publishing
         unsafe { *out = Box::into_raw(ctx) };
         TempochStatus::Ok
     })
