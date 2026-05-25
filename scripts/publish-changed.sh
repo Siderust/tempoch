@@ -14,11 +14,14 @@
 #                     reachable release tag (v[0-9]*) that is an ancestor of HEAD.
 #                     On an exact-tag build, uses the tag *before* the current one.
 #   CARGO_REGISTRY_TOKEN  Required for actual publishing (cargo publish reads it).
+#   PUBLISH_INDEX_TIMEOUT_SECONDS  Max seconds to wait for a newly published
+#                     crate version to become visible. Defaults to 300.
 #
 # Exit codes:
 #   0  All publishable changed packages published (or dry-run complete).
 #   1  A soundness TODO was found in an FFI crate being published.
 #   2  --confirm-ffi was not passed but an FFI crate would be published.
+#   3  A published crate version did not appear in the registry index in time.
 
 set -euo pipefail
 
@@ -54,6 +57,72 @@ fi
 
 # ── Map changed paths to workspace packages ─────────────────────────────────
 MANIFEST_JSON=$(cargo metadata --no-deps --format-version 1)
+ORDERED_PACKAGES=$(CHANGED_FILES="$CHANGED_FILES" MANIFEST_JSON="$MANIFEST_JSON" python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+data = json.loads(os.environ["MANIFEST_JSON"])
+changed_files = set(os.environ["CHANGED_FILES"].splitlines())
+workspace_root = Path.cwd().resolve()
+root_manifest_changed = "Cargo.toml" in changed_files
+
+packages = data["packages"]
+by_name = {pkg["name"]: pkg for pkg in packages}
+workspace_names = set(by_name)
+
+deps = {pkg["name"]: set() for pkg in packages}
+for pkg in packages:
+    for dep in pkg.get("dependencies", []):
+        # Publishing only needs normal/build workspace dependencies ordered
+        # first. Dev-dependencies are excluded to avoid false cycles in crates
+        # that test against another workspace member.
+        if dep.get("kind") == "dev":
+            continue
+        if dep.get("path") and dep["name"] in workspace_names:
+            deps[pkg["name"]].add(dep["name"])
+
+ordered = []
+state = {}
+
+
+def visit(name):
+    status = state.get(name)
+    if status == "visiting":
+        raise SystemExit(f"workspace dependency cycle involving {name}")
+    if status == "visited":
+        return
+    state[name] = "visiting"
+    for dep_name in sorted(deps[name]):
+        visit(dep_name)
+    state[name] = "visited"
+    ordered.append(name)
+
+
+for pkg in packages:
+    visit(pkg["name"])
+
+for name in ordered:
+    pkg = by_name[name]
+    manifest = Path(pkg["manifest_path"]).resolve()
+    pkg_dir = manifest.parent
+    pkg_rel = str(pkg_dir.relative_to(workspace_root))
+    changed = root_manifest_changed or any(
+        path == pkg_rel or path.startswith(pkg_rel + "/") for path in changed_files
+    )
+    print(
+        json.dumps(
+            {
+                "name": pkg["name"],
+                "version": pkg["version"],
+                "manifest_path": pkg["manifest_path"],
+                "publish": pkg.get("publish"),
+                "changed": changed,
+            }
+        )
+    )
+PY
+)
 
 is_ffi_crate() {
     local name="$1" manifest="$2"
@@ -70,11 +139,32 @@ has_soundness_todo() {
     return 1
 }
 
+wait_for_crate_version() {
+    local name="$1" version="$2"
+    local timeout="${PUBLISH_INDEX_TIMEOUT_SECONDS:-300}"
+    local elapsed=0
+    local interval=10
+
+    echo "Waiting for ${name} ${version} to appear in the registry index..."
+    while (( elapsed <= timeout )); do
+        if cargo info "${name}@${version}" >/dev/null 2>&1; then
+            echo "Registry has ${name} ${version}."
+            return 0
+        fi
+        sleep "$interval"
+        elapsed=$((elapsed + interval))
+    done
+
+    echo "ERROR: ${name} ${version} did not appear in the registry index within ${timeout}s." >&2
+    return 3
+}
+
 PUBLISHED=0
 SKIPPED=0
 
 while IFS= read -r pkg_json; do
     name=$(echo "$pkg_json" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['name'])")
+    version=$(echo "$pkg_json" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['version'])")
     manifest=$(echo "$pkg_json" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['manifest_path'])")
     publish=$(echo "$pkg_json" | python3 -c "
 import sys, json
@@ -83,6 +173,7 @@ p = d.get('publish')
 # publish: null means publishable; publish: [] means publish=false
 print('false' if p is not None and len(p) == 0 else 'true')
 ")
+    changed=$(echo "$pkg_json" | python3 -c "import sys,json; d=json.load(sys.stdin); print('true' if d['changed'] else 'false')")
 
     # Skip non-publishable crates
     if [[ "$publish" == "false" ]]; then
@@ -91,10 +182,10 @@ print('false' if p is not None and len(p) == 0 else 'true')
         continue
     fi
 
-    # Check if any source file under this package changed
-    pkg_dir=$(dirname "$manifest")
-    pkg_rel=$(realpath --relative-to="$(pwd)" "$pkg_dir")
-    if ! echo "$CHANGED_FILES" | grep -q "^${pkg_rel}/"; then
+    # Check if the package changed. Root Cargo.toml changes count for every
+    # package because workspace-inherited fields such as package version can
+    # change without touching the package directory.
+    if [[ "$changed" != "true" ]]; then
         echo "SKIP (unchanged): $name"
         ((SKIPPED++)) || true
         continue
@@ -118,16 +209,11 @@ print('false' if p is not None and len(p) == 0 else 'true')
     else
         echo "Publishing: $name"
         eval "$cmd"
-        sleep 30
+        wait_for_crate_version "$name" "$version"
     fi
     ((PUBLISHED++)) || true
 
-done < <(echo "$MANIFEST_JSON" | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-for pkg in data['packages']:
-    print(json.dumps({'name': pkg['name'], 'manifest_path': pkg['manifest_path'], 'publish': pkg.get('publish')}))
-")
+done < <(echo "$ORDERED_PACKAGES")
 
 echo ""
 echo "Done. Published: ${PUBLISHED}, Skipped: ${SKIPPED}."
