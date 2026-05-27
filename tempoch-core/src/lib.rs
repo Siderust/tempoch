@@ -21,7 +21,7 @@
 //!   and interpreted through the active UTC-TAI table when civil labels are
 //!   needed.
 //!
-//! - [`Time::new`] builds from a raw scalar when `F` is [`InfallibleFormatForScale`](crate::InfallibleFormatForScale) for `S` (**NaN panics**; ±∞ allowed at rest). POSIX [`Unix`] instants still use [`Time::try_new`] / [`Time::try_new_with`] because decoding depends on leap-second tables.
+//! - [`Time::new`] builds from a raw scalar when `F` is [`InfallibleFormatForScale`] for `S` (**NaN panics**; ±∞ allowed at rest). POSIX [`Unix`] instants still use [`Time::try_new`] / [`Time::try_new_with`] because decoding depends on leap-second tables.
 //! - [`Time::try_new`] / [`Time::try_new_with`] surface **domain** decode failures only (UTC policy, leap seconds, …); callers must not pass **NaN**.
 //! - `UTC`: civil (`chrono`) and POSIX ([`Unix`]); `TAI`: GPS ([`GPS`])
 //! - Unified targets: [`Time::to`], [`Time::try_to`], [`Time::to_with`]. Prefer
@@ -39,7 +39,7 @@
 //!
 //! - [`foundation`]: shared sealed traits, typed constants, and error types.
 //! - [`model`]: [`Time`], scale markers, and conversion targets.
-//! - [`format`]: external format markers and format conversion traits.
+//! - `format`: external format markers and format conversion traits.
 //! - `encoding`: crate-local JD/MJD/J2000/Unix arithmetic helpers.
 //! - [`earth`]: ΔT, EOP, and [`TimeContext`] Earth-rotation policy.
 //! - [`data`]: runtime access to bundled and optionally refreshed time-data tables.

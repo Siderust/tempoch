@@ -9,7 +9,7 @@
 //! - [`Scale`] markers such as [`TT`], [`TAI`], [`UTC`], and [`UT1`]
 //! - unified conversion targets via `time.to::<Target>()`, `try_to`, and
 //!   `to_with`
-//! - [`constats`] for epoch [`Time`] helpers plus [`qtty::Day`] / [`qtty::Second`]
+//! - [`constats`] for epoch [`Time`] helpers plus `qtty::Day` / `qtty::Second`
 //!   scratch constants
 
 pub use tempoch_core::{

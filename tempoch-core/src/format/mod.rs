@@ -16,14 +16,14 @@
 //!
 //! [`JulianDate<S>`], [`ModifiedJulianDate<S>`], [`UnixTime`], and [`GpsTime`] implement
 //! [`Into`] into the default-tagged [`crate::Time`] instant on their scale (`Time<S>`,
-//! [`Time<UTC>`](crate::Time<crate::UTC>), [`Time<TAI>`](crate::Time<crate::TAI>)), equivalent to [`Time::to_j2000s`].
+//! [`Time<UTC>`](crate::Time<crate::UTC>), [`Time<TAI>`](crate::Time<crate::TAI>)), equivalent to `Time::to_j2000s`.
 //! [`crate::Interval::try_new`] therefore accepts encoded endpoints wherever `Into<crate::Time<S>>` is required (including [`crate::Period`]).
 //!
 //! [`J2000Seconds<S>`] is a type alias for [`crate::Time<S>`]; prefer it when you want an explicit name for the default tag.
 //!
 //! # Main types
 //!
-//! - [`TimeFormat`](crate::format::TimeFormat) — sealed marker trait (`JD`, `MJD`, …).
+//! - [`TimeFormat`] — sealed marker trait (`JD`, `MJD`, …).
 //! - [`FormatForScale<S>`] — witness that format `F` can encode scale `S`.
 //! - [`InfallibleFormatForScale<S>`] — witness that the round-trip is
 //!   context-free (except where the format itself requires a context, e.g. Unix).

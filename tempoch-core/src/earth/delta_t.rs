@@ -346,7 +346,7 @@ fn delta_t_seconds_unconstrained(jd_ut: Day) -> Second {
 ///
 /// `delta_t_seconds` accepts a UT1 Julian Date and returns
 /// [`ConversionError::Ut1HorizonExceeded`] beyond this horizon. For a typed
-/// [`Time<UT1, MJD>`] view, build via [`crate::format::MJD`] helpers from this day.
+/// `Time<UT1, MJD>` view, build via `crate::format::MJD` helpers from this day.
 pub const DELTA_T_PREDICTION_HORIZON_MJD: Day = MODERN_DELTA_T_END_MJD;
 
 #[cfg(test)]
