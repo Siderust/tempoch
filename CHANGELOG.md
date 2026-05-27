@@ -3,6 +3,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Added `ExactDuration`, an opaque signed nanosecond duration type with checked, saturating, and panicking arithmetic; explicit lossy `f64` conversion; quantum-based rounding; `qtty` conversion; and serde support as `{"sec": i64, "ns": i32}`.
+- Added exact-duration integration for `Time<S, F>`: exact differences, exact add/subtract, and epoch-relative round/floor/ceil helpers. Existing subtraction behavior is preserved for compatibility.
+- Added new sealed time-scale markers: `ET`, `GPST`, `GST`, `BDT`, and `QZSST`, including GNSS reference validation data.
+- Added `TimeSeries<S, F>`, an exact-step half-open time iterator with deterministic forward and reverse iteration.
+- Added `tempoch-validation` as a non-published workspace crate with reference datasets and provenance metadata.
+- Added property tests for exact-duration invariants, rounding behavior, scale-conversion round trips, and exact time add/subtract behavior.
+- Added native ISO 8601 / RFC 3339 parser/formatter for `Time<UTC>` (`parse_rfc3339`, `format_rfc3339`) with leap-second-aware parsing of the `23:59:60[.x]` form, configurable subsecond precision (0..=9 digits), and `Truncate` / `RoundHalfToEven` rounding policy via `FormatOptions`.
+- Added GNSS week / seconds-of-week format (`GnssWeek` + `GnssWeekScale` trait) implemented for `GPST`, `GST`, `BDT`, and `QZSST`, with documented rollover periods (1024 / 4096 / 8192 / 1024).
+- Added `tempoch_core::data::provenance` with a programmatic `ProvenanceSnapshot` (source URLs, SHA-256, validity horizons), and an `assert_fresh(now, max_age)` freshness checker exposed at the crate root as `time_data_provenance()` and `assert_time_data_fresh(...)`.
+
+### Changed
+
+- Extended the scale-conversion matrix to cover the new ET and GNSS scales alongside existing TAI, TT, TDB, TCG, TCB, UT1, and UTC routes.
+- Documented shipped accuracy classes, validation status, and remaining roadmap items without referencing external comparison projects.
+
+### Roadmap
+
+- Still pending: `no_std` split for `tempoch-core`, CCSDS time-code parsers, formal-verification (Kani) harnesses, and FFI/WASM/Python ABI updates.
+
+
 ## [0.6.1] - 2026-05-25
 
 ### Changed

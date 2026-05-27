@@ -1,0 +1,7 @@
+label,scale,utc_iso,tai_minus_utc_s,nominal_tai_minus_scale_s
+gps_week_0_second_0,GPST,1980-01-06T00:00:00Z,19,19
+galileo_week_0_second_0,GST,1999-08-22T00:00:00Z,32,19
+beidou_week_0_second_0,BDT,2006-01-01T00:00:00Z,33,33
+qzss_aligned_with_gpst,QZSST,2010-09-11T00:00:00Z,34,19
+gps_week_1024_rollover,GPST,1999-08-22T00:00:00Z,32,19
+gps_week_2048_rollover,GPST,2019-04-07T00:00:00Z,37,19

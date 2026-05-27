@@ -13,7 +13,9 @@ use crate::format::TimeFormat;
 use crate::foundation::error::ConversionError;
 use crate::foundation::sealed::Sealed;
 use crate::model::scale::conversion::{ContextScaleConvert, InfallibleScaleConvert};
-use crate::model::scale::{CoordinateScale, Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
+use crate::model::scale::{
+    CoordinateScale, Scale, BDT, ET, GPST, GST, QZSST, TAI, TCB, TCG, TDB, TT, UT1, UTC,
+};
 use crate::model::time::Time;
 
 /// Unified conversion target for `Time<S, F>::try_to::<T>()`.
@@ -144,12 +146,22 @@ default_context_scale_target!(TDB => UT1);
 default_context_scale_target!(TCG => UT1);
 default_context_scale_target!(TCB => UT1);
 default_context_scale_target!(UTC => UT1);
+default_context_scale_target!(ET => UT1);
+default_context_scale_target!(GPST => UT1);
+default_context_scale_target!(GST => UT1);
+default_context_scale_target!(QZSST => UT1);
+default_context_scale_target!(BDT => UT1);
 default_context_scale_target!(UT1 => TT);
 default_context_scale_target!(UT1 => TAI);
 default_context_scale_target!(UT1 => TDB);
 default_context_scale_target!(UT1 => TCG);
 default_context_scale_target!(UT1 => TCB);
 default_context_scale_target!(UT1 => UTC);
+default_context_scale_target!(UT1 => ET);
+default_context_scale_target!(UT1 => GPST);
+default_context_scale_target!(UT1 => GST);
+default_context_scale_target!(UT1 => QZSST);
+default_context_scale_target!(UT1 => BDT);
 
 impl<S: Scale + InfallibleScaleConvert<UTC>, SrcF: TimeFormat> ConversionTarget<S, SrcF> for Unix {
     type Output = Time<UTC, Unix>;

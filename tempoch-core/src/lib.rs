@@ -70,6 +70,10 @@ pub(crate) use tempoch_time_data::generated::{MODERN_DELTA_T_END_MJD, MODERN_DEL
 pub use earth::eop;
 pub use foundation::{constats, error};
 
+pub use data::provenance::{
+    assert_fresh as assert_time_data_fresh, provenance as time_data_provenance, DataHorizons,
+    FreshnessError, ProvenanceSnapshot, SourceUrls,
+};
 #[cfg(feature = "runtime-data-fetch")]
 pub use data::runtime_data::{
     fetch_latest_time_data, refresh_runtime_time_data, update_runtime_time_data,
@@ -80,8 +84,9 @@ pub use earth::delta_t::{
 };
 pub use features::TimeInstant;
 pub use format::{
-    FormatForScale, GpsTime, InfallibleFormatForScale, J2000Seconds, J2000s, JulianDate,
-    ModifiedJulianDate, TimeFormat, Unix, UnixTime, GPS, JD, MJD,
+    FormatForScale, FormatOptions, FormatPrecision, GnssWeek, GnssWeekScale, GpsTime,
+    InfallibleFormatForScale, J2000Seconds, J2000s, JulianDate, ModifiedJulianDate, TimeFormat,
+    Unix, UnixTime, GPS, JD, MJD,
 };
 pub use foundation::constats::{
     gps_epoch_jd_tai, gps_epoch_jd_utc, gps_epoch_tai, iau_time_epoch_t0_jd, j2000_jd_tt,
@@ -92,11 +97,18 @@ pub use foundation::constats::{
     TDB_TT_MODEL_HIGH_ACCURACY_START_JD_DAY, TT_MINUS_TAI, UNIX_EPOCH_JD_DAY, UNIX_EPOCH_MJD_DAY,
     UTC_DEFINED_FROM_MJD_DAY,
 };
+pub use foundation::duration::{DurationError, ExactDuration, NANOS_PER_SECOND};
 pub use foundation::error::{ConversionError, TimeDataError};
-pub use model::scale::{ContinuousScale, CoordinateScale, Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
+pub use model::scale::{
+    ContinuousScale, CoordinateScale, Scale, BDT, ET, GPST, GST, QZSST, TAI, TCB, TCG, TDB, TT,
+    UT1, UTC,
+};
 pub use model::target::{ContextConversionTarget, ConversionTarget, InfallibleConversionTarget};
 pub use model::time::Time;
-pub use period::{complement_within, Interval, InvalidIntervalError, Period, PeriodListError};
+pub use period::{
+    complement_within, series::TimeSeries, series::TimeSeriesError, Interval, InvalidIntervalError,
+    Period, PeriodListError,
+};
 pub use tempoch_time_data::generated::{
     EOP_END_MJD, EOP_OBSERVED_END_MJD, EOP_START_MJD, MODERN_DELTA_T_OBSERVED_END_MJD,
 };

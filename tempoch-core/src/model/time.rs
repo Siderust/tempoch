@@ -265,6 +265,76 @@ impl<S: CoordinateScale, F: InfallibleFormatForScale<S>> Time<S, F> {
     }
 }
 
+impl<S: CoordinateScale, F: TimeFormat> Time<S, F> {
+    /// Exact-precision duration from `other` to `self`.
+    ///
+    /// Unlike the [`Sub`] implementation that returns a `Quantity<F::Unit>`
+    /// (and therefore goes through `f64`), this method projects the difference
+    /// into [`crate::ExactDuration`], which has 1 ns resolution and no f64
+    /// rounding in the difference itself. Note however that the split-f64
+    /// instant storage on `Time<S>` is still f64-backed: this method is exact
+    /// **for the difference of two stored instants**, not a proof that every
+    /// `Time` round-trip preserves nanosecond precision. See the W1
+    /// documentation in `foundation::duration` for details.
+    ///
+    /// Returns [`crate::DurationError::Overflow`] only if the difference is
+    /// outside the i128-nanosecond range (≈ ±170 Gyr), which is unreachable
+    /// for any physical astronomy use case.
+    #[inline]
+    pub fn diff_exact(self, other: Self) -> Result<crate::ExactDuration, crate::DurationError> {
+        let delta: Second = self.instant - other.instant;
+        crate::ExactDuration::try_from_quantity(delta)
+    }
+
+    /// Shift this instant by an [`crate::ExactDuration`]. The shift goes
+    /// through f64 at the split-storage boundary; the input duration retains
+    /// its exact representation for the caller.
+    #[inline]
+    pub fn add_exact(self, delta: crate::ExactDuration) -> Self {
+        let secs = Second::new(delta.as_seconds_f64());
+        Self {
+            instant: self.instant + secs,
+            _fmt: PhantomData,
+        }
+    }
+
+    /// Shift this instant backward by an [`crate::ExactDuration`].
+    #[inline]
+    pub fn sub_exact(self, delta: crate::ExactDuration) -> Self {
+        let secs = Second::new(delta.as_seconds_f64());
+        Self {
+            instant: self.instant - secs,
+            _fmt: PhantomData,
+        }
+    }
+
+    /// Round this instant to the nearest multiple of `quantum` measured from
+    /// `epoch`. Banker's rounding (half-to-even) at the quantum boundary.
+    /// Returns `self` unchanged on overflow.
+    pub fn round_to_epoch(self, epoch: Self, quantum: crate::ExactDuration) -> Self {
+        match self.diff_exact(epoch) {
+            Ok(d) => epoch.add_exact(d.round_to(quantum)),
+            Err(_) => self,
+        }
+    }
+
+    /// Floor this instant toward `epoch − ∞` at `quantum`.
+    pub fn floor_to_epoch(self, epoch: Self, quantum: crate::ExactDuration) -> Self {
+        match self.diff_exact(epoch) {
+            Ok(d) => epoch.add_exact(d.floor_to(quantum)),
+            Err(_) => self,
+        }
+    }
+
+    /// Ceil this instant toward `epoch + ∞` at `quantum`.
+    pub fn ceil_to_epoch(self, epoch: Self, quantum: crate::ExactDuration) -> Self {
+        match self.diff_exact(epoch) {
+            Ok(d) => epoch.add_exact(d.ceil_to(quantum)),
+            Err(_) => self,
+        }
+    }
+}
+
 impl<S: CoordinateScale, F> Time<S, F>
 where
     F: FormatForScale<S>,

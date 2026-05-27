@@ -40,6 +40,10 @@ pub use traits::{FormatForScale, InfallibleFormatForScale};
 mod impls;
 
 mod chrono;
+pub mod iso;
+pub use iso::{FormatOptions, FormatPrecision};
+pub mod gnss_week;
+pub use gnss_week::{GnssWeek, GnssWeekScale};
 
 /// Julian day instant on scale `S` (`JD` tag).
 pub type JulianDate<S> = crate::model::time::Time<S, JD>;
