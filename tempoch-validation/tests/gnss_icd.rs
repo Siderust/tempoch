@@ -11,7 +11,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use qtty::Second;
-use tempoch::{ExactDuration, Time, BDT, GPST, GST, QZSST, TAI};
+use tempoch::{ConversionError, ExactDuration, Time, BDT, GPST, GST, QZSST, TAI, UTC};
 use tempoch_validation::tolerance::GNSS_TAI_NS;
 
 fn data_path() -> PathBuf {
@@ -24,6 +24,7 @@ fn data_path() -> PathBuf {
 struct Row {
     label: String,
     scale: String,
+    utc_iso: String,
     nominal_tai_minus_scale_s: f64,
 }
 
@@ -39,6 +40,7 @@ fn parse_rows() -> Vec<Row> {
         rows.push(Row {
             label: cols[0].to_string(),
             scale: cols[1].to_string(),
+            utc_iso: cols[2].to_string(),
             nominal_tai_minus_scale_s: cols[4].parse().expect("offset"),
         });
     }
@@ -81,6 +83,17 @@ fn offset_ns(scale: &str) -> i128 {
         .as_nanos_i128()
 }
 
+/// Convert UTC `Time` to GNSS week components, dispatching on the scale label.
+fn to_gnss_week(utc: Time<UTC>, scale: &str) -> Result<tempoch::GnssWeek, ConversionError> {
+    match scale {
+        "GPST" => utc.to::<GPST>().to_gnss_week(),
+        "GST" => utc.to::<GST>().to_gnss_week(),
+        "QZSST" => utc.to::<QZSST>().to_gnss_week(),
+        "BDT" => utc.to::<BDT>().to_gnss_week(),
+        other => panic!("unknown scale {other}"),
+    }
+}
+
 #[test]
 fn icd_integer_offsets_match() {
     let rows = parse_rows();
@@ -97,6 +110,92 @@ fn icd_integer_offsets_match() {
             got_ns,
             expected_ns,
             drift
+        );
+    }
+}
+
+/// For each row that marks a constellation epoch (week 0 / second 0), verify
+/// that parsing the UTC ISO timestamp and converting to the appropriate GNSS
+/// scale yields exactly (week=0, sow=0, ns=0).
+#[test]
+fn epoch_utc_parses_to_week_zero_second_zero() {
+    let rows = parse_rows();
+    // Filter to epoch rows only (label contains "week_0_second_0").
+    let epoch_rows: Vec<_> = rows
+        .iter()
+        .filter(|r| r.label.contains("week_0_second_0"))
+        .collect();
+    assert!(
+        !epoch_rows.is_empty(),
+        "no epoch rows found in gnss epochs.csv"
+    );
+    for row in epoch_rows {
+        let utc = Time::<UTC>::parse_rfc3339(&row.utc_iso).unwrap_or_else(|e| {
+            panic!(
+                "failed to parse utc_iso '{}' for {}: {e:?}",
+                row.utc_iso, row.label
+            )
+        });
+        let gw = to_gnss_week(utc, &row.scale)
+            .unwrap_or_else(|e| panic!("to_gnss_week failed for {}: {e:?}", row.label));
+        assert_eq!(
+            gw.week, 0,
+            "{}: expected week=0, got {}",
+            row.label, gw.week
+        );
+        assert_eq!(
+            gw.seconds_of_week, 0,
+            "{}: expected sow=0, got {}",
+            row.label, gw.seconds_of_week
+        );
+        assert_eq!(
+            gw.subsecond_nanos, 0,
+            "{}: expected ns=0, got {}",
+            row.label, gw.subsecond_nanos
+        );
+    }
+}
+
+/// For rollover rows, verify the UTC ISO timestamp yields the expected *full*
+/// week number with no error.
+///
+/// [`to_gnss_week`] returns the full week count since the constellation epoch
+/// (no modulo applied). GPS week boundaries do **not** coincide with UTC
+/// midnight because GPST = TAI − 19 s and TAI−UTC ≠ 19 s outside the GPS
+/// epoch; `sow ≠ 0` at UTC midnight at rollover dates.
+#[test]
+fn rollover_utc_parses_to_expected_week() {
+    let rows = parse_rows();
+    for row in &rows {
+        let expected_week: Option<u32> = if row.label == "gps_week_1024_rollover" {
+            Some(1024) // 1999-08-22T00:00:00 UTC → GPST full week 1024
+        } else if row.label == "gps_week_2048_rollover" {
+            Some(2048) // 2019-04-07T00:00:00 UTC → GPST full week 2048
+        } else {
+            None
+        };
+        let Some(expected_week) = expected_week else {
+            continue;
+        };
+        let utc = Time::<UTC>::parse_rfc3339(&row.utc_iso).unwrap_or_else(|e| {
+            panic!(
+                "failed to parse utc_iso '{}' for {}: {e:?}",
+                row.utc_iso, row.label
+            )
+        });
+        let gw = to_gnss_week(utc, &row.scale)
+            .unwrap_or_else(|e| panic!("to_gnss_week failed for {}: {e:?}", row.label));
+        assert_eq!(
+            gw.week, expected_week,
+            "{}: expected full week={expected_week}, got {}",
+            row.label, gw.week
+        );
+        // Sanity: sow must be strictly less than one full week.
+        assert!(
+            gw.seconds_of_week < 604_800,
+            "{}: sow {} out of range",
+            row.label,
+            gw.seconds_of_week
         );
     }
 }

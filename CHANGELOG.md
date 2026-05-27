@@ -17,6 +17,17 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Added GNSS week / seconds-of-week format (`GnssWeek` + `GnssWeekScale` trait) implemented for `GPST`, `GST`, `BDT`, and `QZSST`, with documented rollover periods (1024 / 4096 / 8192 / 1024).
 - Added `tempoch_core::data::provenance` with a programmatic `ProvenanceSnapshot` (source URLs, SHA-256, validity horizons), and an `assert_fresh(now, max_age)` freshness checker exposed at the crate root as `time_data_provenance()` and `assert_time_data_fresh(...)`.
 
+### Fixed
+
+- `ExactDuration` serde `Serialize` now returns an error if the stored value exceeds the `i64` seconds range; previously the boundary projection silently saturated.
+- `ExactDuration::from_quantity` now panics unconditionally on non-finite or overflowing input in all build profiles; the previous release-mode silent-fallback path has been removed.
+- `ExactDuration::round_to`, `floor_to`, and `ceil_to` now use saturating arithmetic throughout to prevent overflow on extreme (`i128::MIN/MAX`) inputs.
+- RFC 3339 parser now validates `:60` leap-second inputs against the compiled UTC-TAI table; dates that were not announced leap seconds (e.g. `2023-06-15T23:59:60Z`) now return `ConversionError::InvalidLeapSecond` instead of being accepted.
+- `render_with_digits` (non-standard subsecond digit counts 1, 2, 4, 5, 7, 8) now carries rounding overflow into the seconds field; previously a round-up at `.999...` would produce a digit count exceeding the requested width.
+- GNSS epoch tests now assert exact `(week=0, sow=0, ns=0)` rather than a `< 5` seconds-of-week tolerance; the epoch constants were already exact in f64 arithmetic.
+- `TimeSeries::new` now returns `TimeSeriesError::DurationOverflow` when the computed element count would exceed `u64::MAX`; previously the count was silently truncated.
+- Corrected documentation for `Time::add_exact`, `sub_exact`, and `diff_exact`: these operations cross an f64 boundary at the split-storage layer. The ~120–150 ns ULP error near J2000 ± 50 years is now documented explicitly. The operations are **not** exact in the sense of sub-nanosecond fidelity for arbitrary instants.
+
 ### Changed
 
 - Extended the scale-conversion matrix to cover the new ET and GNSS scales alongside existing TAI, TT, TDB, TCG, TCB, UT1, and UTC routes.

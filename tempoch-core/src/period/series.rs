@@ -123,8 +123,14 @@ impl<S: CoordinateScale, F: TimeFormat> TimeSeries<S, F> {
             let q = span_abs / step_abs;
             let r = span_abs % step_abs;
             if r == 0 {
+                if q > u64::MAX as u128 {
+                    return Err(TimeSeriesError::DurationOverflow);
+                }
                 q as u64
             } else {
+                if q >= u64::MAX as u128 {
+                    return Err(TimeSeriesError::DurationOverflow);
+                }
                 (q + 1) as u64
             }
         };

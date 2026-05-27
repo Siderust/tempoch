@@ -160,29 +160,11 @@ impl ExactDuration {
     }
 
     /// Infallible variant for callers that already know the input is finite
-    /// and in-range. Panics in debug builds on invalid input; in release builds
-    /// returns the closest representable value (saturating at the i128 bounds).
+    /// and in-range. Panics on non-finite or overflowing input.
+    /// For fallible conversion, use [`try_from_quantity`](Self::try_from_quantity).
     #[inline]
     pub fn from_quantity<U: TimeUnit>(q: Quantity<U>) -> Self {
-        match Self::try_from_quantity(q) {
-            Ok(v) => v,
-            Err(_) => {
-                debug_assert!(false, "ExactDuration::from_quantity: invalid input");
-                let secs = q.to::<SecondUnit>().value();
-                let nanos_f = secs * (NANOS_PER_SECOND as f64);
-                if !nanos_f.is_finite() {
-                    Self::ZERO
-                } else if nanos_f >= (i128::MAX as f64) {
-                    Self::MAX
-                } else if nanos_f <= (i128::MIN as f64) {
-                    Self::MIN
-                } else {
-                    Self {
-                        nanos: nanos_f as i128,
-                    }
-                }
-            }
-        }
+        Self::try_from_quantity(q).unwrap_or_else(|e| panic!("ExactDuration::from_quantity: {e}"))
     }
 
     /// Explicit lossy `f64` → `ExactDuration` boundary. Named so the lossy
@@ -322,13 +304,13 @@ impl ExactDuration {
         let rem = n - div * q;
         let abs_rem = if rem < 0 { -rem } else { rem };
         let half = q / 2;
-        let result = if abs_rem * 2 < q {
+        let result = if abs_rem.saturating_mul(2) < q {
             div
-        } else if abs_rem * 2 > q {
+        } else if abs_rem.saturating_mul(2) > q {
             if n >= 0 {
-                div + 1
+                div.saturating_add(1)
             } else {
-                div - 1
+                div.saturating_sub(1)
             }
         } else {
             // Exact half — banker's rounding to even.
@@ -336,12 +318,14 @@ impl ExactDuration {
             if div % 2 == 0 {
                 div
             } else if n >= 0 {
-                div + 1
+                div.saturating_add(1)
             } else {
-                div - 1
+                div.saturating_sub(1)
             }
         };
-        Self { nanos: result * q }
+        Self {
+            nanos: result.saturating_mul(q),
+        }
     }
 
     /// Floor this duration toward negative infinity at `quantum`.
@@ -354,9 +338,9 @@ impl ExactDuration {
         let n = self.nanos;
         let div = n / q;
         let rem = n - div * q;
-        let floor_div = if rem < 0 { div - 1 } else { div };
+        let floor_div = if rem < 0 { div.saturating_sub(1) } else { div };
         Self {
-            nanos: floor_div * q,
+            nanos: floor_div.saturating_mul(q),
         }
     }
 
@@ -370,9 +354,9 @@ impl ExactDuration {
         let n = self.nanos;
         let div = n / q;
         let rem = n - div * q;
-        let ceil_div = if rem > 0 { div + 1 } else { div };
+        let ceil_div = if rem > 0 { div.saturating_add(1) } else { div };
         Self {
-            nanos: ceil_div * q,
+            nanos: ceil_div.saturating_mul(q),
         }
     }
 }
@@ -478,6 +462,12 @@ mod serde_impl {
 
     impl Serialize for ExactDuration {
         fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            let secs = self.nanos / NANOS_PER_SECOND;
+            if secs > i64::MAX as i128 || secs < i64::MIN as i128 {
+                return Err(serde::ser::Error::custom(
+                    "ExactDuration out of i64 seconds range; duration cannot be serialized",
+                ));
+            }
             let (sec, ns) = self.as_seconds_i64_nanos();
             Boundary { sec, ns }.serialize(serializer)
         }
@@ -752,5 +742,43 @@ mod tests {
         assert_eq!(n.round_to(ExactDuration::ZERO), n);
         assert_eq!(n.floor_to(ExactDuration::from_nanos(-1)), n);
         assert_eq!(n.ceil_to(ExactDuration::ZERO), n);
+    }
+
+    #[test]
+    fn round_floor_ceil_saturate_at_extremes() {
+        let q = ExactDuration::SECOND;
+        // Near i128::MAX: result should not panic, may saturate.
+        let near_max = ExactDuration::MAX;
+        let _ = near_max.round_to(q);
+        let _ = near_max.floor_to(q);
+        let _ = near_max.ceil_to(q);
+        let near_min = ExactDuration::MIN;
+        let _ = near_min.round_to(q);
+        let _ = near_min.floor_to(q);
+        let _ = near_min.ceil_to(q);
+    }
+
+    #[test]
+    #[should_panic(expected = "ExactDuration::from_quantity")]
+    fn from_quantity_panics_on_nan() {
+        let _ = ExactDuration::from_quantity(Second::new(f64::NAN));
+    }
+
+    #[test]
+    #[should_panic(expected = "ExactDuration::from_quantity")]
+    fn from_quantity_panics_on_overflow() {
+        let _ = ExactDuration::from_quantity(Second::new(1.0e40));
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn serde_serialize_fails_on_out_of_range() {
+        // Duration of ~300 billion years — exceeds i64 seconds range.
+        let huge = ExactDuration::MAX;
+        let result = serde_json::to_string(&huge);
+        assert!(
+            result.is_err(),
+            "expected serde error for out-of-range duration"
+        );
     }
 }

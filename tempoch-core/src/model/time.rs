@@ -270,12 +270,15 @@ impl<S: CoordinateScale, F: TimeFormat> Time<S, F> {
     ///
     /// Unlike the [`Sub`] implementation that returns a `Quantity<F::Unit>`
     /// (and therefore goes through `f64`), this method projects the difference
-    /// into [`crate::ExactDuration`], which has 1 ns resolution and no f64
-    /// rounding in the difference itself. Note however that the split-f64
-    /// instant storage on `Time<S>` is still f64-backed: this method is exact
-    /// **for the difference of two stored instants**, not a proof that every
-    /// `Time` round-trip preserves nanosecond precision. See the W1
-    /// documentation in `foundation::duration` for details.
+    /// into [`crate::ExactDuration`], which has 1 ns resolution.
+    ///
+    /// **Precision note:** `Time<S>` stores instants as a compensated split-f64
+    /// pair. Near typical astronomy epochs (e.g. J2000 ± 50 years) the ULP of
+    /// the high word is roughly 120–150 ns, so differences smaller than that
+    /// may not round-trip exactly. For sub-microsecond precision on two instants
+    /// that were originally constructed from the same `ExactDuration` arithmetic,
+    /// the compensation pair reduces the error significantly, but this is not a
+    /// guarantee of nanosecond parity for arbitrary instants.
     ///
     /// Returns [`crate::DurationError::Overflow`] only if the difference is
     /// outside the i128-nanosecond range (≈ ±170 Gyr), which is unreachable
@@ -286,9 +289,13 @@ impl<S: CoordinateScale, F: TimeFormat> Time<S, F> {
         crate::ExactDuration::try_from_quantity(delta)
     }
 
-    /// Shift this instant by an [`crate::ExactDuration`]. The shift goes
-    /// through f64 at the split-storage boundary; the input duration retains
-    /// its exact representation for the caller.
+    /// Shift this instant by an [`crate::ExactDuration`].
+    ///
+    /// **Precision note:** The shift crosses an f64 boundary at the split-storage
+    /// layer. For shifts much smaller than the ULP of the instant's high word
+    /// (~120–150 ns near J2000 ± 50 years), the stored instant may not differ
+    /// from the original. Use compensated arithmetic when sub-microsecond
+    /// shift fidelity matters.
     #[inline]
     pub fn add_exact(self, delta: crate::ExactDuration) -> Self {
         let secs = Second::new(delta.as_seconds_f64());
@@ -299,6 +306,8 @@ impl<S: CoordinateScale, F: TimeFormat> Time<S, F> {
     }
 
     /// Shift this instant backward by an [`crate::ExactDuration`].
+    ///
+    /// See [`Self::add_exact`] for precision notes.
     #[inline]
     pub fn sub_exact(self, delta: crate::ExactDuration) -> Self {
         let secs = Second::new(delta.as_seconds_f64());

@@ -33,6 +33,7 @@
 
 use chrono::{DateTime, NaiveDateTime, SecondsFormat, Utc};
 
+use crate::data::runtime_data::time_data_tai_seconds_is_in_leap_window;
 use crate::earth::context::TimeContext;
 use crate::foundation::error::ConversionError;
 use crate::model::scale::UTC;
@@ -175,6 +176,13 @@ fn parse_rfc3339_manual(s: &str, ctx: &TimeContext) -> Result<Time<UTC>, Convers
         // 1ns nudge → instant equivalent to HH:60:00, leap-second second; then add `frac_nanos` ns.
         let shifted =
             utc_almost.add_exact(crate::ExactDuration::from_nanos(1 + frac_nanos as i128));
+        // Validate that this date/time actually had an announced positive leap second.
+        if !time_data_tai_seconds_is_in_leap_window(
+            ctx.time_data(),
+            shifted.to_j2000s().total_seconds(),
+        ) {
+            return Err(ConversionError::InvalidLeapSecond);
+        }
         return Ok(shifted);
     }
 
@@ -296,17 +304,23 @@ fn format_chrono_rfc3339(dt: DateTime<Utc>, opts: FormatOptions) -> String {
 }
 
 fn render_with_digits(dt: DateTime<Utc>, digits: usize, opts: FormatOptions) -> String {
-    let base = dt.format("%Y-%m-%dT%H:%M:%S").to_string();
     let nanos = dt.timestamp_subsec_nanos();
     let scale = 10_u32.pow(9 - digits as u32);
     let mut truncated = nanos / scale;
     let rem = nanos % scale;
+    let mut effective_dt = dt;
     if matches!(opts.precision, FormatPrecision::RoundHalfToEven) {
         let half = scale / 2;
         if rem > half || (rem == half && truncated % 2 == 1) {
             truncated = truncated.saturating_add(1);
         }
     }
+    let threshold = 10_u32.pow(digits as u32);
+    if truncated >= threshold {
+        truncated -= threshold;
+        effective_dt = dt + chrono::TimeDelta::try_seconds(1).unwrap_or_default();
+    }
+    let base = effective_dt.format("%Y-%m-%dT%H:%M:%S").to_string();
     let mut s = format!("{base}.{:0width$}", truncated, width = digits);
     if opts.include_zulu {
         s.push('Z');
@@ -451,5 +465,20 @@ mod tests {
         };
         let s = t.format_rfc3339(opts);
         assert_eq!(s, "2024-06-15T12:34:56");
+    }
+
+    #[test]
+    fn reject_invalid_leap_second_date() {
+        // 2023-06-15 was NOT a leap-second day; :60 must be rejected.
+        let result = Time::<UTC>::parse_rfc3339("2023-06-15T23:59:60Z");
+        assert!(
+            matches!(result, Err(ConversionError::InvalidLeapSecond)),
+            "expected InvalidLeapSecond, got {result:?}"
+        );
+        // 2016-12-31 WAS a leap-second day; must parse successfully.
+        assert!(
+            Time::<UTC>::parse_rfc3339("2016-12-31T23:59:60Z").is_ok(),
+            "expected Ok for valid leap-second date"
+        );
     }
 }

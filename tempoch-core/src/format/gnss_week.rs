@@ -171,13 +171,15 @@ mod tests {
 
     #[test]
     fn gps_epoch_is_week_zero_second_zero() {
-        // 1980-01-06T00:00:00 UTC = GPST week 0.
+        // 1980-01-06T00:00:00 UTC = GPST week 0, second 0, ns 0.
+        // The f64 arithmetic round-trips exactly for this epoch because the
+        // epoch constant was empirically anchored by this very conversion.
         let utc = parse_rfc3339_utc("1980-01-06T00:00:00Z").unwrap();
         let gpst: Time<GPST> = utc.to::<GPST>();
         let gw = gpst.to_gnss_week().unwrap();
         assert_eq!(gw.week, 0, "expected week 0, got {gw:?}");
-        // Allow a tiny seconds_of_week drift from f64 epoch precision.
-        assert!(gw.seconds_of_week < 5, "expected ≤5s, got {gw:?}");
+        assert_eq!(gw.seconds_of_week, 0, "expected sow=0, got {gw:?}");
+        assert_eq!(gw.subsecond_nanos, 0, "expected ns=0, got {gw:?}");
     }
 
     #[test]
@@ -196,19 +198,24 @@ mod tests {
 
     #[test]
     fn galileo_epoch_alignment() {
-        // 1999-08-22T00:00:00 UTC = GST week 0.
+        // 1999-08-22T00:00:00 UTC = GST week 0, second 0, ns 0.
         let utc = parse_rfc3339_utc("1999-08-22T00:00:00Z").unwrap();
         let gst: Time<GST> = utc.to::<GST>();
         let gw = gst.to_gnss_week().unwrap();
         assert_eq!(gw.week, 0, "expected GST week 0, got {gw:?}");
+        assert_eq!(gw.seconds_of_week, 0, "expected sow=0, got {gw:?}");
+        assert_eq!(gw.subsecond_nanos, 0, "expected ns=0, got {gw:?}");
     }
 
     #[test]
     fn beidou_epoch_alignment() {
+        // 2006-01-01T00:00:00 UTC = BDT week 0, second 0, ns 0.
         let utc = parse_rfc3339_utc("2006-01-01T00:00:00Z").unwrap();
         let bdt: Time<BDT> = utc.to::<BDT>();
         let gw = bdt.to_gnss_week().unwrap();
         assert_eq!(gw.week, 0, "expected BDT week 0, got {gw:?}");
+        assert_eq!(gw.seconds_of_week, 0, "expected sow=0, got {gw:?}");
+        assert_eq!(gw.subsecond_nanos, 0, "expected ns=0, got {gw:?}");
     }
 
     #[test]
