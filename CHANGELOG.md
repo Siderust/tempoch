@@ -3,6 +3,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- `tempoch-time-data`: migrated to thin re-export of `siderust-archive-data` (from `archive/` submodule). The embedded 5.3 MB IERS EOP array (`eop_data.rs`) has been removed; EOP data is now loaded at runtime via `TimeDataManager`.
+- `archive/` added as a git submodule (`https://github.com/Siderust/archive.git`). Hosts `siderust-archive-data` crate with canonical IERS types, parsers, provenance model, and runtime data management.
+
+### Removed
+
+- `tempoch-time-data/src/generated/eop_data.rs`: 19,910-line embedded IERS EOP array deleted. EOP is no longer bundled with the compiled binary by default; it must be fetched at runtime.
+
 ## [0.6.3] - 2026-05-28
 
 ### Fixed

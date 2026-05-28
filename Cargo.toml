@@ -8,3 +8,4 @@ members = [
     "tempoch-time-data-updater",
     "tempoch-validation",
 ]
+exclude = ["archive"]

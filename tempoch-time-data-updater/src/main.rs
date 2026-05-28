@@ -224,8 +224,12 @@ fn apply_bundle_to_paths(
         paths.eop_data.display(),
         tag(eop_changed),
         data.eop_points().len(),
-        data.eop_observed_end_mjd(),
-        data.eop_end_mjd(),
+        data.eop_observed_end_mjd()
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "none".to_string()),
+        data.eop_end_mjd()
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "none".to_string()),
     );
     println!(
         "{} {}",

@@ -68,22 +68,28 @@ pub extern "C" fn tempoch_const_delta_t_prediction_horizon_mjd() -> f64 {
     DELTA_T_PREDICTION_HORIZON_MJD.value()
 }
 
-/// First MJD covered by the compiled IERS EOP series.
+/// First MJD covered by the active IERS EOP series, or NaN when no EOP data is loaded.
 #[no_mangle]
 pub extern "C" fn tempoch_const_eop_start_mjd() -> f64 {
-    tempoch::EOP_START_MJD.value()
+    tempoch_core::eop::eop_start()
+        .map(|v| v.value())
+        .unwrap_or(f64::NAN)
 }
 
-/// Last MJD covered by the compiled IERS EOP series.
+/// Last MJD covered by the active IERS EOP series, or NaN when no EOP data is loaded.
 #[no_mangle]
 pub extern "C" fn tempoch_const_eop_end_mjd() -> f64 {
-    tempoch::EOP_END_MJD.value()
+    tempoch_core::eop::eop_end()
+        .map(|v| v.value())
+        .unwrap_or(f64::NAN)
 }
 
-/// Last MJD with *observed* (Bulletin C04) EOP data in the compiled series.
+/// Last MJD with *observed* (Bulletin C04) EOP data in the active series, or NaN when no data.
 #[no_mangle]
 pub extern "C" fn tempoch_const_eop_observed_end_mjd() -> f64 {
-    tempoch::EOP_OBSERVED_END_MJD.value()
+    tempoch_core::eop::eop_observed_end()
+        .map(|v| v.value())
+        .unwrap_or(f64::NAN)
 }
 
 /// Last MJD with modern observed ΔT data (post-1955 atomic-clock era).
@@ -139,9 +145,12 @@ mod tests {
     }
 
     #[test]
-    fn eop_range_is_ordered() {
-        assert!(tempoch_const_eop_start_mjd() < tempoch_const_eop_end_mjd());
-        assert!(tempoch_const_eop_observed_end_mjd() <= tempoch_const_eop_end_mjd());
+    fn eop_range_is_nan_without_loaded_data() {
+        // EOP data is not compiled in; without a loaded bundle the FFI
+        // functions return NaN.
+        assert!(tempoch_const_eop_start_mjd().is_nan());
+        assert!(tempoch_const_eop_end_mjd().is_nan());
+        assert!(tempoch_const_eop_observed_end_mjd().is_nan());
     }
 
     #[test]

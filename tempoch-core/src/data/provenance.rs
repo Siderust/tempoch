@@ -47,13 +47,20 @@ pub struct ProvenanceSnapshot {
     pub source_urls: SourceUrls,
 }
 
-/// Documented validity horizons of the compiled-in / loaded time-data
-/// tables, expressed in MJD UTC days.
+/// Documented validity horizons of the currently active time-data bundle,
+/// expressed in MJD UTC days.
+///
+/// EOP horizon fields are `None` when no EOP data has been loaded into the
+/// active bundle.  UTC-TAI and ΔT horizons are always present (they come from
+/// the compiled-in snapshot).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DataHorizons {
-    pub eop_start_mjd: f64,
-    pub eop_observed_end_mjd: f64,
-    pub eop_end_mjd: f64,
+    /// First MJD covered by the EOP series, or `None` when no EOP is loaded.
+    pub eop_start_mjd: Option<f64>,
+    /// Last observed (non-predicted) EOP MJD, or `None` when no EOP is loaded.
+    pub eop_observed_end_mjd: Option<f64>,
+    /// Last EOP MJD (including predictions), or `None` when no EOP is loaded.
+    pub eop_end_mjd: Option<f64>,
     pub modern_delta_t_observed_end_mjd: f64,
     pub delta_t_prediction_horizon_mjd: f64,
 }
@@ -124,9 +131,9 @@ pub fn provenance() -> ProvenanceSnapshot {
         delta_t_predictions_sha256: raw.delta_t_predictions_sha256().to_string(),
         eop_finals_sha256: raw.eop_finals_sha256().to_string(),
         horizons: DataHorizons {
-            eop_start_mjd: crate::EOP_START_MJD.value(),
-            eop_observed_end_mjd: crate::EOP_OBSERVED_END_MJD.value(),
-            eop_end_mjd: crate::EOP_END_MJD.value(),
+            eop_start_mjd: bundle.eop_start_mjd().map(|v| v as f64),
+            eop_observed_end_mjd: bundle.eop_observed_end_mjd().map(|v| v as f64),
+            eop_end_mjd: bundle.eop_end_mjd().map(|v| v as f64),
             modern_delta_t_observed_end_mjd: crate::MODERN_DELTA_T_OBSERVED_END_MJD.value(),
             delta_t_prediction_horizon_mjd: crate::DELTA_T_PREDICTION_HORIZON_MJD.value(),
         },
@@ -154,13 +161,76 @@ pub fn assert_fresh(now: DateTime<Utc>, max_age: chrono::Duration) -> Result<(),
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::runtime_data::with_test_time_data;
+    use tempoch_time_data::{EopPoint, TimeDataBundle, TimeDataProvenance, UtcTaiSegment};
+
+    fn eop_bundle_for_provenance_test() -> TimeDataBundle {
+        TimeDataBundle::new(
+            vec![UtcTaiSegment {
+                start_mjd: 41317,
+                end_mjd: None,
+                base_seconds: 37.0,
+                reference_mjd: 41317.0,
+                slope_seconds_per_day: 0.0,
+            }],
+            vec![(41714.0, 42.184), (42369.0, 45.0)],
+            41714.0,
+            vec![
+                EopPoint {
+                    mjd: 50000,
+                    pm_observed: true,
+                    ut1_observed: true,
+                    nutation_observed: true,
+                    pm_xp_arcsec: Some(0.1),
+                    pm_yp_arcsec: Some(0.1),
+                    ut1_minus_utc_seconds: 0.3,
+                    lod_milliseconds: Some(1.0),
+                    dx_milliarcsec: None,
+                    dy_milliarcsec: None,
+                },
+                EopPoint {
+                    mjd: 50001,
+                    pm_observed: false,
+                    ut1_observed: false,
+                    nutation_observed: false,
+                    pm_xp_arcsec: Some(0.2),
+                    pm_yp_arcsec: Some(0.2),
+                    ut1_minus_utc_seconds: 0.4,
+                    lod_milliseconds: None,
+                    dx_milliarcsec: None,
+                    dy_milliarcsec: None,
+                },
+            ],
+            TimeDataProvenance::new("2024-01-01T00:00:00Z", "aaaa", "bbbb", "cccc", "dddd"),
+        )
+    }
 
     #[test]
     fn snapshot_has_documented_horizons() {
+        let bundle = eop_bundle_for_provenance_test();
+        with_test_time_data(bundle, || {
+            let s = provenance();
+            let eop_start = s.horizons.eop_start_mjd.expect("EOP start should be Some");
+            let eop_end = s.horizons.eop_end_mjd.expect("EOP end should be Some");
+            let eop_obs_end = s
+                .horizons
+                .eop_observed_end_mjd
+                .expect("EOP observed end should be Some");
+            assert!(eop_end > eop_start);
+            assert!(eop_obs_end >= eop_start);
+            assert!(eop_obs_end <= eop_end);
+            assert!(s.horizons.delta_t_prediction_horizon_mjd > 0.0);
+        });
+    }
+
+    #[test]
+    fn compiled_bundle_eop_horizons_are_none() {
+        // The compiled bundle intentionally has no EOP data.
+        // Operators must explicitly fetch EOP via TimeDataManager.
         let s = provenance();
-        assert!(s.horizons.eop_end_mjd > s.horizons.eop_start_mjd);
-        assert!(s.horizons.eop_observed_end_mjd >= s.horizons.eop_start_mjd);
-        assert!(s.horizons.eop_observed_end_mjd <= s.horizons.eop_end_mjd);
+        assert!(s.horizons.eop_start_mjd.is_none());
+        assert!(s.horizons.eop_observed_end_mjd.is_none());
+        assert!(s.horizons.eop_end_mjd.is_none());
         assert!(s.horizons.delta_t_prediction_horizon_mjd > 0.0);
     }
 

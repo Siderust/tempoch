@@ -61,9 +61,9 @@ pub mod foundation;
 pub mod model;
 pub mod period;
 
-// Compiled tables live in `tempoch-time-data`; these are crate-local shims for tests and helpers.
+// Compiled ΔT tables live in `tempoch-time-data`; these are crate-local shims for tests and helpers.
 #[allow(unused_imports)]
-pub(crate) use tempoch_time_data::generated::{eop_data, time_data};
+pub(crate) use tempoch_time_data::generated::time_data;
 #[allow(unused_imports)]
 pub(crate) use tempoch_time_data::generated::{MODERN_DELTA_T_END_MJD, MODERN_DELTA_T_START_MJD};
 
@@ -82,6 +82,7 @@ pub use earth::context::TimeContext;
 pub use earth::delta_t::{
     delta_t_seconds, delta_t_seconds_extrapolated, DELTA_T_PREDICTION_HORIZON_MJD,
 };
+pub use earth::eop::{eop_end, eop_observed_end, eop_start};
 pub use features::TimeInstant;
 pub use format::{
     FormatForScale, FormatOptions, FormatPrecision, GnssWeek, GnssWeekScale, GpsTime,
@@ -109,9 +110,7 @@ pub use period::{
     complement_within, series::TimeSeries, series::TimeSeriesError, Interval, InvalidIntervalError,
     Period, PeriodListError,
 };
-pub use tempoch_time_data::generated::{
-    EOP_END_MJD, EOP_OBSERVED_END_MJD, EOP_START_MJD, MODERN_DELTA_T_OBSERVED_END_MJD,
-};
+pub use tempoch_time_data::generated::MODERN_DELTA_T_OBSERVED_END_MJD;
 
 #[cfg(feature = "serde")]
 pub use features::tagged;
