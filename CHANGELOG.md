@@ -3,6 +3,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.3] - 2026-05-28
+
+### Fixed
+
+- `tempoch-time-data`: marked `publish = false` in `Cargo.toml`. The crate was
+  already published at 0.1.3 on crates.io; the publish-changed script was
+  attempting to re-publish the same version on every workspace release because the
+  root `Cargo.toml` change triggered all packages to be considered changed.
+  Dependents (`tempoch-core`) continue to resolve it via the registry version field.
+
 ## [0.6.2] - 2026-05-28
 
 ### Added
