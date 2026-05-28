@@ -44,7 +44,7 @@ use crate::foundation::error::ConversionError;
 use crate::model::scale::{CoordinateScale, BDT, GPST, GST, QZSST};
 use crate::model::time::Time;
 
-const SECONDS_PER_WEEK: qtty::i128::Second = qtty::i128::Week::new(7 * 86_400);
+const SECONDS_PER_WEEK: qtty::i128::Second = qtty::i128::Second::new(7 * 86_400);
 
 /// Decomposed GNSS week-number form.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
