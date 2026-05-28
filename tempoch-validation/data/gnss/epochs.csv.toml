@@ -1,0 +1,18 @@
+# GNSS epochs CSV provenance
+
+source = "ICD-compiled reference points"
+generated_by = "hand-curated from public ICDs (no third-party toolchain required)"
+generation_command = "see data/gnss/README.md"
+license = "ICDs are publicly published; this CSV records facts and is reusable under AGPL-3.0-only as part of tempoch-validation"
+last_reviewed = "2026-05-27"
+
+[icds]
+gps = "IS-GPS-200, Rev. R"
+galileo = "Galileo OS-SIS-ICD Issue 2.1"
+beidou = "BeiDou ICD-OS Version 2.1"
+qzss = "QZSS IS-QZSS-PNT-005"
+
+[tolerance]
+# Nominal integer-offset relationships are exact per the ICDs; allow 1 ns
+# numerical noise from f64 round-trip through split storage on Time<S>.
+gnss_tai_offset_ns = 1

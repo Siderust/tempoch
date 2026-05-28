@@ -3,7 +3,63 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-05-28
+
+### Added
+
+- Added `ExactDuration`, an opaque signed nanosecond duration backed by `i128` with range ≈ ±5.4 × 10²¹ yr. Provides three boundary-projection variants: `as_seconds_i64_nanos_checked` (exact, returns `Err(DurationError::Overflow)` when the seconds component does not fit in `i64`), `as_seconds_i64_nanos_saturating` (documented lossy for extreme values), and `as_seconds_i64_nanos` (panics on overflow). Also provides `from_canonical_seconds_nanos` (requires `|nanos| < 1_000_000_000` and matching signs when `seconds ≠ 0`) plus explicit lossy `f64` conversion, quantum-based rounding, `qtty` conversion, and serde support as `{"sec": i64, "ns": i32}`.
+- Added `DurationError::NonCanonical` variant returned by `from_canonical_seconds_nanos` when the signs of `seconds` and `nanos` do not match.
+- Added `try_add_exact` / `try_sub_exact` fallible variants on `Time<S, F>` that return `Err(DurationError)` when the duration's seconds component exceeds the `i64` range. The infallible `add_exact` / `sub_exact` delegate to these and panic on overflow; no silent saturation occurs.
+- Added `ExactDuration::from_nanoseconds_i(qtty::i64::Nanosecond)` and `as_nanoseconds_i(self) -> Result<qtty::i64::Nanosecond, DurationError>` for typed integer nanosecond access without going through `f64`.
+- Added `ExactDuration::from_seconds_i(qtty::i64::Second)` for whole-second construction via a typed quantity.
+- Added `GnssWeek::subsecond_nanoseconds_u() -> qtty::u32::Nanosecond` and `GnssWeek::seconds_of_week_u() -> qtty::u32::Second` typed read accessors, and `GnssWeek::new_with_nanoseconds_u(week, seconds_of_week, qtty::u32::Nanosecond)` typed constructor. Unsigned quantities are used because week, seconds-of-week, and subsecond nanoseconds are non-negative fields.
+- Added exact-duration integration for `Time<S, F>`: ExactDuration-based difference and add/subtract helpers with split-f64 precision limits documented; epoch-relative round/floor/ceil helpers. Existing subtraction behavior is preserved for compatibility.
+- Added new sealed time-scale markers: `ET`, `GPST`, `GST`, `BDT`, and `QZSST`, including GNSS reference validation data.
+- Added `TimeSeries<S, F>`, a time iterator with exact integer-nanosecond step scheduling and deterministic by-index construction (no accumulated repeated-add drift); produced `Time<S>` values retain split-f64 precision limits.
+- Added `tempoch-validation` as a non-published workspace crate with reference datasets and provenance metadata.
+- Added property tests for exact-duration invariants, rounding behavior, scale-conversion round trips, and exact time add/subtract behavior.
+- Added native ISO 8601 / RFC 3339 parser/formatter for `Time<UTC>` (`parse_rfc3339`, `format_rfc3339`) with:
+  - Leap-second-aware **parsing** of the `23:59:60[.x]` form, validated against the compiled UTC-TAI table.
+  - Leap-second-aware **formatting**: `format_rfc3339_with` / `try_format_rfc3339_with` emit `23:59:60[.fraction]Z` for instants inside an announced positive leap-second window. Detection uses `Time<UTC>::is_leap_second_with(ctx)`, which consults the compiled UTC–TAI table, as the authoritative signal.
+  - Configurable subsecond precision (0–9 digits) with `Truncate` / `RoundHalfToEven` rounding applied uniformly, including correct carry overflow into the next second.
+  - Parser hardening: empty fractional part (e.g. `12:34:56.Z`) and more than 9 fractional digits are rejected.
+  - Fallible formatting API `try_format_rfc3339_with(...) -> Result<String, ConversionError>`; the infallible `format_rfc3339_with` delegates to it and returns `"<invalid>"` on error (documented).
+- Added GNSS week / seconds-of-week format (`GnssWeek` + `GnssWeekScale` trait) implemented for `GPST`, `GST`, `BDT`, and `QZSST`, with documented rollover periods (1024 / 4096 / 8192 / 1024) and overflow detection in `to_gnss_week` (returns `ConversionError::OutOfRange` for week numbers exceeding `u32::MAX`).
+- Added `tempoch_core::data::provenance` with a programmatic `ProvenanceSnapshot` (source URLs, SHA-256, validity horizons), and an `assert_fresh(now, max_age)` freshness checker exposed at the crate root as `time_data_provenance()` and `assert_time_data_fresh(...)`.
+
+### Fixed
+
+- `ExactDuration` serde `Serialize` now returns an error if the stored value exceeds the `i64` seconds range; previously the boundary projection silently saturated.
+- `ExactDuration::from_quantity` now panics unconditionally on non-finite or overflowing input in all build profiles; the previous release-mode silent-fallback path has been removed.
+- `ExactDuration::round_to`, `floor_to`, and `ceil_to` now use saturating arithmetic throughout to prevent overflow on extreme (`i128::MIN/MAX`) inputs.
+- RFC 3339 parser now validates `:60` leap-second inputs against the compiled UTC-TAI table; dates that were not announced leap seconds (e.g. `2023-06-15T23:59:60Z`) now return `ConversionError::InvalidLeapSecond` instead of being accepted.
+- RFC 3339 parser now rejects empty fractional parts (e.g. `2024-06-15T12:34:56.Z`) and inputs with more than 9 fractional digits; previously these were silently accepted or truncated.
+- RFC 3339 formatter now applies `FormatPrecision::Truncate` and `FormatPrecision::RoundHalfToEven` uniformly for all `subsecond_digits` in 0–9, including correct carry overflow at `.999999999` into the next second.
+- `Time::add_exact` and `sub_exact` now panic on overflow instead of silently saturating when the `ExactDuration`'s seconds component exceeds the `i64` range. New fallible `try_add_exact` / `try_sub_exact` variants return `Err(DurationError::Overflow)` in that case. Both use a two-step split-arithmetic path: the `ExactDuration` is decomposed into whole-second and nanosecond-remainder components, each added to the split-f64 storage separately. This avoids collapsing the full duration to a single `f64` before addition, preserving sub-millisecond precision for typical astronomical epochs.
+- `Time::diff_exact` documentation now accurately states that the result is bounded by split-f64 storage precision (~100–150 ns near J2000 ± 50 years), not sub-nanosecond fidelity for arbitrary instants.
+- `Time::to_gnss_week` now uses integer arithmetic on the split-f64 storage pair: the integer-second component is extracted and subtracted from the (exact-integer) epoch constant in `i128`, and the subsecond remainder is computed from the fractional part alone. This eliminates the catastrophic cancellation that previously occurred when subtracting the epoch from the total J2000 seconds in a single `f64`.
+- `Time::from_gnss_week` now constructs the epoch `Time<S>` and calls `add_exact` with the exact `ExactDuration` since epoch, instead of collapsing total nanoseconds to `f64` before adding the epoch offset. Nanosecond fields are preserved to within split-f64 storage precision (≤ 200 ns for typical GNSS epochs).
+- GNSS round-trip tests now validate `subsecond_nanos` within ±200 ns and require exact `seconds_of_week` matching; the previous test allowed ≤1 second drift and did not validate subsecond fields.
+- `render_with_digits` (non-standard subsecond digit counts 1, 2, 4, 5, 7, 8) now carries rounding overflow into the seconds field; previously a round-up at `.999...` would produce a digit count exceeding the requested width.
+
+### Changed
+
+- Extended the scale-conversion matrix to cover the new ET and GNSS scales alongside existing TAI, TT, TDB, TCG, TCB, UT1, and UTC routes.
+- Documented shipped accuracy classes, validation status, and remaining roadmap items without referencing external comparison projects.
+
+### Roadmap
+
+- Still pending: `no_std` split for `tempoch-core`, CCSDS time-code parsers, formal-verification (Kani) harnesses, and FFI/WASM/Python ABI updates.
+
+
 ## [0.6.1] - 2026-05-25
+
+### Changed
+
+- Bumped workspace and crate versions to `0.6.2` for a patch release. Aligned
+  `qtty` dependency to `0.8.4` in `tempoch-time-data` and synchronized the
+  `tempoch-ffi` ABI line to `0.6.2 -> 602`.
+
 
 ### Changed
 

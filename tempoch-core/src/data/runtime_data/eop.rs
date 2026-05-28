@@ -69,12 +69,12 @@ pub(crate) fn time_data_eop_at(data: &TimeDataBundle, mjd_utc: DayQuantity) -> O
 
     Some(EopValues {
         mjd_utc,
-        pm_xp_arcsec: lerp_opt(lo.pm_xp_arcsec, hi.pm_xp_arcsec),
-        pm_yp_arcsec: lerp_opt(lo.pm_yp_arcsec, hi.pm_yp_arcsec),
+        pm_xp: lerp_opt(lo.pm_xp_arcsec, hi.pm_xp_arcsec).map(qtty::f64::Arcsecond::new),
+        pm_yp: lerp_opt(lo.pm_yp_arcsec, hi.pm_yp_arcsec).map(qtty::f64::Arcsecond::new),
         ut1_minus_utc,
-        lod_milliseconds,
-        dx_milliarcsec: lerp_opt(lo.dx_milliarcsec, hi.dx_milliarcsec),
-        dy_milliarcsec: lerp_opt(lo.dy_milliarcsec, hi.dy_milliarcsec),
+        lod: lod_milliseconds.map(qtty::f64::Millisecond::new),
+        dx: lerp_opt(lo.dx_milliarcsec, hi.dx_milliarcsec).map(qtty::f64::MilliArcsecond::new),
+        dy: lerp_opt(lo.dy_milliarcsec, hi.dy_milliarcsec).map(qtty::f64::MilliArcsecond::new),
         ut1_observed: lo.ut1_observed && hi.ut1_observed,
     })
 }

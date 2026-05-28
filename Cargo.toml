@@ -6,4 +6,5 @@ members = [
     "tempoch-ffi",
     "tempoch-time-data",
     "tempoch-time-data-updater",
+    "tempoch-validation",
 ]

@@ -13,7 +13,9 @@ use core::fmt;
 use crate::Time;
 
 mod error;
+pub mod series;
 pub use error::{InvalidIntervalError, PeriodListError};
+pub use series::{TimeSeries, TimeSeriesError};
 
 #[inline]
 fn partial_max<T: PartialOrd + Copy>(a: T, b: T) -> T {

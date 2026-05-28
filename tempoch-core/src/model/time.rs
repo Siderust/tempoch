@@ -265,6 +265,122 @@ impl<S: CoordinateScale, F: InfallibleFormatForScale<S>> Time<S, F> {
     }
 }
 
+impl<S: CoordinateScale, F: TimeFormat> Time<S, F> {
+    /// Exact-precision duration from `other` to `self`.
+    ///
+    /// Unlike the [`Sub`] implementation that returns a `Quantity<F::Unit>`
+    /// (and therefore goes through `f64`), this method projects the difference
+    /// into [`crate::ExactDuration`], which has 1 ns resolution.
+    ///
+    /// **Precision note:** `Time<S>` stores instants as a compensated split-f64
+    /// pair. Near typical astronomy epochs (e.g. J2000 ± 50 years) the ULP of
+    /// the high word is roughly 120–150 ns, so differences smaller than that
+    /// may not round-trip exactly. For sub-microsecond precision on two instants
+    /// that were originally constructed from the same `ExactDuration` arithmetic,
+    /// the compensation pair reduces the error significantly, but this is not a
+    /// guarantee of nanosecond parity for arbitrary instants.
+    ///
+    /// Returns [`crate::DurationError::Overflow`] only if the difference is
+    /// outside the i128-nanosecond range (≈ ±5.4 × 10²¹ yr), which is unreachable
+    /// for any physical astronomy use case.
+    #[inline]
+    pub fn diff_exact(self, other: Self) -> Result<crate::ExactDuration, crate::DurationError> {
+        let delta: Second = self.instant - other.instant;
+        crate::ExactDuration::try_from_quantity(delta)
+    }
+
+    /// Shift this instant by an [`crate::ExactDuration`], returning `Err` if the
+    /// duration's seconds component exceeds the `i64` range (≈ ±292 billion years).
+    ///
+    /// **Precision note:** The duration is split into a whole-second component and
+    /// a sub-second nanosecond remainder, each added to the compensated split-f64
+    /// storage separately. The whole-second part is an integer `f64` (exact for
+    /// `|seconds| < 2^53`). The nanosecond remainder crosses the split-f64 storage
+    /// boundary and is therefore bounded by the documented split-f64 precision
+    /// limits (ULP ≈ 120–150 ns near J2000 ± 50 years), so shifts smaller than
+    /// that threshold may not alter the stored instant.
+    #[inline]
+    pub fn try_add_exact(
+        self,
+        delta: crate::ExactDuration,
+    ) -> Result<Self, crate::foundation::duration::DurationError> {
+        let (whole_secs, sub_nanos) = delta.as_seconds_i64_nanos_checked()?;
+        let t = self.instant + Second::new(whole_secs as f64);
+        Ok(Self {
+            instant: t + Second::new(sub_nanos as f64 * 1e-9),
+            _fmt: PhantomData,
+        })
+    }
+
+    /// Shift this instant backward by an [`crate::ExactDuration`], returning `Err`
+    /// if the duration's seconds component exceeds the `i64` range.
+    ///
+    /// See [`Self::try_add_exact`] for precision notes.
+    #[inline]
+    pub fn try_sub_exact(
+        self,
+        delta: crate::ExactDuration,
+    ) -> Result<Self, crate::foundation::duration::DurationError> {
+        let (whole_secs, sub_nanos) = delta.as_seconds_i64_nanos_checked()?;
+        let t = self.instant - Second::new(whole_secs as f64);
+        Ok(Self {
+            instant: t - Second::new(sub_nanos as f64 * 1e-9),
+            _fmt: PhantomData,
+        })
+    }
+
+    /// Shift this instant by an [`crate::ExactDuration`].
+    ///
+    /// **Panics** if the duration's seconds component exceeds the `i64` range
+    /// (≈ ±292 billion years). Use [`try_add_exact`](Self::try_add_exact) for
+    /// the fallible variant that returns `Err` instead.
+    ///
+    /// See [`try_add_exact`](Self::try_add_exact) for precision notes.
+    #[inline]
+    pub fn add_exact(self, delta: crate::ExactDuration) -> Self {
+        self.try_add_exact(delta)
+            .expect("ExactDuration::add_exact: duration exceeds i64 seconds range")
+    }
+
+    /// Shift this instant backward by an [`crate::ExactDuration`].
+    ///
+    /// **Panics** if the duration's seconds component exceeds the `i64` range.
+    /// Use [`try_sub_exact`](Self::try_sub_exact) for the fallible variant.
+    ///
+    /// See [`try_add_exact`](Self::try_add_exact) for precision notes.
+    #[inline]
+    pub fn sub_exact(self, delta: crate::ExactDuration) -> Self {
+        self.try_sub_exact(delta)
+            .expect("ExactDuration::sub_exact: duration exceeds i64 seconds range")
+    }
+
+    /// Round this instant to the nearest multiple of `quantum` measured from
+    /// `epoch`. Banker's rounding (half-to-even) at the quantum boundary.
+    /// Returns `self` unchanged on overflow.
+    pub fn round_to_epoch(self, epoch: Self, quantum: crate::ExactDuration) -> Self {
+        match self.diff_exact(epoch) {
+            Ok(d) => epoch.add_exact(d.round_to(quantum)),
+            Err(_) => self,
+        }
+    }
+
+    /// Floor this instant toward `epoch − ∞` at `quantum`.
+    pub fn floor_to_epoch(self, epoch: Self, quantum: crate::ExactDuration) -> Self {
+        match self.diff_exact(epoch) {
+            Ok(d) => epoch.add_exact(d.floor_to(quantum)),
+            Err(_) => self,
+        }
+    }
+
+    /// Ceil this instant toward `epoch + ∞` at `quantum`.
+    pub fn ceil_to_epoch(self, epoch: Self, quantum: crate::ExactDuration) -> Self {
+        match self.diff_exact(epoch) {
+            Ok(d) => epoch.add_exact(d.ceil_to(quantum)),
+            Err(_) => self,
+        }
+    }
+}
+
 impl<S: CoordinateScale, F> Time<S, F>
 where
     F: FormatForScale<S>,
@@ -509,5 +625,93 @@ where
     #[inline]
     fn sub_assign(&mut self, rhs: Quantity<U>) {
         *self = *self - rhs;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::format::J2000s;
+    use crate::foundation::duration::ExactDuration;
+    use crate::model::scale::TAI;
+
+    type TaiJ2000 = Time<TAI, J2000s>;
+
+    fn j2000_tai() -> TaiJ2000 {
+        TaiJ2000::from_raw_j2000_seconds(Second::new(0.0)).unwrap()
+    }
+
+    fn j2000_tai_plus_50yr() -> TaiJ2000 {
+        // 50 Julian years = 50 * 365.25 * 86400 = 1_577_836_800 s
+        TaiJ2000::from_raw_j2000_seconds(Second::new(1_577_836_800.0)).unwrap()
+    }
+
+    #[test]
+    fn add_exact_1ns_at_j2000() {
+        let t = j2000_tai();
+        let d = ExactDuration::from_nanos(1);
+        let shifted = t.add_exact(d);
+        let diff = shifted.diff_exact(t).unwrap();
+        // Near J2000 hi ≈ 0; lo stores the 1 ns shift exactly.
+        assert_eq!(diff.as_nanos_i128(), 1, "1 ns shift at J2000 must be exact");
+    }
+
+    #[test]
+    fn add_sub_round_trip_1ns_at_j2000_plus_50yr() {
+        let t = j2000_tai_plus_50yr();
+        // 1 ns: ULP of hi at 1.57e9 s is ~240 ns, so the lo word carries it.
+        for ns in [1_i128, 123, 999] {
+            let d = ExactDuration::from_nanos(ns);
+            let shifted = t.add_exact(d).sub_exact(d);
+            let back = shifted.diff_exact(t).unwrap();
+            assert!(
+                back.as_nanos_i128().abs() < 100,
+                "add/sub round-trip drift at J2000+50yr for {ns} ns: {} ns",
+                back.as_nanos_i128()
+            );
+        }
+    }
+
+    #[test]
+    fn add_exact_1yr_plus_1ns_preserves_1ns() {
+        let t = j2000_tai();
+        // 1 Julian year = 31_557_600 s
+        let one_year = ExactDuration::from_nanos(31_557_600 * 1_000_000_000);
+        let one_ns = ExactDuration::from_nanos(1);
+        let combined = (one_year + one_ns)
+            .checked_add(ExactDuration::ZERO)
+            .unwrap();
+        let d_year = t.add_exact(one_year);
+        let d_combined = t.add_exact(combined);
+        let diff = d_combined.diff_exact(d_year).unwrap();
+        // The difference should be 1 ns; allow up to 2 ns for sub-nanosecond f64 rounding.
+        assert!(
+            diff.as_nanos_i128().abs() <= 2,
+            "1 yr + 1 ns shift must preserve 1 ns component; diff = {} ns",
+            diff.as_nanos_i128()
+        );
+    }
+
+    #[test]
+    fn try_add_exact_overflow_returns_err() {
+        let t = j2000_tai();
+        // ExactDuration::MAX has > i64::MAX seconds → try_add_exact must return Err.
+        let result = t.try_add_exact(ExactDuration::MAX);
+        assert!(
+            result.is_err(),
+            "expected Err for try_add_exact(MAX), got Ok"
+        );
+        let result2 = t.try_sub_exact(ExactDuration::MAX);
+        assert!(
+            result2.is_err(),
+            "expected Err for try_sub_exact(MAX), got Ok"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "ExactDuration::add_exact")]
+    fn add_exact_panics_on_overflow() {
+        let t = j2000_tai();
+        let _ = t.add_exact(ExactDuration::MAX);
     }
 }

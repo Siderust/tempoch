@@ -21,13 +21,12 @@ use crate::{EOP_END_MJD, EOP_START_MJD};
 
 /// Interpolated IERS Earth Orientation Parameters at a UTC MJD.
 ///
-/// Fields carry the units used by the upstream IERS `finals2000A.all` file:
+/// All fields carry SI-coherent qtty typed quantities:
 ///
-/// - `pm_xp`, `pm_yp` are *arcseconds* of polar motion.
-/// - `ut1_minus_utc` is *seconds of time* (DUT1).
-/// - `lod` is *milliseconds of time* excess over 86 400 SI seconds. It is
-///   `None` whenever the bracketing rows do not both supply a LOD value.
-/// - `dx`, `dy` are IAU 2000A celestial pole offsets in *milliarcseconds*.
+/// - `pm_xp`, `pm_yp` — polar motion in arcseconds.
+/// - `ut1_minus_utc` — DUT1 in seconds of time.
+/// - `lod` — length-of-day excess in milliseconds of time.
+/// - `dx`, `dy` — IAU 2000A celestial pole offsets in milliarcseconds.
 ///
 /// Optional fields stay `None` when either bracketing upstream row leaves the
 /// source column blank; the API does not fabricate zero-valued PM or nutation
@@ -35,12 +34,12 @@ use crate::{EOP_END_MJD, EOP_START_MJD};
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct EopValues {
     pub mjd_utc: Day,
-    pub pm_xp_arcsec: Option<f64>,
-    pub pm_yp_arcsec: Option<f64>,
+    pub pm_xp: Option<qtty::f64::Arcsecond>,
+    pub pm_yp: Option<qtty::f64::Arcsecond>,
     pub ut1_minus_utc: Second,
-    pub lod_milliseconds: Option<f64>,
-    pub dx_milliarcsec: Option<f64>,
-    pub dy_milliarcsec: Option<f64>,
+    pub lod: Option<qtty::f64::Millisecond>,
+    pub dx: Option<qtty::f64::MilliArcsecond>,
+    pub dy: Option<qtty::f64::MilliArcsecond>,
     /// `true` when both bracketing rows are flagged observed (`I`).
     pub ut1_observed: bool,
 }
@@ -79,16 +78,16 @@ mod tests {
     fn exact_point_matches_source() {
         let mid = EOP_POINTS[EOP_POINTS.len() / 2];
         let got = builtin_eop_at(Day::new(mid.mjd as f64)).unwrap();
-        assert_eq!(got.pm_xp_arcsec, mid.pm_xp_arcsec);
-        assert_eq!(got.pm_yp_arcsec, mid.pm_yp_arcsec);
+        assert_eq!(got.pm_xp.map(|v| v.value()), mid.pm_xp_arcsec);
+        assert_eq!(got.pm_yp.map(|v| v.value()), mid.pm_yp_arcsec);
         assert!(
             (got.ut1_minus_utc.value() - mid.ut1_minus_utc_seconds).abs() < 1e-12,
             "ut1: {} vs {}",
             got.ut1_minus_utc.value(),
             mid.ut1_minus_utc_seconds
         );
-        assert_eq!(got.dx_milliarcsec, mid.dx_milliarcsec);
-        assert_eq!(got.dy_milliarcsec, mid.dy_milliarcsec);
+        assert_eq!(got.dx.map(|v| v.value()), mid.dx_milliarcsec);
+        assert_eq!(got.dy.map(|v| v.value()), mid.dy_milliarcsec);
     }
 
     #[test]
@@ -110,8 +109,8 @@ mod tests {
             .expect("generated EOP tail should include rows with blank nutation fields");
         let lo = EOP_POINTS[idx];
         let got = builtin_eop_at(Day::new(lo.mjd as f64 + 0.5)).unwrap();
-        assert_eq!(got.dx_milliarcsec, None);
-        assert_eq!(got.dy_milliarcsec, None);
+        assert_eq!(got.dx, None);
+        assert_eq!(got.dy, None);
     }
 
     #[test]

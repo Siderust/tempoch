@@ -150,6 +150,63 @@ define_scale!(
     UT1 = "UT1"
 );
 
+define_scale!(
+    /// NAIF/SPICE Ephemeris Time — compatibility marker.
+    ///
+    /// `ET` exists so users interchanging values with NAIF/CSPICE can keep the
+    /// scale label distinct in their typed code. The current implementation
+    /// routes `ET ↔ {TT, TDB, …}` through the same Fairhead–Bretagnon model
+    /// used for TDB: numerically `Time<ET>` is identical to `Time<TDB>` within
+    /// the documented model accuracy (~10 µs over 1600–2200 TT).
+    ///
+    /// Treat this as a SPICE-compatibility *label*, not a new physical
+    /// realization. A future high-precision SPICE-equivalent ET implementation
+    /// can replace the conversion without breaking callers that already use
+    /// `Time<ET>` versus `Time<TDB>`.
+    ET = "ET"
+);
+
+define_scale!(
+    /// GPS System Time. `GPST = TAI − 19 s` (nominal, exact integer offset).
+    ///
+    /// Epoch: 1980-01-06 00:00:00 UTC. Continuous SI-second clock with no
+    /// leap seconds. This marker represents the *nominal* GPS system time,
+    /// not the broadcast/realized GPST observed by a particular receiver
+    /// (which includes ionospheric/clock model corrections that are not part
+    /// of the scale itself).
+    ///
+    /// Week-number / seconds-of-week is a *format* concern (see
+    /// `format::markers`) and is intentionally separated from scale identity.
+    GPST = "GPST"
+);
+
+define_scale!(
+    /// Galileo System Time. Nominally `GST = TAI − 19 s` (identical tick rate
+    /// and integer offset to [`GPST`] today; broadcast inter-system offset
+    /// GGTO is *not* modeled here).
+    ///
+    /// Epoch: 1999-08-22 00:00:00 UTC. See [`GPST`] notes on nominal vs.
+    /// broadcast realization.
+    GST = "GST"
+);
+
+define_scale!(
+    /// BeiDou Navigation Satellite System Time. `BDT = TAI − 33 s` (nominal,
+    /// exact integer offset). Equivalently `BDT = GPST − 14 s`.
+    ///
+    /// Epoch: 2006-01-01 00:00:00 UTC. See [`GPST`] notes on nominal vs.
+    /// broadcast realization (BeiDou/GPS offset is broadcast separately and
+    /// not part of the scale).
+    BDT = "BDT"
+);
+
+define_scale!(
+    /// Quasi-Zenith Satellite System Time. Nominally aligned with [`GPST`]
+    /// (`QZSST = TAI − 19 s`). The QZSS ICD defines QZSST as steered to GPST;
+    /// observed inter-system offsets are not part of the scale.
+    QZSST = "QZSST"
+);
+
 // ── ContinuousScale witness ──────────────────────────────────────────────
 
 /// Witness that a scale is continuous and supports direct arithmetic.
@@ -166,7 +223,7 @@ macro_rules! coordinate {
         $(impl CoordinateScale for $scale {})+
     };
 }
-coordinate!(TAI, TT, TDB, TCG, TCB, UT1, UTC);
+coordinate!(TAI, TT, TDB, TCG, TCB, UT1, UTC, ET, GPST, GST, BDT, QZSST);
 
 /// Witness that a scale is both coordinate-bearing and physically continuous.
 ///
@@ -179,4 +236,4 @@ macro_rules! continuous {
         $(impl ContinuousScale for $scale {})+
     };
 }
-continuous!(TAI, TT, TDB, TCG, TCB, UT1);
+continuous!(TAI, TT, TDB, TCG, TCB, UT1, ET, GPST, GST, BDT, QZSST);

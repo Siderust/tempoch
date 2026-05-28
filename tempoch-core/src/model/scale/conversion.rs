@@ -15,7 +15,7 @@ use crate::format::JD;
 use crate::foundation::constats::{IAU_TIME_EPOCH_T0_JD_DAY, L_B, L_G, TDB0, TT_MINUS_TAI};
 use crate::foundation::error::ConversionError;
 use crate::foundation::sealed::Sealed;
-use crate::model::scale::{Scale, TAI, TCB, TCG, TDB, TT, UT1, UTC};
+use crate::model::scale::{Scale, BDT, ET, GPST, GST, QZSST, TAI, TCB, TCG, TDB, TT, UT1, UTC};
 use affn::algebra::{AffineMap1, Space, SplitPoint1, SplitQuantity};
 use qtty::unit::{Day, Second as SecondUnit};
 use qtty::{Day as JdDay, Second};
@@ -102,7 +102,7 @@ macro_rules! identity_infallible {
         )+
     };
 }
-identity_infallible!(TAI, TT, TDB, TCG, TCB, UTC, UT1);
+identity_infallible!(TAI, TT, TDB, TCG, TCB, UTC, UT1, ET, GPST, GST, BDT, QZSST);
 
 /// UTC→UTC via context uses the identity mapping so [`ContextScaleConvert`] agrees with
 /// [`InfallibleScaleConvert`] (needed for [`crate::model::target::Unix`] as a
@@ -367,6 +367,169 @@ ut1_through_tt!(TDB);
 ut1_through_tt!(TCG);
 ut1_through_tt!(TCB);
 ut1_through_tt!(UTC);
+
+// ── ET (NAIF/SPICE compatibility) ────────────────────────────────────────
+//
+// ET is implemented as a SPICE-compatibility marker that routes through TDB
+// numerically. The split into a distinct scale exists so callers
+// interchanging with NAIF/CSPICE can keep their types labelled "ET" without
+// converting to "TDB" at the call site.
+
+impl InfallibleScaleConvert<TDB> for ET {
+    #[inline]
+    fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
+        (src_hi, src_lo)
+    }
+}
+
+impl InfallibleScaleConvert<ET> for TDB {
+    #[inline]
+    fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
+        (src_hi, src_lo)
+    }
+}
+
+macro_rules! et_through_tdb {
+    ($scale:ty) => {
+        impl InfallibleScaleConvert<$scale> for ET {
+            #[inline]
+            fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
+                <TDB as InfallibleScaleConvert<$scale>>::convert(src_hi, src_lo)
+            }
+        }
+        impl InfallibleScaleConvert<ET> for $scale {
+            #[inline]
+            fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
+                <$scale as InfallibleScaleConvert<TDB>>::convert(src_hi, src_lo)
+            }
+        }
+    };
+}
+et_through_tdb!(TT);
+et_through_tdb!(TAI);
+et_through_tdb!(TCG);
+et_through_tdb!(TCB);
+et_through_tdb!(UTC);
+
+impl ContextScaleConvert<UT1> for ET {
+    #[inline]
+    fn convert_with(
+        src_hi: Second,
+        src_lo: Second,
+        ctx: &TimeContext,
+    ) -> Result<(Second, Second), ConversionError> {
+        let (tdb_hi, tdb_lo) = <ET as InfallibleScaleConvert<TDB>>::convert(src_hi, src_lo);
+        <TDB as ContextScaleConvert<UT1>>::convert_with(tdb_hi, tdb_lo, ctx)
+    }
+}
+
+impl ContextScaleConvert<ET> for UT1 {
+    #[inline]
+    fn convert_with(
+        src_hi: Second,
+        src_lo: Second,
+        ctx: &TimeContext,
+    ) -> Result<(Second, Second), ConversionError> {
+        let (tdb_hi, tdb_lo) =
+            <UT1 as ContextScaleConvert<TDB>>::convert_with(src_hi, src_lo, ctx)?;
+        Ok(<TDB as InfallibleScaleConvert<ET>>::convert(tdb_hi, tdb_lo))
+    }
+}
+
+// ── GNSS system times (fixed integer offsets from TAI) ───────────────────
+//
+// Nominal offsets:
+//   GPST  = TAI − 19 s   (epoch 1980-01-06 UTC)
+//   GST   = TAI − 19 s   (epoch 1999-08-22 UTC)
+//   QZSST = TAI − 19 s   (aligned with GPST)
+//   BDT   = TAI − 33 s   (epoch 2006-01-01 UTC; equivalently GPST − 14 s)
+//
+// These are nominal *system* times, not receiver-realized constellation
+// times — broadcast inter-system offsets (GGTO, BGTO, …) are not modeled
+// at the scale layer.
+
+/// Nominal `TAI − GPST` offset (19 s).
+pub(crate) const TAI_MINUS_GPST: Second = Second::new(19.0);
+/// Nominal `TAI − BDT` offset (33 s).
+pub(crate) const TAI_MINUS_BDT: Second = Second::new(33.0);
+
+macro_rules! gnss_via_tai_offset {
+    ($scale:ty, $offset:expr) => {
+        impl InfallibleScaleConvert<TAI> for $scale {
+            #[inline]
+            fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
+                // <scale> = TAI − offset ⇒ TAI = <scale> + offset
+                add_constant(src_hi, src_lo, $offset)
+            }
+        }
+        impl InfallibleScaleConvert<$scale> for TAI {
+            #[inline]
+            fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
+                add_constant(src_hi, src_lo, -$offset)
+            }
+        }
+    };
+}
+gnss_via_tai_offset!(GPST, TAI_MINUS_GPST);
+gnss_via_tai_offset!(GST, TAI_MINUS_GPST);
+gnss_via_tai_offset!(QZSST, TAI_MINUS_GPST);
+gnss_via_tai_offset!(BDT, TAI_MINUS_BDT);
+
+macro_rules! gnss_through_tai {
+    ($scale:ty, $other:ty) => {
+        impl InfallibleScaleConvert<$other> for $scale {
+            #[inline]
+            fn convert(src_hi: Second, src_lo: Second) -> (Second, Second) {
+                let (tai_hi, tai_lo) =
+                    <$scale as InfallibleScaleConvert<TAI>>::convert(src_hi, src_lo);
+                <TAI as InfallibleScaleConvert<$other>>::convert(tai_hi, tai_lo)
+            }
+        }
+    };
+}
+
+// Cross-GNSS conversions and GNSS↔{TT,TDB,TCG,TCB,UTC,ET}.
+macro_rules! gnss_all_targets {
+    ($scale:ty) => {
+        gnss_through_tai!($scale, TT);
+        gnss_through_tai!($scale, TDB);
+        gnss_through_tai!($scale, TCG);
+        gnss_through_tai!($scale, TCB);
+        gnss_through_tai!($scale, UTC);
+        gnss_through_tai!($scale, ET);
+        // Reverse directions:
+        gnss_through_tai!(TT, $scale);
+        gnss_through_tai!(TDB, $scale);
+        gnss_through_tai!(TCG, $scale);
+        gnss_through_tai!(TCB, $scale);
+        gnss_through_tai!(UTC, $scale);
+        gnss_through_tai!(ET, $scale);
+    };
+}
+gnss_all_targets!(GPST);
+gnss_all_targets!(GST);
+gnss_all_targets!(QZSST);
+gnss_all_targets!(BDT);
+
+// Cross-GNSS conversions (each direction explicitly).
+macro_rules! gnss_cross {
+    ($a:ty, $b:ty) => {
+        gnss_through_tai!($a, $b);
+        gnss_through_tai!($b, $a);
+    };
+}
+gnss_cross!(GPST, GST);
+gnss_cross!(GPST, QZSST);
+gnss_cross!(GPST, BDT);
+gnss_cross!(GST, QZSST);
+gnss_cross!(GST, BDT);
+gnss_cross!(QZSST, BDT);
+
+// UT1 ↔ GNSS via TT (re-use the existing ut1_through_tt pattern).
+ut1_through_tt!(GPST);
+ut1_through_tt!(GST);
+ut1_through_tt!(QZSST);
+ut1_through_tt!(BDT);
 
 #[cfg(test)]
 mod tests {

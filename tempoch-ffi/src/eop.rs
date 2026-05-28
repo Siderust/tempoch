@@ -77,12 +77,12 @@ pub unsafe extern "C" fn tempoch_eop_at(mjd_utc: f64, out: *mut TempochEopValues
                 unsafe {
                     *out = TempochEopValues {
                         mjd_utc: v.mjd_utc.value(),
-                        pm_xp_arcsec: v.pm_xp_arcsec.unwrap_or(f64::NAN),
-                        pm_yp_arcsec: v.pm_yp_arcsec.unwrap_or(f64::NAN),
+                        pm_xp_arcsec: v.pm_xp.map(|q| q.value()).unwrap_or(f64::NAN),
+                        pm_yp_arcsec: v.pm_yp.map(|q| q.value()).unwrap_or(f64::NAN),
                         ut1_minus_utc: v.ut1_minus_utc.value(),
-                        lod_milliseconds: v.lod_milliseconds.unwrap_or(f64::NAN),
-                        dx_milliarcsec: v.dx_milliarcsec.unwrap_or(f64::NAN),
-                        dy_milliarcsec: v.dy_milliarcsec.unwrap_or(f64::NAN),
+                        lod_milliseconds: v.lod.map(|q| q.value()).unwrap_or(f64::NAN),
+                        dx_milliarcsec: v.dx.map(|q| q.value()).unwrap_or(f64::NAN),
+                        dy_milliarcsec: v.dy.map(|q| q.value()).unwrap_or(f64::NAN),
                         ut1_observed: v.ut1_observed as u8,
                     };
                 }

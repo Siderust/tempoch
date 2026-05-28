@@ -1,0 +1,21 @@
+[package]
+name = "tempoch-validation"
+version = "0.1.0"
+edition = "2021"
+authors = ["VPRamon <vallespuigramon@gmail.com>"]
+description = "Cross-validation harness for tempoch (SOFA/CSPICE/IERS/GNSS-ICD goldens)."
+license = "AGPL-3.0-only"
+publish = false
+
+[features]
+default = []
+# Opt-in: regenerate committed CSVs from external toolchains (CSPICE/SOFA);
+# normal `cargo test` consumes the checked-in CSVs and never touches these.
+regenerate = []
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+tempoch = { path = "../tempoch", version = "0.6.2" }
+qtty = { version = "0.8" }
