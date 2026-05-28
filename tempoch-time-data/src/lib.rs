@@ -441,15 +441,20 @@ mod fetch_support {
     }
 
     fn fetch_text(url: &str) -> Result<DownloadedText, TimeDataError> {
-        let response = ureq::get(url)
-            .set("User-Agent", "tempoch-runtime-data/1.0")
-            .timeout(std::time::Duration::from_secs(FETCH_TIMEOUT_SECS))
+        let agent = ureq::config::Config::builder()
+            .timeout_global(Some(std::time::Duration::from_secs(FETCH_TIMEOUT_SECS)))
+            .build()
+            .new_agent();
+        let response = agent
+            .get(url)
+            .header("User-Agent", "tempoch-runtime-data/1.0")
             .call()
             .map_err(|err| TimeDataError::Download(format!("fetch {url} failed: {err}")))?;
         let bytes = {
             let mut buf = Vec::new();
-            let mut reader = response.into_reader();
-            reader
+            response
+                .into_body()
+                .into_reader()
                 .read_to_end(&mut buf)
                 .map_err(|err| TimeDataError::Download(format!("read {url} body failed: {err}")))?;
             buf

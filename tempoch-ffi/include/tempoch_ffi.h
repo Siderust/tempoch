@@ -197,7 +197,7 @@ extern "C" {
 
 // Returns the tempoch-ffi ABI version (major*10000 + minor*100 + patch).
 //
-// Current ABI line: 0.6.2 -> 602
+// Current ABI line: 0.6.3 -> 603
  uint32_t tempoch_ffi_version(void);
 
 // J2000.0 epoch as JD(TT) — 2 451 545.0.
