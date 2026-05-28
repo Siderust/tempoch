@@ -3,7 +3,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.2] - 2026-05-28
 
 ### Added
 
@@ -53,6 +53,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 
 ## [0.6.1] - 2026-05-25
+
+### Changed
+
+- Bumped workspace and crate versions to `0.6.2` for a patch release. Aligned
+  `qtty` dependency to `0.8.4` in `tempoch-time-data` and synchronized the
+  `tempoch-ffi` ABI line to `0.6.2 -> 602`.
+
 
 ### Changed
 
