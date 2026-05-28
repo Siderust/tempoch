@@ -4,7 +4,7 @@
 //! Internal IERS time-data support crate for tempoch.
 //!
 //! All types, parsers, and the runtime `TimeDataManager` are re-exported from
-//! [`siderust_archive_data::time`].  This crate contributes:
+//! [`siderust_archive::time`].  This crate contributes:
 //!
 //! * The compiled-in UTC-TAI and ΔT snapshot (`generated`).
 //! * [`bundled_time_data`]: the default offline fallback bundle (UTC-TAI + ΔT
@@ -15,7 +15,7 @@
 pub mod generated;
 
 // All public types, parsers, managers, and URL constants come from the archive crate.
-pub use siderust_archive_data::time::*;
+pub use siderust_archive::time::*;
 
 /// Environment variable that overrides the default `~/.tempoch/data` directory.
 pub const TEMPOCH_DATA_DIR_ENV: &str = "TEMPOCH_DATA_DIR";

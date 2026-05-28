@@ -5,7 +5,11 @@ members = [
     "tempoch-core",
     "tempoch-ffi",
     "tempoch-time-data",
-    "tempoch-time-data-updater",
     "tempoch-validation",
 ]
-exclude = ["archive"]
+
+# Until siderust-archive 0.1.0 is published to crates.io, source it from git.
+# Once the crate is on crates.io, this patch can be removed and the
+# `version = "0.1"` dependency in tempoch-time-data resolves directly.
+[patch.crates-io]
+siderust-archive = { git = "https://github.com/Siderust/archive.git", branch = "main" }

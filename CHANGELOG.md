@@ -7,12 +7,33 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
-- `tempoch-time-data`: migrated to thin re-export of `siderust-archive-data` (from `archive/` submodule). The embedded 5.3 MB IERS EOP array (`eop_data.rs`) has been removed; EOP data is now loaded at runtime via `TimeDataManager`.
-- `archive/` added as a git submodule (`https://github.com/Siderust/archive.git`). Hosts `siderust-archive-data` crate with canonical IERS types, parsers, provenance model, and runtime data management.
+- Replaced the `archive/` git submodule with a regular crates.io-style git
+  dependency on `siderust-archive` (sourced via `[patch.crates-io]` from
+  `https://github.com/Siderust/archive.git` until the crate is published).
+- `tempoch-time-data` now depends on `siderust-archive` with only the `time`
+  feature (or `time` + `fetch` when `tempoch-time-data/fetch` is enabled).
+  Runtime download (`TimeDataManager`) continues to work behind the
+  `runtime-data-fetch` feature on `tempoch-core`.
 
 ### Removed
 
-- `tempoch-time-data/src/generated/eop_data.rs`: 19,910-line embedded IERS EOP array deleted. EOP is no longer bundled with the compiled binary by default; it must be fetched at runtime.
+- Deleted `archive/` git submodule (and `.gitmodules`). Downstream consumers
+  no longer need `git submodule update --init --recursive`.
+- Deleted `tempoch-time-data-updater` crate. Maintenance of the IERS dataset
+  has moved to the archive repository, where the
+  `siderust-archive-update-time-data` binary plus the
+  `update-time-data.yml` GitHub Actions workflow regenerate the bundle and
+  cut a new patch release on crates.io.
+- Deleted `.github/workflows/update-time-data.yml` and the supporting scripts
+  in `.github/scripts/` (no longer needed; weekly refresh runs in the archive
+  repo instead).
+
+### Changed
+
+- `tempoch-time-data`: migrated to thin re-export of `siderust-archive`
+  (was `siderust-archive-data` from the archive submodule). The embedded
+  5.3 MB IERS EOP array (`eop_data.rs`) had already been removed in a prior
+  patch; this release completes the migration by also removing the submodule.
 
 ## [0.6.3] - 2026-05-28
 

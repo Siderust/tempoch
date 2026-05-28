@@ -10,9 +10,9 @@ repository = "https://github.com/Siderust/tempoch"
 
 [features]
 default = []
-fetch = ["siderust-archive-data/fetch"]
+fetch = ["siderust-archive/fetch"]
 
 [dependencies]
 chrono = "0.4.43"
 qtty = "0.8.4"
-siderust-archive-data = { path = "../archive/crates/siderust-archive-data" }
+siderust-archive = { version = "0.1", features = ["time"] }
