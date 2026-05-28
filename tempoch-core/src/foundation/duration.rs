@@ -304,6 +304,17 @@ impl ExactDuration {
         Self::from_nanos(nanos.value() as i128)
     }
 
+    /// Build from a typed `qtty::i64::Second` integer quantity (whole-second precision).
+    ///
+    /// The second value is multiplied by 1 × 10⁹ and widened to `i128` without
+    /// loss for any `i64` input. For sub-second precision use
+    /// [`from_canonical_seconds_nanos`](Self::from_canonical_seconds_nanos) or
+    /// [`from_nanoseconds_i`](Self::from_nanoseconds_i).
+    #[inline]
+    pub fn from_seconds_i(seconds: qtty::i64::Second) -> Self {
+        Self::from_nanos(seconds.value() as i128 * NANOS_PER_SECOND)
+    }
+
     /// Project to a typed `qtty::i64::Nanosecond` integer quantity.
     ///
     /// Returns [`DurationError::Overflow`] when the stored nanosecond count does

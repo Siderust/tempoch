@@ -74,26 +74,29 @@ impl GnssWeek {
         })
     }
 
-    /// Return the subsecond nanoseconds remainder as a typed integer quantity.
+    /// Return the subsecond nanoseconds remainder as a typed unsigned integer quantity.
     ///
     /// The returned value is always in `[0, 1_000_000_000)` nanoseconds.
-    pub fn subsecond_nanoseconds_i(&self) -> qtty::i64::Nanosecond {
-        qtty::i64::Nanosecond::new(self.subsecond_nanos as i64)
+    pub fn subsecond_nanoseconds_u(&self) -> qtty::u32::Nanosecond {
+        qtty::u32::Nanosecond::new(self.subsecond_nanos)
     }
 
-    /// Construct from typed nanosecond quantity.
+    /// Return the seconds since the start of the week as a typed unsigned integer quantity.
     ///
-    /// Rejects negative values or values ≥ 1 × 10⁹ ns.
-    pub fn new_with_nanoseconds_i(
+    /// The returned value is always in `[0, 604_800)` seconds.
+    pub fn seconds_of_week_u(&self) -> qtty::u32::Second {
+        qtty::u32::Second::new(self.seconds_of_week)
+    }
+
+    /// Construct from a typed unsigned nanosecond quantity.
+    ///
+    /// Rejects values ≥ 1 × 10⁹ ns.
+    pub fn new_with_nanoseconds_u(
         week: u32,
         seconds_of_week: u32,
-        subsecond: qtty::i64::Nanosecond,
+        subsecond: qtty::u32::Nanosecond,
     ) -> Result<Self, ConversionError> {
-        let ns = subsecond.value();
-        if !(0..1_000_000_000).contains(&ns) {
-            return Err(ConversionError::OutOfRange);
-        }
-        Self::new(week, seconds_of_week, ns as u32)
+        Self::new(week, seconds_of_week, subsecond.value())
     }
 
     /// Convert back to a total ExactDuration since the scale's epoch.
@@ -359,26 +362,23 @@ mod tests {
     }
 
     #[test]
-    fn subsecond_nanoseconds_i_matches_field() {
+    fn subsecond_nanoseconds_u_matches_field() {
         let gw = GnssWeek::new(100, 12_345, 987_654_321).unwrap();
-        assert_eq!(gw.subsecond_nanoseconds_i().value(), 987_654_321_i64);
+        assert_eq!(gw.subsecond_nanoseconds_u().value(), 987_654_321_u32);
     }
 
     #[test]
-    fn new_with_nanoseconds_i_accepts_valid() {
-        let ns = qtty::i64::Nanosecond::new(123_456_789);
-        let gw = GnssWeek::new_with_nanoseconds_i(500, 100_000, ns).unwrap();
+    fn new_with_nanoseconds_u_accepts_valid() {
+        let ns = qtty::u32::Nanosecond::new(123_456_789);
+        let gw = GnssWeek::new_with_nanoseconds_u(500, 100_000, ns).unwrap();
         assert_eq!(gw.subsecond_nanos, 123_456_789);
     }
 
     #[test]
-    fn new_with_nanoseconds_i_rejects_invalid() {
-        // negative
-        let neg = qtty::i64::Nanosecond::new(-1);
-        assert!(GnssWeek::new_with_nanoseconds_i(0, 0, neg).is_err());
+    fn new_with_nanoseconds_u_rejects_invalid() {
         // out of range
-        let big = qtty::i64::Nanosecond::new(1_000_000_000);
-        assert!(GnssWeek::new_with_nanoseconds_i(0, 0, big).is_err());
+        let big = qtty::u32::Nanosecond::new(1_000_000_000);
+        assert!(GnssWeek::new_with_nanoseconds_u(0, 0, big).is_err());
     }
 
     #[test]
