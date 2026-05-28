@@ -56,6 +56,9 @@ pub enum DurationError {
     Overflow,
     /// Input scalar was NaN or infinite.
     NonFinite,
+    /// `(seconds, nanos)` pair violates the canonical sign invariant:
+    /// `seconds > 0` requires `nanos >= 0`, and `seconds < 0` requires `nanos <= 0`.
+    NonCanonical,
 }
 
 impl core::fmt::Display for DurationError {
@@ -63,6 +66,10 @@ impl core::fmt::Display for DurationError {
         match self {
             Self::Overflow => f.write_str("ExactDuration arithmetic overflowed i128 nanoseconds"),
             Self::NonFinite => f.write_str("ExactDuration input was NaN or infinite"),
+            Self::NonCanonical => f.write_str(
+                "ExactDuration (seconds, nanos) pair is non-canonical: \
+                 signs must agree (seconds > 0 ⇒ nanos ≥ 0; seconds < 0 ⇒ nanos ≤ 0)",
+            ),
         }
     }
 }
@@ -141,14 +148,18 @@ impl ExactDuration {
         }
     }
 
-    /// Strict canonical constructor: requires `nanos ∈ (-1_000_000_000, 1_000_000_000)`.
+    /// Strict canonical constructor: requires `nanos ∈ (-1_000_000_000, 1_000_000_000)` and
+    /// that `seconds` and `nanos` share the same sign (or `nanos == 0`).
     ///
-    /// The pair `(seconds, nanos)` must be in canonical form: `|nanos| < 1_000_000_000`
-    /// and both components have the same sign (or `nanos == 0`). This mirrors
-    /// the invariant enforced by [`as_seconds_i64_nanos_checked`](Self::as_seconds_i64_nanos_checked).
+    /// The full invariant:
+    /// - `|nanos| < 1_000_000_000`
+    /// - if `seconds > 0`, then `nanos >= 0`
+    /// - if `seconds < 0`, then `nanos <= 0`
+    /// - if `seconds == 0`, either sign of `nanos` is valid
     ///
-    /// Returns [`DurationError::Overflow`] if `nanos` is out of the canonical range
-    /// or if the multiplication overflows.
+    /// Returns [`DurationError::Overflow`] if `|nanos| >= 1_000_000_000` or if the
+    /// multiplication overflows, and [`DurationError::NonCanonical`] if the sign
+    /// invariant is violated.
     #[inline]
     pub const fn from_canonical_seconds_nanos(
         seconds: i64,
@@ -156,6 +167,10 @@ impl ExactDuration {
     ) -> Result<Self, DurationError> {
         if nanos <= -(NANOS_PER_SECOND as i32) || nanos >= NANOS_PER_SECOND as i32 {
             return Err(DurationError::Overflow);
+        }
+        // Sign invariant: seconds and nanos must agree in sign (or one is zero).
+        if (seconds > 0 && nanos < 0) || (seconds < 0 && nanos > 0) {
+            return Err(DurationError::NonCanonical);
         }
         let secs_nanos = (seconds as i128).wrapping_mul(NANOS_PER_SECOND);
         match secs_nanos.checked_add(nanos as i128) {
@@ -222,7 +237,7 @@ impl ExactDuration {
     /// `nanos ∈ (-1_000_000_000, 1_000_000_000)`.
     ///
     /// Returns [`DurationError::Overflow`] when the seconds component does not
-    /// fit in `i64` (i.e. `|self| > i64::MAX * 1e9 ns ≈ 292 years`).
+    /// fit in `i64` (i.e. `|self| > i64::MAX * 1e9 ns ≈ ±292 billion years`).
     ///
     /// Use this as the canonical API when the invariant must be preserved.
     /// For guaranteed-small durations you may use
@@ -242,7 +257,7 @@ impl ExactDuration {
     /// component to `i64::MAX` / `i64::MIN` for extreme values.
     ///
     /// **Lossy / non-canonical for durations outside the `i64` seconds range
-    /// (≈ ±292 yr).** The invariant
+    /// (≈ ±292 billion years).** The invariant
     /// `seconds * 1_000_000_000 + nanos == as_nanos_i128()` is **not** preserved
     /// when saturation occurs. Use [`as_seconds_i64_nanos_checked`](Self::as_seconds_i64_nanos_checked)
     /// for exact behaviour.
@@ -263,7 +278,7 @@ impl ExactDuration {
     /// Boundary projection `(seconds, nanos)`. Panics if the seconds component
     /// does not fit in `i64`.
     ///
-    /// For durations within ≈ ±292 yr this never panics in practice. Use
+    /// For durations within ≈ ±292 billion years this never panics in practice. Use
     /// [`as_seconds_i64_nanos_checked`](Self::as_seconds_i64_nanos_checked) to
     /// handle the overflow case explicitly.
     #[inline]
@@ -278,6 +293,28 @@ impl ExactDuration {
     #[inline]
     pub fn as_seconds_f64(self) -> f64 {
         (self.nanos as f64) / (NANOS_PER_SECOND as f64)
+    }
+
+    /// Build from a typed `qtty::i64::Nanosecond` integer quantity.
+    ///
+    /// The `i64` value is widened to `i128` without loss; this conversion is
+    /// always exact. For the low-level raw interface, see [`from_nanos`](Self::from_nanos).
+    #[inline]
+    pub fn from_nanoseconds_i(nanos: qtty::i64::Nanosecond) -> Self {
+        Self::from_nanos(nanos.value() as i128)
+    }
+
+    /// Project to a typed `qtty::i64::Nanosecond` integer quantity.
+    ///
+    /// Returns [`DurationError::Overflow`] when the stored nanosecond count does
+    /// not fit in `i64` (durations outside ≈ ±292 billion years at 1 ns resolution).
+    #[inline]
+    pub fn as_nanoseconds_i(self) -> Result<qtty::i64::Nanosecond, DurationError> {
+        if self.nanos > i64::MAX as i128 || self.nanos < i64::MIN as i128 {
+            Err(DurationError::Overflow)
+        } else {
+            Ok(qtty::i64::Nanosecond::new(self.nanos as i64))
+        }
     }
 
     /// Project back into a `qtty::Quantity<U>`. Lossy in general (f64).
@@ -515,7 +552,7 @@ impl SubAssign for ExactDuration {
 
 #[cfg(feature = "serde")]
 mod serde_impl {
-    use super::{ExactDuration, NANOS_PER_SECOND};
+    use super::ExactDuration;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     #[derive(Serialize, Deserialize)]
@@ -536,11 +573,8 @@ mod serde_impl {
     impl<'de> Deserialize<'de> for ExactDuration {
         fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
             let b = Boundary::deserialize(deserializer)?;
-            let total = (b.sec as i128)
-                .checked_mul(NANOS_PER_SECOND)
-                .and_then(|s| s.checked_add(b.ns as i128))
-                .ok_or_else(|| serde::de::Error::custom("ExactDuration overflow"))?;
-            Ok(Self::from_nanos(total))
+            ExactDuration::from_canonical_seconds_nanos(b.sec, b.ns)
+                .map_err(|e| serde::de::Error::custom(e.to_string()))
         }
     }
 }
@@ -884,6 +918,8 @@ mod tests {
         assert!(ExactDuration::from_canonical_seconds_nanos(5, 0).is_ok());
         assert!(ExactDuration::from_canonical_seconds_nanos(0, 999_999_999).is_ok());
         assert!(ExactDuration::from_canonical_seconds_nanos(-1, -999_999_999).is_ok());
+        assert!(ExactDuration::from_canonical_seconds_nanos(0, 0).is_ok());
+        assert!(ExactDuration::from_canonical_seconds_nanos(0, -999_999_999).is_ok());
         // Invalid: |nanos| >= 1_000_000_000
         assert_eq!(
             ExactDuration::from_canonical_seconds_nanos(0, 1_000_000_000),
@@ -893,6 +929,23 @@ mod tests {
             ExactDuration::from_canonical_seconds_nanos(0, -1_000_000_000),
             Err(DurationError::Overflow)
         );
+        // Invalid: sign mismatch — returns NonCanonical
+        assert_eq!(
+            ExactDuration::from_canonical_seconds_nanos(1, -1),
+            Err(DurationError::NonCanonical)
+        );
+        assert_eq!(
+            ExactDuration::from_canonical_seconds_nanos(-1, 1),
+            Err(DurationError::NonCanonical)
+        );
+        assert_eq!(
+            ExactDuration::from_canonical_seconds_nanos(100, -500_000_000),
+            Err(DurationError::NonCanonical)
+        );
+        assert_eq!(
+            ExactDuration::from_canonical_seconds_nanos(-100, 500_000_000),
+            Err(DurationError::NonCanonical)
+        );
     }
 
     #[test]
@@ -900,5 +953,58 @@ mod tests {
         // ExactDuration::MAX seconds > i64 range; display must not panic.
         let s = ExactDuration::MAX.to_string();
         assert!(s.contains("ns"), "expected raw-ns fallback, got: {s}");
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn serde_rejects_non_canonical_pairs() {
+        // sec=0, ns=1_000_000_000: nanos out of range
+        let r: Result<ExactDuration, _> = serde_json::from_str(r#"{"sec":0,"ns":1000000000}"#);
+        assert!(r.is_err(), "expected Err for ns=1e9, got {:?}", r);
+
+        // sec=0, ns=-1_000_000_000: nanos out of range
+        let r: Result<ExactDuration, _> = serde_json::from_str(r#"{"sec":0,"ns":-1000000000}"#);
+        assert!(r.is_err(), "expected Err for ns=-1e9, got {:?}", r);
+
+        // sec=1, ns=-1: sign mismatch
+        let r: Result<ExactDuration, _> = serde_json::from_str(r#"{"sec":1,"ns":-1}"#);
+        assert!(r.is_err(), "expected Err for sec=1,ns=-1, got {:?}", r);
+
+        // sec=-1, ns=1: sign mismatch
+        let r: Result<ExactDuration, _> = serde_json::from_str(r#"{"sec":-1,"ns":1}"#);
+        assert!(r.is_err(), "expected Err for sec=-1,ns=1, got {:?}", r);
+    }
+
+    #[test]
+    fn qtty_integer_nanosecond_round_trip() {
+        // Small positive
+        let d = ExactDuration::from_nanos(123_456_789);
+        let q = d.as_nanoseconds_i().unwrap();
+        assert_eq!(q.value(), 123_456_789_i64);
+        let back = ExactDuration::from_nanoseconds_i(q);
+        assert_eq!(back, d);
+
+        // Small negative
+        let d2 = ExactDuration::from_nanos(-999_000_000);
+        let q2 = d2.as_nanoseconds_i().unwrap();
+        assert_eq!(q2.value(), -999_000_000_i64);
+        assert_eq!(ExactDuration::from_nanoseconds_i(q2), d2);
+
+        // Zero
+        let q0 = ExactDuration::ZERO.as_nanoseconds_i().unwrap();
+        assert_eq!(q0.value(), 0_i64);
+    }
+
+    #[test]
+    fn qtty_integer_nanosecond_overflow() {
+        // ExactDuration::MAX nanos >> i64::MAX → overflow
+        assert_eq!(
+            ExactDuration::MAX.as_nanoseconds_i(),
+            Err(DurationError::Overflow)
+        );
+        assert_eq!(
+            ExactDuration::MIN.as_nanoseconds_i(),
+            Err(DurationError::Overflow)
+        );
     }
 }

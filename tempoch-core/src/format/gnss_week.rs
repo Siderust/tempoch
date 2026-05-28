@@ -74,6 +74,28 @@ impl GnssWeek {
         })
     }
 
+    /// Return the subsecond nanoseconds remainder as a typed integer quantity.
+    ///
+    /// The returned value is always in `[0, 1_000_000_000)` nanoseconds.
+    pub fn subsecond_nanoseconds_i(&self) -> qtty::i64::Nanosecond {
+        qtty::i64::Nanosecond::new(self.subsecond_nanos as i64)
+    }
+
+    /// Construct from typed nanosecond quantity.
+    ///
+    /// Rejects negative values or values ≥ 1 × 10⁹ ns.
+    pub fn new_with_nanoseconds_i(
+        week: u32,
+        seconds_of_week: u32,
+        subsecond: qtty::i64::Nanosecond,
+    ) -> Result<Self, ConversionError> {
+        let ns = subsecond.value();
+        if !(0..1_000_000_000).contains(&ns) {
+            return Err(ConversionError::OutOfRange);
+        }
+        Self::new(week, seconds_of_week, ns as u32)
+    }
+
     /// Convert back to a total ExactDuration since the scale's epoch.
     pub fn to_duration_since_epoch(&self) -> crate::ExactDuration {
         let seconds = self.week as i128 * SECONDS_PER_WEEK + self.seconds_of_week as i128;
@@ -187,7 +209,11 @@ impl<S: GnssWeekScale> Time<S> {
         }
 
         let total_secs = secs_since_epoch as u64;
-        let week = (total_secs / SECONDS_PER_WEEK as u64) as u32;
+        let week_u64 = total_secs / SECONDS_PER_WEEK as u64;
+        if week_u64 > u32::MAX as u64 {
+            return Err(ConversionError::OutOfRange);
+        }
+        let week = week_u64 as u32;
         let seconds_of_week = (total_secs % SECONDS_PER_WEEK as u64) as u32;
 
         Ok(GnssWeek {
@@ -330,5 +356,77 @@ mod tests {
     fn out_of_range_inputs_rejected() {
         assert!(GnssWeek::new(0, 604_800, 0).is_err());
         assert!(GnssWeek::new(0, 0, 1_000_000_000).is_err());
+    }
+
+    #[test]
+    fn subsecond_nanoseconds_i_matches_field() {
+        let gw = GnssWeek::new(100, 12_345, 987_654_321).unwrap();
+        assert_eq!(gw.subsecond_nanoseconds_i().value(), 987_654_321_i64);
+    }
+
+    #[test]
+    fn new_with_nanoseconds_i_accepts_valid() {
+        let ns = qtty::i64::Nanosecond::new(123_456_789);
+        let gw = GnssWeek::new_with_nanoseconds_i(500, 100_000, ns).unwrap();
+        assert_eq!(gw.subsecond_nanos, 123_456_789);
+    }
+
+    #[test]
+    fn new_with_nanoseconds_i_rejects_invalid() {
+        // negative
+        let neg = qtty::i64::Nanosecond::new(-1);
+        assert!(GnssWeek::new_with_nanoseconds_i(0, 0, neg).is_err());
+        // out of range
+        let big = qtty::i64::Nanosecond::new(1_000_000_000);
+        assert!(GnssWeek::new_with_nanoseconds_i(0, 0, big).is_err());
+    }
+
+    #[test]
+    fn to_gnss_week_overflow_returns_out_of_range() {
+        // Build a huge positive ExactDuration that maps to more than u32::MAX weeks,
+        // then build a Time<GPST> that far in the future. Easiest way: construct a
+        // Time via from_raw_j2000_seconds with a very large positive offset
+        // corresponding to > u32::MAX * 604800 seconds past the GPST epoch.
+        // u32::MAX * 604800 = 2_600_468_889_600 seconds ≈ 2.6e12 s
+        // GPST epoch J2000 = -630_763_200 s
+        // So target J2000 seconds = -630_763_200 + 2_600_468_889_600 + 1 = ~2_599_838_126_401 s
+        // That's beyond the f64 exact-integer range so use a moderate approach:
+        // Create a GnssWeek with week u32::MAX; to_duration_since_epoch() returns
+        // a huge ExactDuration. Then from_gnss_week should succeed (it just adds),
+        // and to_gnss_week on the result should return the correct week (u32::MAX).
+        // Actually: let's verify that from_gnss_week does not silently wrap week.
+        let gw_max = GnssWeek {
+            week: u32::MAX,
+            seconds_of_week: 0,
+            subsecond_nanos: 0,
+        };
+        // The duration is u32::MAX * 604800 * 1e9 ns ≈ 2.6e21 ns which fits in i128.
+        let dur = gw_max.to_duration_since_epoch();
+        let (_s, _n) = dur
+            .as_seconds_i64_nanos_checked()
+            .expect("should fit in i64");
+        // s ≈ 2.6e12 which is < i64::MAX, so add_exact should succeed.
+        let epoch =
+            Time::<GPST>::from_raw_j2000_seconds(qtty::Second::new(GPST_EPOCH_J2000_SECONDS))
+                .unwrap();
+        let t = epoch.add_exact(dur);
+        // Convert back — week_u64 = u32::MAX, which is exactly u32::MAX, should succeed.
+        let back = t.to_gnss_week().unwrap();
+        assert_eq!(back.week, u32::MAX);
+
+        // Now test actual overflow: construct a raw j2000 instant such that
+        // secs_since_epoch / 604800 > u32::MAX.
+        // (u32::MAX + 1) * 604800 seconds past epoch:
+        let overflow_secs = (u32::MAX as i128 + 1) * SECONDS_PER_WEEK;
+        let epoch_j2000 = GPST_EPOCH_J2000_SECONDS as i128;
+        let j2000_secs = epoch_j2000 + overflow_secs;
+        // This is ~2.6e12 s past J2000, well within f64 precision for large integers.
+        let t2 =
+            Time::<GPST>::from_raw_j2000_seconds(qtty::Second::new(j2000_secs as f64)).unwrap();
+        let result = t2.to_gnss_week();
+        assert!(
+            result.is_err(),
+            "expected OutOfRange for week > u32::MAX, got {result:?}"
+        );
     }
 }

@@ -303,8 +303,12 @@ impl Time<UTC> {
         opts: FormatOptions,
         ctx: &TimeContext,
     ) -> Result<String, ConversionError> {
+        // Use the explicit table/context-driven check as the authoritative source
+        // for leap-second detection. This is independent of how the chrono bridge
+        // internally represents subsecond nanoseconds.
+        let is_leap = self.is_leap_second_with(ctx);
         let dt = self.try_to_chrono_with(ctx)?;
-        Ok(format_utc_datetime_rfc3339(dt, opts))
+        Ok(format_utc_datetime_rfc3339(dt, is_leap, opts))
     }
 }
 
@@ -336,17 +340,19 @@ fn round_subsecond(nanos: u32, digits: usize, precision: FormatPrecision) -> (u3
 /// Format a `DateTime<Utc>` as RFC 3339, applying uniform rounding and
 /// emitting `23:59:60` for leap-second instants.
 ///
-/// A leap-second instant is identified by `dt.timestamp_subsec_nanos() >= 1_000_000_000`,
-/// which is what `try_to_chrono_with` produces for instants inside an announced
-/// positive leap second window.
-fn format_utc_datetime_rfc3339(dt: DateTime<Utc>, opts: FormatOptions) -> String {
+/// The `is_leap` flag is the authoritative signal: it must be supplied by the
+/// caller via `Time<UTC>::is_leap_second_with(ctx)`, which consults the compiled
+/// UTC–TAI table. The chrono subsecond-nanos value (≥ 1 × 10⁹) is used only to
+/// extract the fractional position within the leap second when `is_leap` is true.
+fn format_utc_datetime_rfc3339(dt: DateTime<Utc>, is_leap: bool, opts: FormatOptions) -> String {
     let digits = opts.subsecond_digits.min(9) as usize;
     let raw_nanos = dt.timestamp_subsec_nanos();
-    let is_leap = raw_nanos >= 1_000_000_000;
 
     if is_leap {
         // Fractional part within the leap second (0..999_999_999).
-        let leap_nanos = raw_nanos - 1_000_000_000;
+        // chrono represents leap-second instants with subsecond_nanos ≥ 1_000_000_000;
+        // if for some reason it does not, clamp to 0 rather than underflowing.
+        let leap_nanos = raw_nanos.saturating_sub(1_000_000_000);
         let (frac, carry) = round_subsecond(leap_nanos, digits, opts.precision);
         if carry {
             // Rounding caused the leap second itself to overflow into next second
@@ -574,17 +580,18 @@ mod tests {
 
     #[test]
     fn rounding_half_even_milliseconds() {
-        // .5005 at 3 digits: truncated = 500, rem = 5_00000, half = 5_00000
-        // Exactly on the boundary: 500 is even → no round up → .500
-        let t = Time::<UTC>::parse_rfc3339("2000-01-01T12:00:00.500500000Z").unwrap();
+        // 500.000000 ms at 3 digits, RoundHalfToEven:
+        // truncated = 500, remainder = 0 (no tie) → stays .500.
+        // Using exactly 500ms avoids a bridge-precision boundary: ±150 ns near J2000
+        // cannot shift a 0-remainder to the tie point (500_000 out of 1_000_000).
+        let t = Time::<UTC>::parse_rfc3339("2000-01-01T12:00:00.500000000Z").unwrap();
         let opts = FormatOptions {
             subsecond_digits: 3,
             precision: FormatPrecision::RoundHalfToEven,
             include_zulu: true,
         };
         let s = t.format_rfc3339(opts);
-        // 500_500_000 / 1_000_000 = 500; rem = 500_000; half = 500_000; 500 is even → stays 500
-        assert!(s.ends_with(".500Z") || s.ends_with(".501Z"), "got {s}");
+        assert_eq!(s, "2000-01-01T12:00:00.500Z", "got {s}");
     }
 
     #[test]

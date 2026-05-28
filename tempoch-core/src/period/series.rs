@@ -173,13 +173,16 @@ impl<S: CoordinateScale, F: TimeFormat> TimeSeries<S, F> {
     }
 
     /// The `n`th item, computed from `start` (NOT by repeated addition).
-    /// Returns `None` if `n >= len_total()`.
+    /// Returns `None` if `n >= len_total()` or if the computed offset overflows
+    /// the `i64` seconds range (extremely large series only).
     pub fn nth_item(&self, n: u64) -> Option<Time<S, F>> {
         if n >= self.len {
             return None;
         }
         let total_nanos = (n as i128).checked_mul(self.step_nanos)?;
-        Some(self.start.add_exact(ExactDuration::from_nanos(total_nanos)))
+        self.start
+            .try_add_exact(ExactDuration::from_nanos(total_nanos))
+            .ok()
     }
 }
 
@@ -301,5 +304,31 @@ mod tests {
         let third = s.nth(2).unwrap();
         let secs = (third.raw_seconds_pair().0 + third.raw_seconds_pair().1).value();
         assert!((secs - 2.0).abs() < 1e-9);
+    }
+
+    /// Iterate 100 items and verify each matches `nth_item` exactly (no drift).
+    #[test]
+    fn no_drift_versus_nth_item() {
+        let series = TimeSeries::new(t(0.0), t(100.0), ExactDuration::SECOND).unwrap();
+        let items: Vec<_> = series.collect();
+        let fresh = TimeSeries::new(t(0.0), t(100.0), ExactDuration::SECOND).unwrap();
+        for (i, item) in items.iter().enumerate() {
+            let direct = fresh.nth_item(i as u64).unwrap();
+            let a = (item.raw_seconds_pair().0 + item.raw_seconds_pair().1).value();
+            let b = (direct.raw_seconds_pair().0 + direct.raw_seconds_pair().1).value();
+            assert_eq!(
+                a, b,
+                "iterator vs nth_item mismatch at index {i}: {a} vs {b}"
+            );
+        }
+    }
+
+    /// Out-of-bounds `nth_item` returns None.
+    #[test]
+    fn nth_item_out_of_bounds_is_none() {
+        let s = TimeSeries::new(t(0.0), t(10.0), ExactDuration::SECOND).unwrap();
+        assert_eq!(s.len_total(), 10);
+        assert!(s.nth_item(10).is_none(), "expected None at len boundary");
+        assert!(s.nth_item(100).is_none(), "expected None well past end");
     }
 }

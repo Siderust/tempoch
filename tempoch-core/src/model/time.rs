@@ -289,7 +289,8 @@ impl<S: CoordinateScale, F: TimeFormat> Time<S, F> {
         crate::ExactDuration::try_from_quantity(delta)
     }
 
-    /// Shift this instant by an [`crate::ExactDuration`].
+    /// Shift this instant by an [`crate::ExactDuration`], returning `Err` if the
+    /// duration's seconds component exceeds the `i64` range (≈ ±292 billion years).
     ///
     /// **Precision note:** The duration is split into a whole-second component and
     /// a sub-second nanosecond remainder, each added to the compensated split-f64
@@ -300,26 +301,58 @@ impl<S: CoordinateScale, F: TimeFormat> Time<S, F> {
     /// 120–150 ns near J2000 ± 50 years, so shifts smaller than that may not alter
     /// the stored instant.
     #[inline]
-    pub fn add_exact(self, delta: crate::ExactDuration) -> Self {
-        let (whole_secs, sub_nanos) = delta.as_seconds_i64_nanos_saturating();
+    pub fn try_add_exact(
+        self,
+        delta: crate::ExactDuration,
+    ) -> Result<Self, crate::foundation::duration::DurationError> {
+        let (whole_secs, sub_nanos) = delta.as_seconds_i64_nanos_checked()?;
         let t = self.instant + Second::new(whole_secs as f64);
-        Self {
+        Ok(Self {
             instant: t + Second::new(sub_nanos as f64 * 1e-9),
             _fmt: PhantomData,
-        }
+        })
+    }
+
+    /// Shift this instant backward by an [`crate::ExactDuration`], returning `Err`
+    /// if the duration's seconds component exceeds the `i64` range.
+    ///
+    /// See [`Self::try_add_exact`] for precision notes.
+    #[inline]
+    pub fn try_sub_exact(
+        self,
+        delta: crate::ExactDuration,
+    ) -> Result<Self, crate::foundation::duration::DurationError> {
+        let (whole_secs, sub_nanos) = delta.as_seconds_i64_nanos_checked()?;
+        let t = self.instant - Second::new(whole_secs as f64);
+        Ok(Self {
+            instant: t - Second::new(sub_nanos as f64 * 1e-9),
+            _fmt: PhantomData,
+        })
+    }
+
+    /// Shift this instant by an [`crate::ExactDuration`].
+    ///
+    /// **Panics** if the duration's seconds component exceeds the `i64` range
+    /// (≈ ±292 billion years). Use [`try_add_exact`](Self::try_add_exact) for
+    /// the fallible variant that returns `Err` instead.
+    ///
+    /// See [`try_add_exact`](Self::try_add_exact) for precision notes.
+    #[inline]
+    pub fn add_exact(self, delta: crate::ExactDuration) -> Self {
+        self.try_add_exact(delta)
+            .expect("ExactDuration::add_exact: duration exceeds i64 seconds range")
     }
 
     /// Shift this instant backward by an [`crate::ExactDuration`].
     ///
-    /// See [`Self::add_exact`] for precision notes.
+    /// **Panics** if the duration's seconds component exceeds the `i64` range.
+    /// Use [`try_sub_exact`](Self::try_sub_exact) for the fallible variant.
+    ///
+    /// See [`try_add_exact`](Self::try_add_exact) for precision notes.
     #[inline]
     pub fn sub_exact(self, delta: crate::ExactDuration) -> Self {
-        let (whole_secs, sub_nanos) = delta.as_seconds_i64_nanos_saturating();
-        let t = self.instant - Second::new(whole_secs as f64);
-        Self {
-            instant: t - Second::new(sub_nanos as f64 * 1e-9),
-            _fmt: PhantomData,
-        }
+        self.try_sub_exact(delta)
+            .expect("ExactDuration::sub_exact: duration exceeds i64 seconds range")
     }
 
     /// Round this instant to the nearest multiple of `quantum` measured from
@@ -658,5 +691,28 @@ mod tests {
             "1 yr + 1 ns shift must preserve 1 ns component; diff = {} ns",
             diff.as_nanos_i128()
         );
+    }
+
+    #[test]
+    fn try_add_exact_overflow_returns_err() {
+        let t = j2000_tai();
+        // ExactDuration::MAX has > i64::MAX seconds → try_add_exact must return Err.
+        let result = t.try_add_exact(ExactDuration::MAX);
+        assert!(
+            result.is_err(),
+            "expected Err for try_add_exact(MAX), got Ok"
+        );
+        let result2 = t.try_sub_exact(ExactDuration::MAX);
+        assert!(
+            result2.is_err(),
+            "expected Err for try_sub_exact(MAX), got Ok"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "ExactDuration::add_exact")]
+    fn add_exact_panics_on_overflow() {
+        let t = j2000_tai();
+        let _ = t.add_exact(ExactDuration::MAX);
     }
 }
