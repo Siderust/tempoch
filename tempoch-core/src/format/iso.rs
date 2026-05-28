@@ -31,7 +31,7 @@
 //! assert!(s.starts_with("2024-06-15T12:34:56.789"));
 //! ```
 
-use chrono::{DateTime, NaiveDateTime, SecondsFormat, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 
 use crate::data::runtime_data::time_data_tai_seconds_is_in_leap_window;
 use crate::earth::context::TimeContext;
@@ -115,6 +115,21 @@ pub fn parse_rfc3339_utc(s: &str) -> Result<Time<UTC>, ConversionError> {
 
 /// Like [`parse_rfc3339_utc`], but uses an explicit [`TimeContext`].
 pub fn parse_rfc3339_utc_with(s: &str, ctx: &TimeContext) -> Result<Time<UTC>, ConversionError> {
+    // Pre-validate: reject more than 9 fractional digits before passing to chrono.
+    if let Some(after_dot) = s.find('.') {
+        // Find the end of the fractional part (Z, +, or -)
+        let frac_start = after_dot + 1;
+        if let Some(zone_pos) = s[frac_start..].find(['Z', '+', '-']) {
+            let frac_len = zone_pos;
+            if frac_len == 0 {
+                return Err(ConversionError::OutOfRange);
+            }
+            if frac_len > 9 {
+                return Err(ConversionError::OutOfRange);
+            }
+        }
+    }
+
     // Try `chrono::DateTime::parse_from_rfc3339` first; it accepts a wide range of valid forms.
     if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
         let utc = dt.with_timezone(&Utc);
@@ -215,6 +230,10 @@ fn split_fraction_and_zone(tail: &str) -> Result<(&str, &str), ConversionError> 
             .find(['Z', '+', '-'])
             .ok_or(ConversionError::OutOfRange)?;
         let frac = &stripped[..zone_pos];
+        // Reject empty fraction: "2024-06-15T12:34:56.Z" is not valid RFC 3339.
+        if frac.is_empty() {
+            return Err(ConversionError::OutOfRange);
+        }
         let zone = &stripped[zone_pos..];
         Ok((frac, zone))
     } else {
@@ -226,22 +245,16 @@ fn parse_fraction_nanos(s: &str) -> Result<u32, ConversionError> {
     if s.is_empty() {
         return Ok(0);
     }
+    // Reject more than 9 fractional digits; tempoch's resolution is 1 ns.
     if s.len() > 9 {
-        // Truncate beyond 9 digits.
-        let truncated = &s[..9];
-        truncated
-            .parse::<u32>()
-            .map_err(|_| ConversionError::OutOfRange)
-    } else {
-        let mut padded = String::with_capacity(9);
-        padded.push_str(s);
-        for _ in s.len()..9 {
-            padded.push('0');
-        }
-        padded
-            .parse::<u32>()
-            .map_err(|_| ConversionError::OutOfRange)
+        return Err(ConversionError::OutOfRange);
     }
+    let mut padded = [b'0'; 9];
+    padded[..s.len()].copy_from_slice(s.as_bytes());
+    core::str::from_utf8(&padded)
+        .ok()
+        .and_then(|p| p.parse::<u32>().ok())
+        .ok_or(ConversionError::OutOfRange)
 }
 
 impl Time<UTC> {
@@ -262,70 +275,113 @@ impl Time<UTC> {
 
     /// Format this UTC instant as RFC 3339 with the given options.
     ///
-    /// Falls back to `chrono`'s formatter for non-leap-second instants, which
-    /// covers the vast majority of values. For instants that land during an
-    /// announced positive leap second, this method emits the `:60` form
-    /// explicitly.
+    /// Emits `23:59:60[.fraction]Z` when the instant lies during an announced
+    /// positive leap second according to the default [`TimeContext`].
     pub fn format_rfc3339(&self, opts: FormatOptions) -> String {
         self.format_rfc3339_with(opts, &TimeContext::new())
     }
 
     /// Like [`format_rfc3339`](Self::format_rfc3339), with an explicit
     /// [`TimeContext`].
+    ///
+    /// Returns `"<invalid>"` if the instant cannot be converted to civil UTC.
+    /// Use [`try_format_rfc3339_with`](Self::try_format_rfc3339_with) to
+    /// handle that case explicitly.
     pub fn format_rfc3339_with(&self, opts: FormatOptions, ctx: &TimeContext) -> String {
-        match self.try_to_chrono_with(ctx) {
-            Ok(dt) => format_chrono_rfc3339(dt, opts),
+        match self.try_format_rfc3339_with(opts, ctx) {
+            Ok(s) => s,
             Err(_) => "<invalid>".to_string(),
         }
     }
+
+    /// Fallible variant of [`format_rfc3339_with`](Self::format_rfc3339_with).
+    ///
+    /// Returns [`ConversionError`] if the underlying UTC↔chrono conversion
+    /// fails (e.g. out-of-range dates).
+    pub fn try_format_rfc3339_with(
+        &self,
+        opts: FormatOptions,
+        ctx: &TimeContext,
+    ) -> Result<String, ConversionError> {
+        let dt = self.try_to_chrono_with(ctx)?;
+        Ok(format_utc_datetime_rfc3339(dt, opts))
+    }
 }
 
-fn format_chrono_rfc3339(dt: DateTime<Utc>, opts: FormatOptions) -> String {
-    let digits = opts.subsecond_digits.min(9);
-    let seconds_format = match digits {
-        0 => SecondsFormat::Secs,
-        3 => SecondsFormat::Millis,
-        6 => SecondsFormat::Micros,
-        9 => SecondsFormat::Nanos,
-        _ => SecondsFormat::Nanos,
-    };
-    let mut s = dt.to_rfc3339_opts(seconds_format, true);
-    // chrono's `to_rfc3339_opts` always emits Z when called on a UTC value;
-    // strip it if the caller opted out.
-    if !opts.include_zulu && s.ends_with('Z') {
-        s.pop();
+/// Apply rounding/truncation to `nanos` (0..1_000_000_000) and return
+/// `(fractional_value_at_digits, carry_into_next_second)`.
+fn round_subsecond(nanos: u32, digits: usize, precision: FormatPrecision) -> (u32, bool) {
+    debug_assert!(digits <= 9);
+    if digits == 9 {
+        return (nanos, false);
     }
-    // For arbitrary precision (1, 2, 4, 5, 7, 8), trim/round the fractional
-    // part of the always-9-digit nanosecond form.
-    if !matches!(digits, 0 | 3 | 6 | 9) {
-        s = render_with_digits(dt, digits as usize, opts);
-    }
-    s
-}
-
-fn render_with_digits(dt: DateTime<Utc>, digits: usize, opts: FormatOptions) -> String {
-    let nanos = dt.timestamp_subsec_nanos();
     let scale = 10_u32.pow(9 - digits as u32);
-    let mut truncated = nanos / scale;
+    let truncated = nanos / scale;
     let rem = nanos % scale;
-    let mut effective_dt = dt;
-    if matches!(opts.precision, FormatPrecision::RoundHalfToEven) {
+    let mut result = truncated;
+    if matches!(precision, FormatPrecision::RoundHalfToEven) {
         let half = scale / 2;
         if rem > half || (rem == half && truncated % 2 == 1) {
-            truncated = truncated.saturating_add(1);
+            result = result.saturating_add(1);
         }
     }
     let threshold = 10_u32.pow(digits as u32);
-    if truncated >= threshold {
-        truncated -= threshold;
-        effective_dt = dt + chrono::TimeDelta::try_seconds(1).unwrap_or_default();
+    let carry = result >= threshold;
+    if carry {
+        result -= threshold;
     }
-    let base = effective_dt.format("%Y-%m-%dT%H:%M:%S").to_string();
-    let mut s = format!("{base}.{:0width$}", truncated, width = digits);
-    if opts.include_zulu {
-        s.push('Z');
+    (result, carry)
+}
+
+/// Format a `DateTime<Utc>` as RFC 3339, applying uniform rounding and
+/// emitting `23:59:60` for leap-second instants.
+///
+/// A leap-second instant is identified by `dt.timestamp_subsec_nanos() >= 1_000_000_000`,
+/// which is what `try_to_chrono_with` produces for instants inside an announced
+/// positive leap second window.
+fn format_utc_datetime_rfc3339(dt: DateTime<Utc>, opts: FormatOptions) -> String {
+    let digits = opts.subsecond_digits.min(9) as usize;
+    let raw_nanos = dt.timestamp_subsec_nanos();
+    let is_leap = raw_nanos >= 1_000_000_000;
+
+    if is_leap {
+        // Fractional part within the leap second (0..999_999_999).
+        let leap_nanos = raw_nanos - 1_000_000_000;
+        let (frac, carry) = round_subsecond(leap_nanos, digits, opts.precision);
+        if carry {
+            // Rounding caused the leap second itself to overflow into next second
+            // (i.e. 23:59:60.999999500 rounded up to 23:59:61 → 2017-01-01T00:00:00).
+            let next = dt + chrono::TimeDelta::try_seconds(1).unwrap_or_default();
+            return format_normal_dt(next, 0, digits, opts);
+        }
+        let date = dt.format("%Y-%m-%d");
+        if digits == 0 {
+            let zulu = if opts.include_zulu { "Z" } else { "" };
+            format!("{date}T23:59:60{zulu}")
+        } else {
+            let zulu = if opts.include_zulu { "Z" } else { "" };
+            format!("{date}T23:59:60.{:0width$}{zulu}", frac, width = digits)
+        }
+    } else {
+        let (frac, carry) = round_subsecond(raw_nanos, digits, opts.precision);
+        let effective_dt = if carry {
+            dt + chrono::TimeDelta::try_seconds(1).unwrap_or_default()
+        } else {
+            dt
+        };
+        format_normal_dt(effective_dt, frac, digits, opts)
     }
-    s
+}
+
+fn format_normal_dt(dt: DateTime<Utc>, frac: u32, digits: usize, opts: FormatOptions) -> String {
+    let base = dt.format("%Y-%m-%dT%H:%M:%S");
+    if digits == 0 {
+        let zulu = if opts.include_zulu { "Z" } else { "" };
+        format!("{base}{zulu}")
+    } else {
+        let zulu = if opts.include_zulu { "Z" } else { "" };
+        format!("{base}.{:0width$}{zulu}", frac, width = digits)
+    }
 }
 
 #[cfg(test)]
@@ -335,18 +391,14 @@ mod tests {
     #[test]
     fn parse_basic_z() {
         let t = Time::<UTC>::parse_rfc3339("2000-01-01T12:00:00Z").unwrap();
-        let chrono = t.try_to_chrono().unwrap();
-        // J2000 epoch sits exactly on the chrono bridge's high-precision sweet spot;
-        // accept sub-millisecond rounding drift from the f64 total_seconds() collapse.
-        let s = chrono.to_rfc3339();
-        assert!(s.starts_with("2000-01-01T12:00:00"), "got {s}");
+        let s = t.format_rfc3339(FormatOptions::SECONDS);
+        assert_eq!(s, "2000-01-01T12:00:00Z");
     }
 
     #[test]
     fn parse_with_milliseconds() {
         let t = Time::<UTC>::parse_rfc3339("2024-06-15T12:34:56.789Z").unwrap();
         let s = t.format_rfc3339(FormatOptions::milliseconds());
-        // Millisecond precision is preserved by the chrono bridge.
         assert_eq!(s, "2024-06-15T12:34:56.789Z");
     }
 
@@ -372,27 +424,25 @@ mod tests {
 
     #[test]
     fn parse_with_named_offset_normalizes_to_utc() {
-        // RFC 3339 named-offset form via chrono fast path.
         let t = Time::<UTC>::parse_rfc3339("2024-06-15T14:34:56+02:00").unwrap();
         let s = t.format_rfc3339(FormatOptions::SECONDS);
         assert_eq!(s, "2024-06-15T12:34:56Z");
     }
 
     #[test]
-    fn parse_leap_second_label() {
+    fn format_leap_second_emits_colon_sixty() {
         // 2016-12-31T23:59:60Z was an announced positive leap second.
         let t = Time::<UTC>::parse_rfc3339("2016-12-31T23:59:60Z").unwrap();
-        // The next nominal instant is 2017-01-01T00:00:00Z; format should
-        // round-trip stably (chrono won't emit ":60" but the instant is
-        // 1 SI second after 23:59:59).
-        let chrono = t.try_to_chrono().unwrap();
-        let formatted = chrono.to_rfc3339();
-        // Either chrono rolled into 2017-01-01T00:00:00 or stays at 23:59:60 representation;
-        // the key invariant is that the instant is well-defined and finite.
-        assert!(
-            formatted.starts_with("2016-12-31T23:59:60")
-                || formatted.starts_with("2017-01-01T00:00:00")
-        );
+        let s = t.format_rfc3339(FormatOptions::SECONDS);
+        assert_eq!(s, "2016-12-31T23:59:60Z");
+    }
+
+    #[test]
+    fn format_leap_second_with_fraction() {
+        // The chrono bridge has ~150 ns precision near 2016; test at millisecond level.
+        let t = Time::<UTC>::parse_rfc3339("2016-12-31T23:59:60.500Z").unwrap();
+        let s = t.format_rfc3339(FormatOptions::milliseconds());
+        assert_eq!(s, "2016-12-31T23:59:60.500Z");
     }
 
     #[test]
@@ -403,9 +453,21 @@ mod tests {
     }
 
     #[test]
+    fn reject_empty_fraction() {
+        // "2024-06-15T12:34:56.Z" has an empty fraction field — must be rejected.
+        let result = Time::<UTC>::parse_rfc3339("2024-06-15T12:34:56.Z");
+        assert!(result.is_err(), "expected Err for empty fraction, got Ok");
+    }
+
+    #[test]
+    fn reject_more_than_nine_fractional_digits() {
+        // 10 digits — must be rejected.
+        let result = Time::<UTC>::parse_rfc3339("2024-06-15T12:34:56.1234567890Z");
+        assert!(result.is_err(), "expected Err for >9 fractional digits");
+    }
+
+    #[test]
     fn round_trip_seconds_precision() {
-        // Within ±1 second tolerance (the chrono bridge collapses to f64; for
-        // year-2000-era epochs precision is sub-ms so seconds-form round-trips).
         for s in ["2000-01-01T00:00:00Z", "1999-12-31T23:59:59Z"] {
             let t = Time::<UTC>::parse_rfc3339(s).unwrap();
             let back = t.format_rfc3339(FormatOptions::SECONDS);
@@ -431,7 +493,7 @@ mod tests {
         };
         let s = t.format_rfc3339(opts);
         // 4-digit subsecond resolution survives the chrono-bridge drift (~150 ns).
-        assert!(s.starts_with("2024-06-15T12:34:56.1234"));
+        assert!(s.starts_with("2024-06-15T12:34:56.1234"), "got {s}");
     }
 
     #[test]
@@ -450,9 +512,9 @@ mod tests {
         };
         let st = t.format_rfc3339(trunc);
         let sr = t.format_rfc3339(round);
-        // Truncation keeps the .5; round-half-to-even goes to .6.
         assert!(st.ends_with(".5Z"), "truncate got {st}");
-        assert!(sr.ends_with(".6Z") || sr.ends_with(".5Z"), "round got {sr}");
+        // Half-to-even: .5 with truncated = 5 (odd) rounds up to .6.
+        assert!(sr.ends_with(".6Z"), "round-half-to-even got {sr}");
     }
 
     #[test]
@@ -480,5 +542,84 @@ mod tests {
             Time::<UTC>::parse_rfc3339("2016-12-31T23:59:60Z").is_ok(),
             "expected Ok for valid leap-second date"
         );
+    }
+
+    #[test]
+    fn rounding_truncate_standard_digits() {
+        // Use a simple value well within chrono-bridge precision (J2000 era).
+        // .123Z at 0 digits truncate → no subsecond part (no carry since .123 < .5)
+        let t = Time::<UTC>::parse_rfc3339("2000-01-01T12:34:56.123Z").unwrap();
+        let opts = FormatOptions {
+            subsecond_digits: 0,
+            precision: FormatPrecision::Truncate,
+            include_zulu: true,
+        };
+        let s = t.format_rfc3339(opts);
+        assert_eq!(s, "2000-01-01T12:34:56Z");
+    }
+
+    #[test]
+    fn rounding_carry_into_next_second() {
+        // .999Z with 0 digits and RoundHalfToEven should carry into next second.
+        let t = Time::<UTC>::parse_rfc3339("2000-01-01T12:34:56.999Z").unwrap();
+        let opts = FormatOptions {
+            subsecond_digits: 0,
+            precision: FormatPrecision::RoundHalfToEven,
+            include_zulu: true,
+        };
+        let s = t.format_rfc3339(opts);
+        // .999 rounds to 1.0 → carry → 12:34:57
+        assert_eq!(s, "2000-01-01T12:34:57Z", "got {s}");
+    }
+
+    #[test]
+    fn rounding_half_even_milliseconds() {
+        // .5005 at 3 digits: truncated = 500, rem = 5_00000, half = 5_00000
+        // Exactly on the boundary: 500 is even → no round up → .500
+        let t = Time::<UTC>::parse_rfc3339("2000-01-01T12:00:00.500500000Z").unwrap();
+        let opts = FormatOptions {
+            subsecond_digits: 3,
+            precision: FormatPrecision::RoundHalfToEven,
+            include_zulu: true,
+        };
+        let s = t.format_rfc3339(opts);
+        // 500_500_000 / 1_000_000 = 500; rem = 500_000; half = 500_000; 500 is even → stays 500
+        assert!(s.ends_with(".500Z") || s.ends_with(".501Z"), "got {s}");
+    }
+
+    #[test]
+    fn round_subsecond_helper_truncate() {
+        assert_eq!(
+            round_subsecond(999_999_999, 3, FormatPrecision::Truncate),
+            (999, false)
+        );
+        assert_eq!(
+            round_subsecond(500_000_000, 3, FormatPrecision::Truncate),
+            (500, false)
+        );
+        assert_eq!(round_subsecond(0, 0, FormatPrecision::Truncate), (0, false));
+    }
+
+    #[test]
+    fn round_subsecond_helper_carry() {
+        // 999_999_999 at 0 digits with RoundHalfToEven: rounds to 1 (carry).
+        let (v, carry) = round_subsecond(999_999_999, 0, FormatPrecision::RoundHalfToEven);
+        assert!(carry, "expected carry for 999_999_999 at 0 digits");
+        assert_eq!(v, 0);
+    }
+
+    #[test]
+    fn round_subsecond_helper_half_even() {
+        // Exact half: 500_000_000 at 0 digits. truncated = 0 (even) → no round up.
+        let (v, carry) = round_subsecond(500_000_000, 0, FormatPrecision::RoundHalfToEven);
+        assert!(
+            !carry,
+            "500_000_000 half-to-even at 0 digits: 0 is even, no carry"
+        );
+        assert_eq!(v, 0);
+        // 1_500_000_000 / 1e9 is not possible but at 9 digits identity is returned.
+        let (v9, carry9) = round_subsecond(999_999_999, 9, FormatPrecision::RoundHalfToEven);
+        assert!(!carry9);
+        assert_eq!(v9, 999_999_999);
     }
 }

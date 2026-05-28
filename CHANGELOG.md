@@ -7,13 +7,18 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
-- Added `ExactDuration`, an opaque signed nanosecond duration type with checked, saturating, and panicking arithmetic; explicit lossy `f64` conversion; quantum-based rounding; `qtty` conversion; and serde support as `{"sec": i64, "ns": i32}`.
+- Added `ExactDuration`, an opaque signed nanosecond duration backed by `i128` with range ≈ ±5.4 × 10²¹ yr. Provides three boundary-projection variants: `as_seconds_i64_nanos_checked` (exact, returns `Err(DurationError::Overflow)` when the seconds component does not fit in `i64`), `as_seconds_i64_nanos_saturating` (documented lossy for extreme values), and `as_seconds_i64_nanos` (panics on overflow). Also provides `from_canonical_seconds_nanos` (requires `|nanos| < 1_000_000_000`) plus explicit lossy `f64` conversion, quantum-based rounding, `qtty` conversion, and serde support as `{"sec": i64, "ns": i32}`.
 - Added exact-duration integration for `Time<S, F>`: exact differences, exact add/subtract, and epoch-relative round/floor/ceil helpers. Existing subtraction behavior is preserved for compatibility.
 - Added new sealed time-scale markers: `ET`, `GPST`, `GST`, `BDT`, and `QZSST`, including GNSS reference validation data.
 - Added `TimeSeries<S, F>`, an exact-step half-open time iterator with deterministic forward and reverse iteration.
 - Added `tempoch-validation` as a non-published workspace crate with reference datasets and provenance metadata.
 - Added property tests for exact-duration invariants, rounding behavior, scale-conversion round trips, and exact time add/subtract behavior.
-- Added native ISO 8601 / RFC 3339 parser/formatter for `Time<UTC>` (`parse_rfc3339`, `format_rfc3339`) with leap-second-aware parsing of the `23:59:60[.x]` form, configurable subsecond precision (0..=9 digits), and `Truncate` / `RoundHalfToEven` rounding policy via `FormatOptions`.
+- Added native ISO 8601 / RFC 3339 parser/formatter for `Time<UTC>` (`parse_rfc3339`, `format_rfc3339`) with:
+  - Leap-second-aware **parsing** of the `23:59:60[.x]` form, validated against the compiled UTC-TAI table.
+  - Leap-second-aware **formatting**: `format_rfc3339_with` / `try_format_rfc3339_with` emit `23:59:60[.fraction]Z` for instants inside an announced positive leap-second window.
+  - Configurable subsecond precision (0–9 digits) with `Truncate` / `RoundHalfToEven` rounding applied uniformly, including correct carry overflow into the next second.
+  - Parser hardening: empty fractional part (e.g. `12:34:56.Z`) and more than 9 fractional digits are rejected.
+  - Fallible formatting API `try_format_rfc3339_with(...) -> Result<String, ConversionError>`; the infallible `format_rfc3339_with` delegates to it and returns `"<invalid>"` on error (documented).
 - Added GNSS week / seconds-of-week format (`GnssWeek` + `GnssWeekScale` trait) implemented for `GPST`, `GST`, `BDT`, and `QZSST`, with documented rollover periods (1024 / 4096 / 8192 / 1024).
 - Added `tempoch_core::data::provenance` with a programmatic `ProvenanceSnapshot` (source URLs, SHA-256, validity horizons), and an `assert_fresh(now, max_age)` freshness checker exposed at the crate root as `time_data_provenance()` and `assert_time_data_fresh(...)`.
 
@@ -23,10 +28,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - `ExactDuration::from_quantity` now panics unconditionally on non-finite or overflowing input in all build profiles; the previous release-mode silent-fallback path has been removed.
 - `ExactDuration::round_to`, `floor_to`, and `ceil_to` now use saturating arithmetic throughout to prevent overflow on extreme (`i128::MIN/MAX`) inputs.
 - RFC 3339 parser now validates `:60` leap-second inputs against the compiled UTC-TAI table; dates that were not announced leap seconds (e.g. `2023-06-15T23:59:60Z`) now return `ConversionError::InvalidLeapSecond` instead of being accepted.
+- RFC 3339 parser now rejects empty fractional parts (e.g. `2024-06-15T12:34:56.Z`) and inputs with more than 9 fractional digits; previously these were silently accepted or truncated.
+- RFC 3339 formatter now applies `FormatPrecision::Truncate` and `FormatPrecision::RoundHalfToEven` uniformly for all `subsecond_digits` in 0–9, including correct carry overflow at `.999999999` into the next second.
+- `Time::add_exact` and `sub_exact` now use a two-step split-arithmetic path: the `ExactDuration` is decomposed into whole-second and nanosecond-remainder components, each added to the split-f64 storage separately. This avoids collapsing the full duration to a single `f64` before addition, preserving sub-millisecond precision for typical astronomical epochs.
+- `Time::diff_exact` documentation now accurately states that the result is bounded by split-f64 storage precision (~100–150 ns near J2000 ± 50 years), not sub-nanosecond fidelity for arbitrary instants.
+- `Time::to_gnss_week` now uses integer arithmetic on the split-f64 storage pair: the integer-second component is extracted and subtracted from the (exact-integer) epoch constant in `i128`, and the subsecond remainder is computed from the fractional part alone. This eliminates the catastrophic cancellation that previously occurred when subtracting the epoch from the total J2000 seconds in a single `f64`.
+- `Time::from_gnss_week` now constructs the epoch `Time<S>` and calls `add_exact` with the exact `ExactDuration` since epoch, instead of collapsing total nanoseconds to `f64` before adding the epoch offset. Nanosecond fields are preserved to within split-f64 storage precision (≤ 200 ns for typical GNSS epochs).
+- GNSS round-trip tests now validate `subsecond_nanos` within ±200 ns and require exact `seconds_of_week` matching; the previous test allowed ≤1 second drift and did not validate subsecond fields.
 - `render_with_digits` (non-standard subsecond digit counts 1, 2, 4, 5, 7, 8) now carries rounding overflow into the seconds field; previously a round-up at `.999...` would produce a digit count exceeding the requested width.
-- GNSS epoch tests now assert exact `(week=0, sow=0, ns=0)` rather than a `< 5` seconds-of-week tolerance; the epoch constants were already exact in f64 arithmetic.
-- `TimeSeries::new` now returns `TimeSeriesError::DurationOverflow` when the computed element count would exceed `u64::MAX`; previously the count was silently truncated.
-- Corrected documentation for `Time::add_exact`, `sub_exact`, and `diff_exact`: these operations cross an f64 boundary at the split-storage layer. The ~120–150 ns ULP error near J2000 ± 50 years is now documented explicitly. The operations are **not** exact in the sense of sub-nanosecond fidelity for arbitrary instants.
 
 ### Changed
 

@@ -281,7 +281,7 @@ impl<S: CoordinateScale, F: TimeFormat> Time<S, F> {
     /// guarantee of nanosecond parity for arbitrary instants.
     ///
     /// Returns [`crate::DurationError::Overflow`] only if the difference is
-    /// outside the i128-nanosecond range (≈ ±170 Gyr), which is unreachable
+    /// outside the i128-nanosecond range (≈ ±5.4 × 10²¹ yr), which is unreachable
     /// for any physical astronomy use case.
     #[inline]
     pub fn diff_exact(self, other: Self) -> Result<crate::ExactDuration, crate::DurationError> {
@@ -291,16 +291,20 @@ impl<S: CoordinateScale, F: TimeFormat> Time<S, F> {
 
     /// Shift this instant by an [`crate::ExactDuration`].
     ///
-    /// **Precision note:** The shift crosses an f64 boundary at the split-storage
-    /// layer. For shifts much smaller than the ULP of the instant's high word
-    /// (~120–150 ns near J2000 ± 50 years), the stored instant may not differ
-    /// from the original. Use compensated arithmetic when sub-microsecond
-    /// shift fidelity matters.
+    /// **Precision note:** The duration is split into a whole-second component and
+    /// a sub-second nanosecond remainder, each added to the compensated split-f64
+    /// storage separately. This preserves sub-microsecond shift fidelity for
+    /// typical durations: the whole-second part is an integer `f64` (exact for
+    /// `|seconds| < 2^53`), and the sub-nanosecond part is < 1 s (representable
+    /// without rounding). The split-f64 instant storage itself has a ULP of roughly
+    /// 120–150 ns near J2000 ± 50 years, so shifts smaller than that may not alter
+    /// the stored instant.
     #[inline]
     pub fn add_exact(self, delta: crate::ExactDuration) -> Self {
-        let secs = Second::new(delta.as_seconds_f64());
+        let (whole_secs, sub_nanos) = delta.as_seconds_i64_nanos_saturating();
+        let t = self.instant + Second::new(whole_secs as f64);
         Self {
-            instant: self.instant + secs,
+            instant: t + Second::new(sub_nanos as f64 * 1e-9),
             _fmt: PhantomData,
         }
     }
@@ -310,9 +314,10 @@ impl<S: CoordinateScale, F: TimeFormat> Time<S, F> {
     /// See [`Self::add_exact`] for precision notes.
     #[inline]
     pub fn sub_exact(self, delta: crate::ExactDuration) -> Self {
-        let secs = Second::new(delta.as_seconds_f64());
+        let (whole_secs, sub_nanos) = delta.as_seconds_i64_nanos_saturating();
+        let t = self.instant - Second::new(whole_secs as f64);
         Self {
-            instant: self.instant - secs,
+            instant: t - Second::new(sub_nanos as f64 * 1e-9),
             _fmt: PhantomData,
         }
     }
@@ -588,5 +593,70 @@ where
     #[inline]
     fn sub_assign(&mut self, rhs: Quantity<U>) {
         *self = *self - rhs;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::format::J2000s;
+    use crate::foundation::duration::ExactDuration;
+    use crate::model::scale::TAI;
+
+    type TaiJ2000 = Time<TAI, J2000s>;
+
+    fn j2000_tai() -> TaiJ2000 {
+        TaiJ2000::from_raw_j2000_seconds(Second::new(0.0)).unwrap()
+    }
+
+    fn j2000_tai_plus_50yr() -> TaiJ2000 {
+        // 50 Julian years = 50 * 365.25 * 86400 = 1_577_836_800 s
+        TaiJ2000::from_raw_j2000_seconds(Second::new(1_577_836_800.0)).unwrap()
+    }
+
+    #[test]
+    fn add_exact_1ns_at_j2000() {
+        let t = j2000_tai();
+        let d = ExactDuration::from_nanos(1);
+        let shifted = t.add_exact(d);
+        let diff = shifted.diff_exact(t).unwrap();
+        // Near J2000 hi ≈ 0; lo stores the 1 ns shift exactly.
+        assert_eq!(diff.as_nanos_i128(), 1, "1 ns shift at J2000 must be exact");
+    }
+
+    #[test]
+    fn add_sub_round_trip_1ns_at_j2000_plus_50yr() {
+        let t = j2000_tai_plus_50yr();
+        // 1 ns: ULP of hi at 1.57e9 s is ~240 ns, so the lo word carries it.
+        for ns in [1_i128, 123, 999] {
+            let d = ExactDuration::from_nanos(ns);
+            let shifted = t.add_exact(d).sub_exact(d);
+            let back = shifted.diff_exact(t).unwrap();
+            assert!(
+                back.as_nanos_i128().abs() < 100,
+                "add/sub round-trip drift at J2000+50yr for {ns} ns: {} ns",
+                back.as_nanos_i128()
+            );
+        }
+    }
+
+    #[test]
+    fn add_exact_1yr_plus_1ns_preserves_1ns() {
+        let t = j2000_tai();
+        // 1 Julian year = 31_557_600 s
+        let one_year = ExactDuration::from_nanos(31_557_600 * 1_000_000_000);
+        let one_ns = ExactDuration::from_nanos(1);
+        let combined = (one_year + one_ns)
+            .checked_add(ExactDuration::ZERO)
+            .unwrap();
+        let d_year = t.add_exact(one_year);
+        let d_combined = t.add_exact(combined);
+        let diff = d_combined.diff_exact(d_year).unwrap();
+        // The difference should be 1 ns; allow up to 2 ns for sub-nanosecond f64 rounding.
+        assert!(
+            diff.as_nanos_i128().abs() <= 2,
+            "1 yr + 1 ns shift must preserve 1 ns component; diff = {} ns",
+            diff.as_nanos_i128()
+        );
     }
 }

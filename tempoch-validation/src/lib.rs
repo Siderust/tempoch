@@ -3,19 +3,26 @@
 
 //! tempoch-validation — cross-validation harness.
 //!
-//! This crate is **dev/test-only** (`publish = false`). It holds:
+//! This crate is **dev/test-only** (`publish = false`). It holds committed
+//! reference datasets and compares them against `tempoch-core` to catch
+//! regressions.
 //!
-//! * Golden vectors from CSPICE/NAIF (ET/UTC) — committed CSVs under
-//!   `data/spice/`. Regeneration requires CSPICE and is gated behind the
-//!   `regenerate` feature; normal `cargo test` consumes the checked-in CSVs.
-//! * Golden vectors from SOFA/ERFA (UTC/TAI/TT/UT1) — committed CSVs under
+//! ## Currently committed datasets
+//!
+//! * GNSS ICD reference points (epochs, week-rollover, seconds-of-week edges)
+//!   under `data/gnss/`. Validated by `tests/gnss_icd.rs`.
+//!
+//! ## Planned future datasets (not yet committed)
+//!
+//! * Golden vectors from CSPICE/NAIF (ET/UTC) — will live under
+//!   `data/spice/`. Regeneration will require CSPICE and will be gated behind
+//!   a `regenerate` feature; normal `cargo test` will consume the
+//!   checked-in CSVs once they are added.
+//! * Golden vectors from SOFA/ERFA (UTC/TAI/TT/UT1) — will live under
 //!   `data/sofa/`.
-//! * GNSS ICD reference points (epochs, week-rollover, seconds-of-week edges) —
-//!   committed under `data/gnss/`.
-//! * IERS/USNO EOP and ΔT reference samples (largely covered by tempoch-core's
-//!   bundled tables; this crate adds boundary tests).
+//! * IERS/USNO EOP and ΔT reference samples.
 //!
-//! See `tests/` for the actual test entry points.
+//! `cargo test` requires no external tools and runs only on committed data.
 
 /// Tolerance budgets, documented per conversion class.
 pub mod tolerance {

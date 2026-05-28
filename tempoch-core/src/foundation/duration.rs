@@ -5,10 +5,10 @@
 //!
 //! [`ExactDuration`] is the canonical duration type for `tempoch`. Its
 //! representation is **deliberately opaque**: today it is backed by a single
-//! `i128` of nanoseconds (range ≈ ±1.7 × 10²¹ years, ~170 Gyr; exact resolution
-//! 1 ns). A future internal migration to `i128` attoseconds or another
-//! sub-nanosecond representation is a non-breaking change as long as callers go
-//! through the named accessors (`as_seconds_i64_nanos`, `as_seconds_f64`, …).
+//! `i128` of nanoseconds (range ≈ ±5.4 × 10²¹ yr at 1 ns resolution). A future
+//! internal migration to `i128` attoseconds or another sub-nanosecond
+//! representation is a non-breaking change as long as callers go through the
+//! named accessors (`as_seconds_i64_nanos`, `as_seconds_f64`, …).
 //!
 //! # Design choices
 //!
@@ -71,20 +71,24 @@ impl std::error::Error for DurationError {}
 
 /// Exact-precision signed duration.
 ///
-/// Internally an `i128` of nanoseconds. Range ≈ ±170 Gyr at 1 ns resolution.
+/// Internally an `i128` of nanoseconds. Range ≈ ±5.4 × 10²¹ yr at 1 ns
+/// resolution (i128::MAX ≈ 1.7 × 10³⁸ ns ÷ 3.156 × 10¹⁶ ns/yr ≈ 5.4 × 10²¹ yr).
 ///
 /// Construction:
 ///
 /// * [`ExactDuration::ZERO`]
 /// * [`ExactDuration::from_nanos`]
 /// * [`ExactDuration::from_seconds_and_nanos`]
+/// * [`ExactDuration::from_canonical_seconds_nanos`] (strict canonical form)
 /// * [`ExactDuration::from_quantity`] / [`ExactDuration::try_from_quantity`]
 /// * [`ExactDuration::from_seconds_f64_lossy`] (explicit lossy boundary)
 ///
 /// Accessors:
 ///
 /// * [`ExactDuration::as_nanos_i128`]
-/// * [`ExactDuration::as_seconds_i64_nanos`] (boundary projection: `(i64, u32)`)
+/// * [`ExactDuration::as_seconds_i64_nanos`] (panics if seconds outside i64 range)
+/// * [`ExactDuration::as_seconds_i64_nanos_checked`] (returns Err on overflow)
+/// * [`ExactDuration::as_seconds_i64_nanos_saturating`] (saturates; lossy for extreme values)
 /// * [`ExactDuration::as_seconds_f64`]
 /// * [`ExactDuration::as_quantity`]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -130,6 +134,29 @@ impl ExactDuration {
         // i64::MAX * 1e9 < i128::MAX, but the addition can if nanos has the
         // same sign and a sufficiently extreme value — practically not, but we
         // still go through checked_add for correctness.
+        let secs_nanos = (seconds as i128).wrapping_mul(NANOS_PER_SECOND);
+        match secs_nanos.checked_add(nanos as i128) {
+            Some(n) => Ok(Self { nanos: n }),
+            None => Err(DurationError::Overflow),
+        }
+    }
+
+    /// Strict canonical constructor: requires `nanos ∈ (-1_000_000_000, 1_000_000_000)`.
+    ///
+    /// The pair `(seconds, nanos)` must be in canonical form: `|nanos| < 1_000_000_000`
+    /// and both components have the same sign (or `nanos == 0`). This mirrors
+    /// the invariant enforced by [`as_seconds_i64_nanos_checked`](Self::as_seconds_i64_nanos_checked).
+    ///
+    /// Returns [`DurationError::Overflow`] if `nanos` is out of the canonical range
+    /// or if the multiplication overflows.
+    #[inline]
+    pub const fn from_canonical_seconds_nanos(
+        seconds: i64,
+        nanos: i32,
+    ) -> Result<Self, DurationError> {
+        if nanos <= -(NANOS_PER_SECOND as i32) || nanos >= NANOS_PER_SECOND as i32 {
+            return Err(DurationError::Overflow);
+        }
         let secs_nanos = (seconds as i128).wrapping_mul(NANOS_PER_SECOND);
         match secs_nanos.checked_add(nanos as i128) {
             Some(n) => Ok(Self { nanos: n }),
@@ -190,17 +217,39 @@ impl ExactDuration {
         self.nanos
     }
 
-    /// Boundary projection `(seconds, nanos)` where
-    /// `seconds * 1e9 + nanos == as_nanos_i128()` and the pair has the same
-    /// sign. `nanos` is in `(-1_000_000_000, 1_000_000_000)`.
+    /// Exact boundary projection `(seconds, nanos)` such that
+    /// `seconds * 1_000_000_000 + nanos == self.as_nanos_i128()` and
+    /// `nanos ∈ (-1_000_000_000, 1_000_000_000)`.
     ///
-    /// This is the canonical serde/FFI shape for [`ExactDuration`].
+    /// Returns [`DurationError::Overflow`] when the seconds component does not
+    /// fit in `i64` (i.e. `|self| > i64::MAX * 1e9 ns ≈ 292 years`).
+    ///
+    /// Use this as the canonical API when the invariant must be preserved.
+    /// For guaranteed-small durations you may use
+    /// [`as_seconds_i64_nanos`](Self::as_seconds_i64_nanos) (panics on overflow).
     #[inline]
-    pub const fn as_seconds_i64_nanos(self) -> (i64, i32) {
+    pub const fn as_seconds_i64_nanos_checked(self) -> Result<(i64, i32), DurationError> {
         let secs = self.nanos / NANOS_PER_SECOND;
         let rem = (self.nanos - secs * NANOS_PER_SECOND) as i32;
-        // secs comes from i128 / 1e9; for any practical durations representable
-        // in this crate it fits in i64; saturate otherwise.
+        if secs > i64::MAX as i128 || secs < i64::MIN as i128 {
+            Err(DurationError::Overflow)
+        } else {
+            Ok((secs as i64, rem))
+        }
+    }
+
+    /// Boundary projection `(seconds, nanos)` that saturates the seconds
+    /// component to `i64::MAX` / `i64::MIN` for extreme values.
+    ///
+    /// **Lossy / non-canonical for durations outside the `i64` seconds range
+    /// (≈ ±292 yr).** The invariant
+    /// `seconds * 1_000_000_000 + nanos == as_nanos_i128()` is **not** preserved
+    /// when saturation occurs. Use [`as_seconds_i64_nanos_checked`](Self::as_seconds_i64_nanos_checked)
+    /// for exact behaviour.
+    #[inline]
+    pub const fn as_seconds_i64_nanos_saturating(self) -> (i64, i32) {
+        let secs = self.nanos / NANOS_PER_SECOND;
+        let rem = (self.nanos - secs * NANOS_PER_SECOND) as i32;
         let secs_i64 = if secs > i64::MAX as i128 {
             i64::MAX
         } else if secs < i64::MIN as i128 {
@@ -209,6 +258,20 @@ impl ExactDuration {
             secs as i64
         };
         (secs_i64, rem)
+    }
+
+    /// Boundary projection `(seconds, nanos)`. Panics if the seconds component
+    /// does not fit in `i64`.
+    ///
+    /// For durations within ≈ ±292 yr this never panics in practice. Use
+    /// [`as_seconds_i64_nanos_checked`](Self::as_seconds_i64_nanos_checked) to
+    /// handle the overflow case explicitly.
+    #[inline]
+    pub const fn as_seconds_i64_nanos(self) -> (i64, i32) {
+        match self.as_seconds_i64_nanos_checked() {
+            Ok(pair) => pair,
+            Err(_) => panic!("ExactDuration::as_seconds_i64_nanos: seconds out of i64 range"),
+        }
     }
 
     /// Explicit lossy `ExactDuration` → `f64 seconds` boundary.
@@ -384,22 +447,23 @@ impl Ord for ExactDuration {
 
 impl core::fmt::Display for ExactDuration {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let (s, n) = self.as_seconds_i64_nanos();
-        if n == 0 {
-            write!(f, "{s} s")
-        } else {
-            // Render seconds as decimal with up to 9 fractional digits.
-            // Sign carried by `s` when |duration| >= 1 s; when |duration| < 1 s,
-            // sign comes from `n`.
-            if s == 0 {
-                // Sub-second magnitude — sign carried by `n`.
-                if n < 0 {
-                    write!(f, "-0.{:09} s", (-n))
+        match self.as_seconds_i64_nanos_checked() {
+            Ok((s, n)) => {
+                if n == 0 {
+                    write!(f, "{s} s")
+                } else if s == 0 {
+                    if n < 0 {
+                        write!(f, "-0.{:09} s", -n)
+                    } else {
+                        write!(f, "0.{:09} s", n)
+                    }
                 } else {
-                    write!(f, "0.{:09} s", n)
+                    write!(f, "{s}.{:09} s", n.abs())
                 }
-            } else {
-                write!(f, "{s}.{:09} s", n.abs())
+            }
+            Err(_) => {
+                // Extreme duration outside i64 seconds range — fall back to raw nanos.
+                write!(f, "{} ns", self.nanos)
             }
         }
     }
@@ -462,13 +526,9 @@ mod serde_impl {
 
     impl Serialize for ExactDuration {
         fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-            let secs = self.nanos / NANOS_PER_SECOND;
-            if secs > i64::MAX as i128 || secs < i64::MIN as i128 {
-                return Err(serde::ser::Error::custom(
-                    "ExactDuration out of i64 seconds range; duration cannot be serialized",
-                ));
-            }
-            let (sec, ns) = self.as_seconds_i64_nanos();
+            let (sec, ns) = self
+                .as_seconds_i64_nanos_checked()
+                .map_err(|e| serde::ser::Error::custom(e.to_string()))?;
             Boundary { sec, ns }.serialize(serializer)
         }
     }
@@ -780,5 +840,65 @@ mod tests {
             result.is_err(),
             "expected serde error for out-of-range duration"
         );
+    }
+
+    #[test]
+    fn checked_projection_overflow_on_max() {
+        assert_eq!(
+            ExactDuration::MAX.as_seconds_i64_nanos_checked(),
+            Err(DurationError::Overflow)
+        );
+        assert_eq!(
+            ExactDuration::MIN.as_seconds_i64_nanos_checked(),
+            Err(DurationError::Overflow)
+        );
+    }
+
+    #[test]
+    fn checked_projection_small_round_trips() {
+        for nanos in [0_i128, 1, -1, 999_999_999, -999_999_999, 1_500_000_000] {
+            let d = ExactDuration::from_nanos(nanos);
+            let (s, n) = d.as_seconds_i64_nanos_checked().unwrap();
+            let recovered = (s as i128) * NANOS_PER_SECOND + n as i128;
+            assert_eq!(recovered, nanos, "checked round-trip failed for {nanos}");
+        }
+    }
+
+    #[test]
+    fn saturating_projection_extremes() {
+        let (s_max, _) = ExactDuration::MAX.as_seconds_i64_nanos_saturating();
+        assert_eq!(s_max, i64::MAX);
+        let (s_min, _) = ExactDuration::MIN.as_seconds_i64_nanos_saturating();
+        assert_eq!(s_min, i64::MIN);
+    }
+
+    #[test]
+    #[should_panic(expected = "as_seconds_i64_nanos: seconds out of i64 range")]
+    fn panicking_projection_panics_on_max() {
+        let _ = ExactDuration::MAX.as_seconds_i64_nanos();
+    }
+
+    #[test]
+    fn canonical_constructor_validates_nanos() {
+        // Valid canonical forms
+        assert!(ExactDuration::from_canonical_seconds_nanos(5, 0).is_ok());
+        assert!(ExactDuration::from_canonical_seconds_nanos(0, 999_999_999).is_ok());
+        assert!(ExactDuration::from_canonical_seconds_nanos(-1, -999_999_999).is_ok());
+        // Invalid: |nanos| >= 1_000_000_000
+        assert_eq!(
+            ExactDuration::from_canonical_seconds_nanos(0, 1_000_000_000),
+            Err(DurationError::Overflow)
+        );
+        assert_eq!(
+            ExactDuration::from_canonical_seconds_nanos(0, -1_000_000_000),
+            Err(DurationError::Overflow)
+        );
+    }
+
+    #[test]
+    fn display_extreme_falls_back_to_raw_nanos() {
+        // ExactDuration::MAX seconds > i64 range; display must not panic.
+        let s = ExactDuration::MAX.to_string();
+        assert!(s.contains("ns"), "expected raw-ns fallback, got: {s}");
     }
 }

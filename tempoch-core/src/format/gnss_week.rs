@@ -18,6 +18,22 @@
 //! below operate in continuous system time only; the values do not represent
 //! UTC labels.
 //!
+//! ## Precision
+//!
+//! `from_gnss_week` constructs the result by starting at the constellation's
+//! epoch (stored as a split-f64 `Time<S>`) and calling `add_exact`, which
+//! adds the integer whole-second and nanosecond components separately. This
+//! avoids collapsing the full duration into a single `f64` before adding,
+//! and produces results accurate to within the split-f64 storage precision
+//! (typically < 1 μs for instants within a few hundred years of J2000).
+//!
+//! `to_gnss_week` extracts the integer-second and fractional-second components
+//! from the split-f64 pair and performs all week/seconds decomposition in
+//! integer arithmetic. Nanosecond fields are preserved as accurately as the
+//! split-f64 storage allows; for instants near 2024 the storage precision is
+//! approximately ±100 ns, so `subsecond_nanos` may differ from the
+//! constructed value by at most that amount.
+//!
 //! See:
 //! * IS-GPS-200 §20.3.3.3.1.1 (GPS week)
 //! * Galileo OS-SIS-ICD §5.1.2 (GST)
@@ -134,33 +150,62 @@ impl<S: GnssWeekScale> Time<S> {
     /// The week number is *full* (no rollover applied); callers wanting the
     /// modular broadcast value should compute
     /// `week % S::rollover_period_weeks()`.
+    ///
+    /// The whole-second decomposition uses integer arithmetic on the split-f64
+    /// storage pair. The `subsecond_nanos` field is computed from the
+    /// fractional remainder; see the module doc for precision limits.
     pub fn to_gnss_week(&self) -> Result<GnssWeek, ConversionError> {
-        let j2000_secs = self.to_j2000s().raw_seconds_pair();
-        let total_f = j2000_secs.0.value() + j2000_secs.1.value();
-        let secs_since_epoch_f = total_f - S::epoch_j2000_seconds();
-        if !secs_since_epoch_f.is_finite() || secs_since_epoch_f < 0.0 {
+        let (hi, lo) = self.to_j2000s().raw_seconds_pair();
+        let hi_val = hi.value();
+        let lo_val = lo.value();
+
+        // Round hi to the nearest integer second so the residual stays small.
+        let hi_int = hi_val.round();
+        // sub_sec is the fractional-second part: the error of rounding hi, plus lo.
+        let sub_sec = (hi_val - hi_int) + lo_val;
+
+        // All epoch constants are exact integers expressible in f64 and i128.
+        let epoch_i128 = S::epoch_j2000_seconds() as i128;
+        // hi_int is within J2000-seconds range; cast via i64 then i128 is safe.
+        let hi_i128 = hi_int as i64 as i128;
+        let mut secs_since_epoch = hi_i128 - epoch_i128;
+
+        // Convert sub-second residual to nanoseconds, handling carry.
+        let raw_nanos = (sub_sec * 1.0e9).round() as i64;
+        let sub_nanos = if raw_nanos < 0 {
+            secs_since_epoch -= 1;
+            (raw_nanos + 1_000_000_000) as u32
+        } else if raw_nanos >= 1_000_000_000 {
+            secs_since_epoch += 1;
+            (raw_nanos - 1_000_000_000) as u32
+        } else {
+            raw_nanos as u32
+        };
+
+        if secs_since_epoch < 0 {
             return Err(ConversionError::OutOfRange);
         }
-        let total_nanos = (secs_since_epoch_f * 1.0e9).round() as i128;
-        let week = (total_nanos / (SECONDS_PER_WEEK * 1_000_000_000)) as u32;
-        let remainder = total_nanos % (SECONDS_PER_WEEK * 1_000_000_000);
-        let seconds_of_week = (remainder / 1_000_000_000) as u32;
-        let subsecond_nanos = (remainder % 1_000_000_000) as u32;
+
+        let total_secs = secs_since_epoch as u64;
+        let week = (total_secs / SECONDS_PER_WEEK as u64) as u32;
+        let seconds_of_week = (total_secs % SECONDS_PER_WEEK as u64) as u32;
+
         Ok(GnssWeek {
             week,
             seconds_of_week,
-            subsecond_nanos,
+            subsecond_nanos: sub_nanos,
         })
     }
 
     /// Build a GNSS-scale instant from `(week, seconds_of_week,
     /// subsecond_nanos)` since the constellation's defined epoch.
+    ///
+    /// Uses `add_exact` to add the integer whole-second and nanosecond
+    /// components to the epoch separately, preserving sub-millisecond
+    /// precision within the split-f64 storage limits.
     pub fn from_gnss_week(gw: GnssWeek) -> Result<Self, ConversionError> {
-        let nanos = (gw.week as i128) * SECONDS_PER_WEEK * 1_000_000_000
-            + (gw.seconds_of_week as i128) * 1_000_000_000
-            + gw.subsecond_nanos as i128;
-        let secs = nanos as f64 * 1.0e-9 + S::epoch_j2000_seconds();
-        Time::<S>::from_raw_j2000_seconds(qtty::Second::new(secs))
+        let epoch = Time::<S>::from_raw_j2000_seconds(qtty::Second::new(S::epoch_j2000_seconds()))?;
+        Ok(epoch.add_exact(gw.to_duration_since_epoch()))
     }
 }
 
@@ -171,9 +216,6 @@ mod tests {
 
     #[test]
     fn gps_epoch_is_week_zero_second_zero() {
-        // 1980-01-06T00:00:00 UTC = GPST week 0, second 0, ns 0.
-        // The f64 arithmetic round-trips exactly for this epoch because the
-        // epoch constant was empirically anchored by this very conversion.
         let utc = parse_rfc3339_utc("1980-01-06T00:00:00Z").unwrap();
         let gpst: Time<GPST> = utc.to::<GPST>();
         let gw = gpst.to_gnss_week().unwrap();
@@ -183,22 +225,7 @@ mod tests {
     }
 
     #[test]
-    fn gps_week_round_trip() {
-        let gw = GnssWeek::new(2200, 345_600, 123_456_789).unwrap();
-        let t = Time::<GPST>::from_gnss_week(gw).unwrap();
-        let back = t.to_gnss_week().unwrap();
-        assert_eq!(back.week, gw.week);
-        // seconds_of_week may drift by ≤1 second due to f64 precision at ~21-yr offset
-        let delta = (back.seconds_of_week as i64 - gw.seconds_of_week as i64).abs();
-        assert!(
-            delta <= 1,
-            "drift {delta}s in seconds_of_week: {back:?} vs {gw:?}"
-        );
-    }
-
-    #[test]
-    fn galileo_epoch_alignment() {
-        // 1999-08-22T00:00:00 UTC = GST week 0, second 0, ns 0.
+    fn galileo_epoch_is_week_zero_second_zero() {
         let utc = parse_rfc3339_utc("1999-08-22T00:00:00Z").unwrap();
         let gst: Time<GST> = utc.to::<GST>();
         let gw = gst.to_gnss_week().unwrap();
@@ -208,8 +235,7 @@ mod tests {
     }
 
     #[test]
-    fn beidou_epoch_alignment() {
-        // 2006-01-01T00:00:00 UTC = BDT week 0, second 0, ns 0.
+    fn beidou_epoch_is_week_zero_second_zero() {
         let utc = parse_rfc3339_utc("2006-01-01T00:00:00Z").unwrap();
         let bdt: Time<BDT> = utc.to::<BDT>();
         let gw = bdt.to_gnss_week().unwrap();
@@ -226,6 +252,70 @@ mod tests {
         let qw = q.to_gnss_week().unwrap();
         let gw = gp.to_gnss_week().unwrap();
         assert_eq!(qw.week, gw.week);
+        assert_eq!(qw.seconds_of_week, gw.seconds_of_week);
+        assert_eq!(qw.subsecond_nanos, gw.subsecond_nanos);
+    }
+
+    /// Round-trip test at GPS week 2200, sow 345600, subsecond 123_456_789 ns.
+    /// The integer-arithmetic path must preserve all three fields exactly
+    /// within the split-f64 storage tolerance.
+    #[test]
+    fn gps_week_round_trip_nanosecond_accurate() {
+        let gw = GnssWeek::new(2200, 345_600, 123_456_789).unwrap();
+        let t = Time::<GPST>::from_gnss_week(gw).unwrap();
+        let back = t.to_gnss_week().unwrap();
+        assert_eq!(back.week, gw.week, "week mismatch: {back:?} vs {gw:?}");
+        assert_eq!(
+            back.seconds_of_week, gw.seconds_of_week,
+            "sow mismatch: {back:?} vs {gw:?}"
+        );
+        // subsecond_nanos must be within ±200 ns of the original (split-f64
+        // storage precision near ~700 M seconds from J2000 is ~120 ns ULP).
+        let ns_delta = (back.subsecond_nanos as i64 - gw.subsecond_nanos as i64).abs();
+        assert!(
+            ns_delta <= 200,
+            "subsecond_nanos drift {ns_delta} ns: {back:?} vs {gw:?}"
+        );
+    }
+
+    /// Week boundary: sow = 604_799, subsecond = 999_999_999 ns.
+    #[test]
+    fn gps_week_boundary() {
+        let gw = GnssWeek::new(2200, 604_799, 999_999_999).unwrap();
+        let t = Time::<GPST>::from_gnss_week(gw).unwrap();
+        let back = t.to_gnss_week().unwrap();
+        assert_eq!(back.week, gw.week, "week mismatch at boundary: {back:?}");
+        assert_eq!(
+            back.seconds_of_week, gw.seconds_of_week,
+            "sow mismatch at boundary: {back:?}"
+        );
+        let ns_delta = (back.subsecond_nanos as i64 - gw.subsecond_nanos as i64).abs();
+        assert!(
+            ns_delta <= 200,
+            "subsecond_nanos drift {ns_delta} ns at boundary: {back:?}"
+        );
+    }
+
+    /// GPS week 1024 rollover: the full week number must not wrap.
+    #[test]
+    fn gps_week_1024_no_rollover() {
+        let gw = GnssWeek::new(1024, 0, 0).unwrap();
+        let t = Time::<GPST>::from_gnss_week(gw).unwrap();
+        let back = t.to_gnss_week().unwrap();
+        assert_eq!(back.week, 1024);
+        assert_eq!(back.seconds_of_week, 0);
+        assert_eq!(back.subsecond_nanos, 0);
+    }
+
+    /// GPS week 2048 (second rollover boundary).
+    #[test]
+    fn gps_week_2048_no_rollover() {
+        let gw = GnssWeek::new(2048, 0, 0).unwrap();
+        let t = Time::<GPST>::from_gnss_week(gw).unwrap();
+        let back = t.to_gnss_week().unwrap();
+        assert_eq!(back.week, 2048);
+        assert_eq!(back.seconds_of_week, 0);
+        assert_eq!(back.subsecond_nanos, 0);
     }
 
     #[test]
@@ -238,9 +328,7 @@ mod tests {
 
     #[test]
     fn out_of_range_inputs_rejected() {
-        // seconds_of_week must be < 604800.
         assert!(GnssWeek::new(0, 604_800, 0).is_err());
-        // subsecond_nanos must be < 1e9.
         assert!(GnssWeek::new(0, 0, 1_000_000_000).is_err());
     }
 }
