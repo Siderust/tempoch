@@ -308,7 +308,7 @@ impl Time<UTC> {
         // internally represents subsecond nanoseconds.
         let is_leap = self.is_leap_second_with(ctx);
         let dt = self.try_to_chrono_with(ctx)?;
-        Ok(format_utc_datetime_rfc3339(dt, is_leap, opts))
+        format_utc_datetime_rfc3339(dt, is_leap, opts)
     }
 }
 
@@ -342,31 +342,46 @@ fn round_subsecond(nanos: u32, digits: usize, precision: FormatPrecision) -> (u3
 ///
 /// The `is_leap` flag is the authoritative signal: it must be supplied by the
 /// caller via `Time<UTC>::is_leap_second_with(ctx)`, which consults the compiled
-/// UTC–TAI table. The chrono subsecond-nanos value (≥ 1 × 10⁹) is used only to
-/// extract the fractional position within the leap second when `is_leap` is true.
-fn format_utc_datetime_rfc3339(dt: DateTime<Utc>, is_leap: bool, opts: FormatOptions) -> String {
+/// UTC–TAI table. Chrono must represent the leap-second instant with
+/// `timestamp_subsec_nanos() >= 1_000_000_000`; if it does not, the function
+/// returns `Err(ConversionError::InvalidLeapSecond)` to avoid silently producing
+/// an incorrect fractional value.
+fn format_utc_datetime_rfc3339(
+    dt: DateTime<Utc>,
+    is_leap: bool,
+    opts: FormatOptions,
+) -> Result<String, crate::foundation::error::ConversionError> {
+    use crate::foundation::error::ConversionError;
     let digits = opts.subsecond_digits.min(9) as usize;
     let raw_nanos = dt.timestamp_subsec_nanos();
 
     if is_leap {
-        // Fractional part within the leap second (0..999_999_999).
-        // chrono represents leap-second instants with subsecond_nanos ≥ 1_000_000_000;
-        // if for some reason it does not, clamp to 0 rather than underflowing.
-        let leap_nanos = raw_nanos.saturating_sub(1_000_000_000);
+        // chrono encodes leap-second instants with timestamp_subsec_nanos() ≥ 1_000_000_000.
+        // If that invariant is violated, the fractional position within the leap second
+        // cannot be reliably derived; return an error rather than silently producing
+        // a wrong value.
+        if raw_nanos < 1_000_000_000 {
+            return Err(ConversionError::InvalidLeapSecond);
+        }
+        let leap_nanos = raw_nanos - 1_000_000_000;
         let (frac, carry) = round_subsecond(leap_nanos, digits, opts.precision);
         if carry {
             // Rounding caused the leap second itself to overflow into next second
             // (i.e. 23:59:60.999999500 rounded up to 23:59:61 → 2017-01-01T00:00:00).
             let next = dt + chrono::TimeDelta::try_seconds(1).unwrap_or_default();
-            return format_normal_dt(next, 0, digits, opts);
+            return Ok(format_normal_dt(next, 0, digits, opts));
         }
         let date = dt.format("%Y-%m-%d");
         if digits == 0 {
             let zulu = if opts.include_zulu { "Z" } else { "" };
-            format!("{date}T23:59:60{zulu}")
+            Ok(format!("{date}T23:59:60{zulu}"))
         } else {
             let zulu = if opts.include_zulu { "Z" } else { "" };
-            format!("{date}T23:59:60.{:0width$}{zulu}", frac, width = digits)
+            Ok(format!(
+                "{date}T23:59:60.{:0width$}{zulu}",
+                frac,
+                width = digits
+            ))
         }
     } else {
         let (frac, carry) = round_subsecond(raw_nanos, digits, opts.precision);
@@ -375,7 +390,7 @@ fn format_utc_datetime_rfc3339(dt: DateTime<Utc>, is_leap: bool, opts: FormatOpt
         } else {
             dt
         };
-        format_normal_dt(effective_dt, frac, digits, opts)
+        Ok(format_normal_dt(effective_dt, frac, digits, opts))
     }
 }
 

@@ -64,7 +64,9 @@ impl GnssWeek {
         seconds_of_week: qtty::u32::Second,
         subsecond_nanos: qtty::u32::Nanosecond,
     ) -> Result<Self, ConversionError> {
-        if seconds_of_week.value() as i128 >= SECONDS_PER_WEEK.value() || subsecond_nanos.value() >= 1_000_000_000 {
+        if seconds_of_week.value() as i128 >= SECONDS_PER_WEEK.value()
+            || subsecond_nanos.value() >= 1_000_000_000
+        {
             return Err(ConversionError::OutOfRange);
         }
         Ok(Self {
@@ -307,7 +309,8 @@ mod tests {
         );
         // subsecond_nanos must be within ±200 ns of the original (split-f64
         // storage precision near ~700 M seconds from J2000 is ~120 ns ULP).
-        let ns_delta = (back.subsecond_nanos.value() as i64 - gw.subsecond_nanos.value() as i64).abs();
+        let ns_delta =
+            (back.subsecond_nanos.value() as i64 - gw.subsecond_nanos.value() as i64).abs();
         assert!(
             ns_delta <= 200,
             "subsecond_nanos drift {ns_delta} ns: {back:?} vs {gw:?}"
@@ -330,7 +333,8 @@ mod tests {
             back.seconds_of_week, gw.seconds_of_week,
             "sow mismatch at boundary: {back:?}"
         );
-        let ns_delta = (back.subsecond_nanos.value() as i64 - gw.subsecond_nanos.value() as i64).abs();
+        let ns_delta =
+            (back.subsecond_nanos.value() as i64 - gw.subsecond_nanos.value() as i64).abs();
         assert!(
             ns_delta <= 200,
             "subsecond_nanos drift {ns_delta} ns at boundary: {back:?}"

@@ -19,7 +19,7 @@ path = "src/lib.rs"
 [dependencies]
 affn = { version = "0.7" }
 chrono = "0.4.43"
-qtty = { version = "0.8", features = ["julian-time"] }
+qtty = { version = "0.8.4", features = ["julian-time"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "alloc"], optional = true }
 tempoch-time-data = { path = "../tempoch-time-data", version = "0.1.3" }
 

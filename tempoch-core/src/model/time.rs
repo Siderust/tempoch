@@ -294,12 +294,11 @@ impl<S: CoordinateScale, F: TimeFormat> Time<S, F> {
     ///
     /// **Precision note:** The duration is split into a whole-second component and
     /// a sub-second nanosecond remainder, each added to the compensated split-f64
-    /// storage separately. This preserves sub-microsecond shift fidelity for
-    /// typical durations: the whole-second part is an integer `f64` (exact for
-    /// `|seconds| < 2^53`), and the sub-nanosecond part is < 1 s (representable
-    /// without rounding). The split-f64 instant storage itself has a ULP of roughly
-    /// 120–150 ns near J2000 ± 50 years, so shifts smaller than that may not alter
-    /// the stored instant.
+    /// storage separately. The whole-second part is an integer `f64` (exact for
+    /// `|seconds| < 2^53`). The nanosecond remainder crosses the split-f64 storage
+    /// boundary and is therefore bounded by the documented split-f64 precision
+    /// limits (ULP ≈ 120–150 ns near J2000 ± 50 years), so shifts smaller than
+    /// that threshold may not alter the stored instant.
     #[inline]
     pub fn try_add_exact(
         self,

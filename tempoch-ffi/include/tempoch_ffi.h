@@ -20,9 +20,9 @@
 // Discriminant values are frozen; new variants may only be added at the end.
 //
 enum tempoch_status_t
-#ifdef __cplusplus
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
   : int32_t
-#endif // __cplusplus
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
  {
   // Operation completed successfully.
   TEMPOCH_STATUS_T_OK = 0,
@@ -57,15 +57,19 @@ enum tempoch_status_t
   TEMPOCH_STATUS_T_INVALID_FORMAT_ID = 12,
 };
 #ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum tempoch_status_t tempoch_status_t;
+#else
 typedef int32_t tempoch_status_t;
+#endif // __STDC_VERSION__ >= 202311L
 #endif // __cplusplus
 
 // Format tags used by the split-instant C ABI.
 //
 enum tempoch_format_tag_t
-#ifdef __cplusplus
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
   : int32_t
-#endif // __cplusplus
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
  {
   // Julian Day.
   TEMPOCH_FORMAT_TAG_T_JD = 0,
@@ -79,15 +83,19 @@ enum tempoch_format_tag_t
   TEMPOCH_FORMAT_TAG_T_GPS = 4,
 };
 #ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum tempoch_format_tag_t tempoch_format_tag_t;
+#else
 typedef int32_t tempoch_format_tag_t;
+#endif // __STDC_VERSION__ >= 202311L
 #endif // __cplusplus
 
 // Scale tags used by the split-instant C ABI.
 //
 enum tempoch_scale_tag_t
-#ifdef __cplusplus
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
   : int32_t
-#endif // __cplusplus
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
  {
   // Terrestrial Time.
   TEMPOCH_SCALE_TAG_T_TT = 0,
@@ -105,7 +113,11 @@ enum tempoch_scale_tag_t
   TEMPOCH_SCALE_TAG_T_TCB = 6,
 };
 #ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum tempoch_scale_tag_t tempoch_scale_tag_t;
+#else
 typedef int32_t tempoch_scale_tag_t;
+#endif // __STDC_VERSION__ >= 202311L
 #endif // __cplusplus
 
 // Opaque FFI time-conversion context.

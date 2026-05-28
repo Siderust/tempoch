@@ -139,19 +139,25 @@ fn epoch_utc_parses_to_week_zero_second_zero() {
         let gw = to_gnss_week(utc, &row.scale)
             .unwrap_or_else(|e| panic!("to_gnss_week failed for {}: {e:?}", row.label));
         assert_eq!(
-            gw.week.value(), 0,
+            gw.week.value(),
+            0,
             "{}: expected week=0, got {}",
-            row.label, gw.week.value()
+            row.label,
+            gw.week.value()
         );
         assert_eq!(
-            gw.seconds_of_week.value(), 0,
+            gw.seconds_of_week.value(),
+            0,
             "{}: expected sow=0, got {}",
-            row.label, gw.seconds_of_week.value()
+            row.label,
+            gw.seconds_of_week.value()
         );
         assert_eq!(
-            gw.subsecond_nanos.value(), 0,
+            gw.subsecond_nanos.value(),
+            0,
             "{}: expected ns=0, got {}",
-            row.label, gw.subsecond_nanos.value()
+            row.label,
+            gw.subsecond_nanos.value()
         );
     }
 }
@@ -186,9 +192,11 @@ fn rollover_utc_parses_to_expected_week() {
         let gw = to_gnss_week(utc, &row.scale)
             .unwrap_or_else(|e| panic!("to_gnss_week failed for {}: {e:?}", row.label));
         assert_eq!(
-            gw.week.value(), expected_week,
+            gw.week.value(),
+            expected_week,
             "{}: expected full week={expected_week}, got {}",
-            row.label, gw.week.value()
+            row.label,
+            gw.week.value()
         );
         // Sanity: sow must be strictly less than one full week.
         assert!(

@@ -11,7 +11,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Added `DurationError::NonCanonical` variant returned by `from_canonical_seconds_nanos` when the signs of `seconds` and `nanos` do not match.
 - Added `try_add_exact` / `try_sub_exact` fallible variants on `Time<S, F>` that return `Err(DurationError)` when the duration's seconds component exceeds the `i64` range. The infallible `add_exact` / `sub_exact` delegate to these and panic on overflow; no silent saturation occurs.
 - Added `ExactDuration::from_nanoseconds_i(qtty::i64::Nanosecond)` and `as_nanoseconds_i(self) -> Result<qtty::i64::Nanosecond, DurationError>` for typed integer nanosecond access without going through `f64`.
-- Added `GnssWeek::subsecond_nanoseconds_i()` and `GnssWeek::new_with_nanoseconds_i(...)` typed constructors/accessors using `qtty::i64::Nanosecond`.
+- Added `ExactDuration::from_seconds_i(qtty::i64::Second)` for whole-second construction via a typed quantity.
+- Added `GnssWeek::subsecond_nanoseconds_u() -> qtty::u32::Nanosecond` and `GnssWeek::seconds_of_week_u() -> qtty::u32::Second` typed read accessors, and `GnssWeek::new_with_nanoseconds_u(week, seconds_of_week, qtty::u32::Nanosecond)` typed constructor. Unsigned quantities are used because week, seconds-of-week, and subsecond nanoseconds are non-negative fields.
 - Added exact-duration integration for `Time<S, F>`: ExactDuration-based difference and add/subtract helpers with split-f64 precision limits documented; epoch-relative round/floor/ceil helpers. Existing subtraction behavior is preserved for compatibility.
 - Added new sealed time-scale markers: `ET`, `GPST`, `GST`, `BDT`, and `QZSST`, including GNSS reference validation data.
 - Added `TimeSeries<S, F>`, a time iterator with exact integer-nanosecond step scheduling and deterministic by-index construction (no accumulated repeated-add drift); produced `Time<S>` values retain split-f64 precision limits.

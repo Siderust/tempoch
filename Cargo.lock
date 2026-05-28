@@ -144,9 +144,9 @@ checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 
 [[package]]
 name = "cbindgen"
-version = "0.29.2"
+version = "0.29.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "befbfd072a8e81c02f8c507aefce431fe5e7d051f83d48a23ffc9b9fe5a11799"
+checksum = "c95537b45400390270fae69ac098d057c8f5399001cde9d04f700c105ddfff2d"
 dependencies = [
  "clap",
  "heck",
@@ -740,7 +740,9 @@ dependencies = [
 
 [[package]]
 name = "qtty"
-version = "0.8.3"
+version = "0.8.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ad9c85853b4435eb62be239f8cd0e8740ad67b65245c165d68004672c0eb1da"
 dependencies = [
  "qtty-core",
  "qtty-derive",
@@ -748,7 +750,9 @@ dependencies = [
 
 [[package]]
 name = "qtty-core"
-version = "0.8.3"
+version = "0.8.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0977cb3d61376379cdb24781f2d1c53ad09fbadcfc925813703442b84249a97"
 dependencies = [
  "libm",
  "qtty-derive",
@@ -758,7 +762,9 @@ dependencies = [
 
 [[package]]
 name = "qtty-derive"
-version = "0.8.3"
+version = "0.8.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "593b4191ff7f54e773a9560a22b24851383ca56b35c6fbdb6fb30cdcf9be96c2"
 dependencies = [
  "proc-macro2",
  "quote",
