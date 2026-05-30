@@ -154,9 +154,13 @@ The two are always kept separate:
 - [`EncodedTime<S, F>`] (and its aliases `JulianDate<S>`, `ModifiedJulianDate<S>`,
   etc.) pair a scale with a format for I/O.
 - Crate epochs are expressed either as [`Time<S, F>`] via helpers in
-  [`tempoch::constats`] (for example [`j2000_jd_tt`]) or as plain [`qtty::Day`] /
-  [`qtty::Second`] constants such as [`J2000_JD_TT_DAY`] and [`GPS_EPOCH_TAI_SECONDS`]
-  when you only need the scalar encodings.
+  [`tempoch::constats`] (for example [`j2000_jd_tt`]) or as canonical plain
+  [`qtty::Day`] / [`qtty::Second`] facts such as [`J2000_JD_TT_DAY`],
+  [`UNIX_EPOCH_JD_DAY`], and [`GPS_EPOCH_TAI_MINUS_UTC`].
+- Generic unit facts such as Julian years and Julian centuries live in `qtty`
+  (`qtty::time::JULIAN_YEAR`, `qtty::time::JULIAN_CENTURY`). Derived epoch
+  coordinates such as Unix MJD or GPS epoch JD(TAI) are available through typed
+  helpers instead of public scalar constants.
 
 The type parameter order is always **Scale first, Format second** — matching
 the reading direction "JD on TT" → [`EncodedTime<TT, JD>`] / [`JulianDate<TT>`].

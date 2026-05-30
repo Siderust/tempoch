@@ -12,7 +12,7 @@ use crate::earth::context::TimeContext;
 use crate::encoding::{day_to_j2000_seconds, unix_seconds_to_mjd};
 use crate::format::TimeFormat;
 use crate::format::MJD;
-use crate::foundation::constats::GPS_EPOCH_TAI_SECONDS;
+use crate::foundation::constats::gps_epoch_tai_seconds;
 use crate::foundation::error::ConversionError;
 use crate::model::scale::{TAI, UTC};
 use crate::model::time::Time;
@@ -177,7 +177,7 @@ impl<F: TimeFormat> Time<TAI, F> {
             return Err(ConversionError::NonFinite);
         }
         Time::<TAI, crate::format::J2000s>::try_from_raw_j2000_seconds_split(
-            seconds + GPS_EPOCH_TAI_SECONDS,
+            seconds + gps_epoch_tai_seconds(),
             Second::new(0.0),
         )
     }
@@ -185,7 +185,7 @@ impl<F: TimeFormat> Time<TAI, F> {
     /// Return GPS seconds since the GPS epoch for this instant.
     #[inline]
     pub(crate) fn raw_gps_seconds(self) -> Second {
-        self.to_j2000s().total_seconds() - GPS_EPOCH_TAI_SECONDS
+        self.to_j2000s().total_seconds() - gps_epoch_tai_seconds()
     }
 }
 

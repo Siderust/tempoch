@@ -20,7 +20,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       # Publish changed publishable packages.
-      # tempoch-ffi has publish = false and is skipped automatically.
+      # tempoch-ffi and tempoch-time-data have publish = false and are skipped automatically.
       # Pass --confirm-ffi and protect behind a manual environment for FFI releases.
       - name: Publish changed packages
         run: bash scripts/publish-changed.sh

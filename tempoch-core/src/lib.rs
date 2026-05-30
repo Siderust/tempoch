@@ -61,27 +61,33 @@ pub mod foundation;
 pub mod model;
 pub mod period;
 
-// Compiled tables live in `tempoch-time-data`; these are crate-local shims for tests and helpers.
+pub(crate) use siderust_archive as archive;
+
+// Compiled ΔT tables live in `siderust-archive`; these are crate-local shims.
+use crate::archive::time::bundled::snapshot;
+use qtty::Day;
+
 #[allow(unused_imports)]
-pub(crate) use tempoch_time_data::generated::{eop_data, time_data};
-#[allow(unused_imports)]
-pub(crate) use tempoch_time_data::generated::{MODERN_DELTA_T_END_MJD, MODERN_DELTA_T_START_MJD};
+pub(crate) use snapshot as time_data;
+pub(crate) const MODERN_DELTA_T_START_MJD: Day = Day::new(snapshot::MODERN_DELTA_T_START_MJD);
+pub(crate) const MODERN_DELTA_T_END_MJD: Day = Day::new(snapshot::MODERN_DELTA_T_END_MJD);
 
 pub use earth::eop;
 pub use foundation::{constats, error};
 
-pub use data::provenance::{
-    assert_fresh as assert_time_data_fresh, provenance as time_data_provenance, DataHorizons,
-    FreshnessError, ProvenanceSnapshot, SourceUrls,
-};
 #[cfg(feature = "runtime-data-fetch")]
 pub use data::runtime_data::{
     fetch_latest_time_data, refresh_runtime_time_data, update_runtime_time_data,
+};
+pub use data::status::{
+    assert_fresh as assert_time_data_fresh, time_data_status, ActiveTimeDataSource, DataHorizons,
+    FreshnessError, TimeDataStatus,
 };
 pub use earth::context::TimeContext;
 pub use earth::delta_t::{
     delta_t_seconds, delta_t_seconds_extrapolated, DELTA_T_PREDICTION_HORIZON_MJD,
 };
+pub use earth::eop::{eop_end, eop_observed_end, eop_start};
 pub use features::TimeInstant;
 pub use format::{
     FormatForScale, FormatOptions, FormatPrecision, GnssWeek, GnssWeekScale, GpsTime,
@@ -91,10 +97,9 @@ pub use format::{
 pub use foundation::constats::{
     gps_epoch_jd_tai, gps_epoch_jd_utc, gps_epoch_tai, iau_time_epoch_t0_jd, j2000_jd_tt,
     tdb_tt_model_high_accuracy_end_jd, tdb_tt_model_high_accuracy_start_jd, unix_epoch_jd,
-    unix_epoch_mjd, utc_defined_from_mjd, GPS_EPOCH_JD_TAI_DAY, GPS_EPOCH_JD_UTC_DAY,
-    GPS_EPOCH_TAI_MINUS_UTC, GPS_EPOCH_TAI_SECONDS, IAU_TIME_EPOCH_T0_JD_DAY, J2000_JD_TT_DAY,
-    JULIAN_YEAR_DAYS, TDB_TT_MODEL_HIGH_ACCURACY_END_JD_DAY,
-    TDB_TT_MODEL_HIGH_ACCURACY_START_JD_DAY, TT_MINUS_TAI, UNIX_EPOCH_JD_DAY, UNIX_EPOCH_MJD_DAY,
+    unix_epoch_mjd, utc_defined_from_mjd, GPS_EPOCH_JD_UTC_DAY, GPS_EPOCH_TAI_MINUS_UTC,
+    IAU_TIME_EPOCH_T0_JD_DAY, J2000_JD_TT_DAY, TDB_TT_MODEL_HIGH_ACCURACY_END_JD_DAY,
+    TDB_TT_MODEL_HIGH_ACCURACY_START_JD_DAY, TT_MINUS_TAI, UNIX_EPOCH_JD_DAY,
     UTC_DEFINED_FROM_MJD_DAY,
 };
 pub use foundation::duration::{DurationError, ExactDuration, NANOS_PER_SECOND};
@@ -109,9 +114,8 @@ pub use period::{
     complement_within, series::TimeSeries, series::TimeSeriesError, Interval, InvalidIntervalError,
     Period, PeriodListError,
 };
-pub use tempoch_time_data::generated::{
-    EOP_END_MJD, EOP_OBSERVED_END_MJD, EOP_START_MJD, MODERN_DELTA_T_OBSERVED_END_MJD,
-};
+pub const MODERN_DELTA_T_OBSERVED_END_MJD: Day =
+    Day::new(snapshot::MODERN_DELTA_T_OBSERVED_END_MJD);
 
 #[cfg(feature = "serde")]
 pub use features::tagged;

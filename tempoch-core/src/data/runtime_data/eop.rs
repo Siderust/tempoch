@@ -2,12 +2,12 @@
 // Copyright (C) 2026 Vallés Puig, Ramon
 
 use super::utc_tai::time_data_tai_minus_utc_mjd_extrapolated;
+use crate::archive::time::{EopPoint, TimeDataBundle};
 use crate::earth::delta_t::delta_t_seconds_from_modern_points;
 use crate::earth::eop::EopValues;
 use crate::foundation::error::ConversionError;
 use qtty::Day as DayQuantity;
 use qtty::Second;
-use tempoch_time_data::{EopPoint, TimeDataBundle};
 
 pub(crate) fn time_data_delta_t(
     data: &TimeDataBundle,
@@ -43,10 +43,7 @@ pub(crate) fn time_data_eop_at(data: &TimeDataBundle, mjd_utc: DayQuantity) -> O
         (Some(a), Some(b)) => Some(lerp(a, b)),
         _ => None,
     };
-    let lod_milliseconds = match (lo.lod_milliseconds, hi.lod_milliseconds) {
-        (Some(a), Some(b)) => Some(lerp(a, b)),
-        _ => None,
-    };
+    let lod_milliseconds = lerp_opt(lo.lod.map(|v| v.value()), hi.lod.map(|v| v.value()));
 
     let ut1_minus_utc = {
         // Allow extrapolation here: these calls are for internal ΔT bookkeeping
@@ -59,22 +56,26 @@ pub(crate) fn time_data_eop_at(data: &TimeDataBundle, mjd_utc: DayQuantity) -> O
         let query_offset = time_data_tai_minus_utc_mjd_extrapolated(data, mjd_utc);
         match (lo_offset, hi_offset, query_offset) {
             (Some(lo_tmu), Some(hi_tmu), Some(query_tmu)) => {
-                let lo_cont = lo.ut1_minus_utc_seconds - lo_tmu.value();
-                let hi_cont = hi.ut1_minus_utc_seconds - hi_tmu.value();
+                let lo_cont = lo.ut1_minus_utc.value() - lo_tmu.value();
+                let hi_cont = hi.ut1_minus_utc.value() - hi_tmu.value();
                 Second::new(lerp(lo_cont, hi_cont) + query_tmu.value())
             }
-            _ => Second::new(lerp(lo.ut1_minus_utc_seconds, hi.ut1_minus_utc_seconds)),
+            _ => Second::new(lerp(lo.ut1_minus_utc.value(), hi.ut1_minus_utc.value())),
         }
     };
 
     Some(EopValues {
         mjd_utc,
-        pm_xp: lerp_opt(lo.pm_xp_arcsec, hi.pm_xp_arcsec).map(qtty::f64::Arcsecond::new),
-        pm_yp: lerp_opt(lo.pm_yp_arcsec, hi.pm_yp_arcsec).map(qtty::f64::Arcsecond::new),
+        pm_xp: lerp_opt(lo.pm_xp.map(|v| v.value()), hi.pm_xp.map(|v| v.value()))
+            .map(qtty::f64::Arcsecond::new),
+        pm_yp: lerp_opt(lo.pm_yp.map(|v| v.value()), hi.pm_yp.map(|v| v.value()))
+            .map(qtty::f64::Arcsecond::new),
         ut1_minus_utc,
         lod: lod_milliseconds.map(qtty::f64::Millisecond::new),
-        dx: lerp_opt(lo.dx_milliarcsec, hi.dx_milliarcsec).map(qtty::f64::MilliArcsecond::new),
-        dy: lerp_opt(lo.dy_milliarcsec, hi.dy_milliarcsec).map(qtty::f64::MilliArcsecond::new),
+        dx: lerp_opt(lo.dx.map(|v| v.value()), hi.dx.map(|v| v.value()))
+            .map(qtty::f64::MilliArcsecond::new),
+        dy: lerp_opt(lo.dy.map(|v| v.value()), hi.dy.map(|v| v.value()))
+            .map(qtty::f64::MilliArcsecond::new),
         ut1_observed: lo.ut1_observed && hi.ut1_observed,
     })
 }

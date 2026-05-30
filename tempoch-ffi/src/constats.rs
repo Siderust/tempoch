@@ -5,24 +5,24 @@
 //!
 //! All values are returned as plain `double`s so that C and C++ consumers
 //! can use them without depending on the Rust type system.  Each function
-//! wraps the corresponding crate constant from `tempoch` / `tempoch_core`.
+//! wraps a canonical `tempoch` fact or derives a secondary coordinate from
+//! canonical typed helpers.
 
 use tempoch::{
-    DELTA_T_PREDICTION_HORIZON_MJD, GPS_EPOCH_JD_TAI_DAY, GPS_EPOCH_JD_UTC_DAY,
-    GPS_EPOCH_TAI_MINUS_UTC, JULIAN_YEAR_DAYS, MODERN_DELTA_T_OBSERVED_END_MJD, UNIX_EPOCH_JD_DAY,
-    UNIX_EPOCH_MJD_DAY, UTC_DEFINED_FROM_MJD_DAY,
+    DELTA_T_PREDICTION_HORIZON_MJD, GPS_EPOCH_JD_UTC_DAY, GPS_EPOCH_TAI_MINUS_UTC, J2000_JD_TT_DAY,
+    MODERN_DELTA_T_OBSERVED_END_MJD, UNIX_EPOCH_JD_DAY, UTC_DEFINED_FROM_MJD_DAY,
 };
 
 /// J2000.0 epoch as JD(TT) — 2 451 545.0.
 #[no_mangle]
 pub extern "C" fn tempoch_const_j2000_jd_tt() -> f64 {
-    2_451_545.0
+    J2000_JD_TT_DAY.value()
 }
 
 /// One Julian year in days — 365.25.
 #[no_mangle]
 pub extern "C" fn tempoch_const_julian_year_days() -> f64 {
-    JULIAN_YEAR_DAYS.value()
+    qtty::time::JULIAN_YEAR.to::<qtty::unit::Day>().value()
 }
 
 /// First MJD covered by the built-in UTC-TAI segment table (1961-01-01).
@@ -46,13 +46,13 @@ pub extern "C" fn tempoch_const_unix_epoch_jd() -> f64 {
 /// Unix epoch Modified Julian Day on the UTC axis.
 #[no_mangle]
 pub extern "C" fn tempoch_const_unix_epoch_mjd() -> f64 {
-    UNIX_EPOCH_MJD_DAY.value()
+    tempoch::unix_epoch_mjd().raw().value()
 }
 
 /// GPS epoch expressed as a Julian Day on the TAI axis.
 #[no_mangle]
 pub extern "C" fn tempoch_const_gps_epoch_jd_tai() -> f64 {
-    GPS_EPOCH_JD_TAI_DAY.value()
+    tempoch::gps_epoch_jd_tai().raw().value()
 }
 
 /// Exact TAI − UTC offset at the GPS epoch, in seconds (19.0).
@@ -68,22 +68,28 @@ pub extern "C" fn tempoch_const_delta_t_prediction_horizon_mjd() -> f64 {
     DELTA_T_PREDICTION_HORIZON_MJD.value()
 }
 
-/// First MJD covered by the compiled IERS EOP series.
+/// First MJD covered by the active IERS EOP series, or NaN when no EOP data is loaded.
 #[no_mangle]
 pub extern "C" fn tempoch_const_eop_start_mjd() -> f64 {
-    tempoch::EOP_START_MJD.value()
+    tempoch_core::eop::eop_start()
+        .map(|v| v.value())
+        .unwrap_or(f64::NAN)
 }
 
-/// Last MJD covered by the compiled IERS EOP series.
+/// Last MJD covered by the active IERS EOP series, or NaN when no EOP data is loaded.
 #[no_mangle]
 pub extern "C" fn tempoch_const_eop_end_mjd() -> f64 {
-    tempoch::EOP_END_MJD.value()
+    tempoch_core::eop::eop_end()
+        .map(|v| v.value())
+        .unwrap_or(f64::NAN)
 }
 
-/// Last MJD with *observed* (Bulletin C04) EOP data in the compiled series.
+/// Last MJD with *observed* (Bulletin C04) EOP data in the active series, or NaN when no data.
 #[no_mangle]
 pub extern "C" fn tempoch_const_eop_observed_end_mjd() -> f64 {
-    tempoch::EOP_OBSERVED_END_MJD.value()
+    tempoch_core::eop::eop_observed_end()
+        .map(|v| v.value())
+        .unwrap_or(f64::NAN)
 }
 
 /// Last MJD with modern observed ΔT data (post-1955 atomic-clock era).
@@ -139,9 +145,12 @@ mod tests {
     }
 
     #[test]
-    fn eop_range_is_ordered() {
-        assert!(tempoch_const_eop_start_mjd() < tempoch_const_eop_end_mjd());
-        assert!(tempoch_const_eop_observed_end_mjd() <= tempoch_const_eop_end_mjd());
+    fn eop_range_is_nan_without_loaded_data() {
+        // EOP data is not compiled in; without a loaded bundle the FFI
+        // functions return NaN.
+        assert!(tempoch_const_eop_start_mjd().is_nan());
+        assert!(tempoch_const_eop_end_mjd().is_nan());
+        assert!(tempoch_const_eop_observed_end_mjd().is_nan());
     }
 
     #[test]

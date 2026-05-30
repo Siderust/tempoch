@@ -98,13 +98,13 @@ impl From<std::io::Error> for TimeDataError {
     }
 }
 
-impl From<tempoch_time_data::TimeDataError> for TimeDataError {
-    fn from(err: tempoch_time_data::TimeDataError) -> Self {
+impl From<crate::archive::time::TimeDataError> for TimeDataError {
+    fn from(err: crate::archive::time::TimeDataError) -> Self {
         match err {
-            tempoch_time_data::TimeDataError::Io(e) => Self::Io(e),
-            tempoch_time_data::TimeDataError::Download(msg) => Self::Download(msg),
-            tempoch_time_data::TimeDataError::Parse(msg) => Self::Parse(msg),
-            tempoch_time_data::TimeDataError::Integrity(msg) => Self::Integrity(msg),
+            crate::archive::time::TimeDataError::Io(e) => Self::Io(e),
+            crate::archive::time::TimeDataError::Download(msg) => Self::Download(msg),
+            crate::archive::time::TimeDataError::Parse(msg) => Self::Parse(msg),
+            crate::archive::time::TimeDataError::Integrity(msg) => Self::Integrity(msg),
         }
     }
 }
@@ -163,18 +163,19 @@ mod tests {
         assert!(matches!(io_mapped, TimeDataError::Io(_)));
 
         let mapped_download: TimeDataError =
-            tempoch_time_data::TimeDataError::Download("d".to_string()).into();
+            crate::archive::time::TimeDataError::Download("d".to_string()).into();
         assert!(matches!(mapped_download, TimeDataError::Download(msg) if msg == "d"));
 
         let mapped_parse: TimeDataError =
-            tempoch_time_data::TimeDataError::Parse("p".to_string()).into();
+            crate::archive::time::TimeDataError::Parse("p".to_string()).into();
         assert!(matches!(mapped_parse, TimeDataError::Parse(msg) if msg == "p"));
 
         let mapped_integrity: TimeDataError =
-            tempoch_time_data::TimeDataError::Integrity("i".to_string()).into();
+            crate::archive::time::TimeDataError::Integrity("i".to_string()).into();
         assert!(matches!(mapped_integrity, TimeDataError::Integrity(msg) if msg == "i"));
 
-        let mapped_io: TimeDataError = tempoch_time_data::TimeDataError::Io(io_error("x")).into();
+        let mapped_io: TimeDataError =
+            crate::archive::time::TimeDataError::Io(io_error("x")).into();
         assert!(matches!(mapped_io, TimeDataError::Io(_)));
     }
 }

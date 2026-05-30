@@ -106,13 +106,28 @@ mod tests {
     }
 
     #[test]
-    fn covers_start_and_end() {
+    fn eop_not_loaded_start_and_end_are_nan() {
+        // The compiled bundle no longer embeds EOP data; operators must
+        // explicitly fetch via TimeDataManager.  When no EOP is loaded the
+        // start/end constants return NaN.
         let start = tempoch_const_eop_start_mjd();
         let end = tempoch_const_eop_end_mjd();
-        assert!(tempoch_eop_covers(start));
-        assert!(tempoch_eop_covers(end));
-        assert!(!tempoch_eop_covers(start - 1.0));
-        assert!(!tempoch_eop_covers(end + 1.0));
+        assert!(
+            start.is_nan(),
+            "expected NaN for eop_start when no EOP loaded, got {start}"
+        );
+        assert!(
+            end.is_nan(),
+            "expected NaN for eop_end when no EOP loaded, got {end}"
+        );
+    }
+
+    #[test]
+    fn eop_not_loaded_covers_nothing() {
+        // When no EOP data is loaded, covers() should return false for all MJDs.
+        assert!(!tempoch_eop_covers(0.0));
+        assert!(!tempoch_eop_covers(51_544.0)); // J2000
+        assert!(!tempoch_eop_covers(60_000.0));
     }
 
     #[test]
@@ -138,8 +153,9 @@ mod tests {
     }
 
     #[test]
-    fn at_valid_mjd_succeeds_and_ut1_is_finite() {
-        let mjd = tempoch_const_eop_start_mjd() + 100.0;
+    fn eop_not_loaded_at_returns_horizon_exceeded() {
+        // Without EOP data loaded, any valid-looking MJD still returns
+        // Ut1HorizonExceeded because the EOP series is empty.
         let mut out = TempochEopValues {
             mjd_utc: 0.0,
             pm_xp_arcsec: 0.0,
@@ -150,8 +166,7 @@ mod tests {
             dy_milliarcsec: 0.0,
             ut1_observed: 0,
         };
-        let status = unsafe { tempoch_eop_at(mjd, &mut out) };
-        assert_eq!(status, TempochStatus::Ok);
-        assert!(out.ut1_minus_utc.is_finite());
+        let status = unsafe { tempoch_eop_at(51_544.0, &mut out) };
+        assert_eq!(status, TempochStatus::Ut1HorizonExceeded);
     }
 }

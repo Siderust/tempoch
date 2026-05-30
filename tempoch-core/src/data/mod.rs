@@ -3,8 +3,10 @@
 
 //! Runtime access to bundled and optionally refreshed time-data tables.
 
-pub mod provenance;
 pub mod runtime_data;
-pub use provenance::{
-    assert_fresh, provenance, DataHorizons, FreshnessError, ProvenanceSnapshot, SourceUrls,
+pub mod status;
+
+pub use status::{
+    assert_fresh, time_data_status, ActiveTimeDataSource, DataHorizons, FreshnessError,
+    TimeDataStatus,
 };

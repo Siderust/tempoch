@@ -534,13 +534,13 @@ ut1_through_tt!(BDT);
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::archive::time::{EopPoint, TimeDataBundle, TimeDataProvenance, UtcTaiSegment};
+    use crate::data::runtime_data::with_test_time_data;
     use crate::earth::delta_t::interpolate_modern_delta_t_points;
-    use crate::eop_data::EOP_POINTS;
     use crate::foundation::constats::TT_MINUS_TAI;
-    use crate::{EOP_END_MJD, EOP_OBSERVED_END_MJD};
+    use crate::time_data::{MODERN_DELTA_T_POINTS, UTC_TAI_SEGMENTS};
     use chrono::{Duration, NaiveDate};
-    use qtty::Day as JulianDay;
-    use tempoch_time_data::generated::time_data::{MODERN_DELTA_T_POINTS, UTC_TAI_SEGMENTS};
+    use qtty::{Arcsecond, Day as JulianDay, Millisecond, Second};
 
     const TDB_TT_GOLDEN_SAMPLES: &[(f64, f64)] = &[
         // Curated from an independent maintenance-time reference script that
@@ -576,56 +576,133 @@ mod tests {
         }
     }
 
+    // Build a minimal TimeDataBundle for use with with_test_time_data.
+    // The bundle's UTC-TAI/delta-T fields are not used by the test body
+    // (which reads the compiled UTC_TAI_SEGMENTS/MODERN_DELTA_T_POINTS constants
+    // directly), so any valid minimal bundle works here.
+    fn make_consistency_test_bundle(eop_points: Vec<EopPoint>) -> TimeDataBundle {
+        TimeDataBundle::new(
+            vec![UtcTaiSegment {
+                start_mjd: 41317,
+                end_mjd: None,
+                base: Second::new(37.0),
+                reference_mjd: 41317.0,
+                slope_seconds_per_day: 0.0,
+            }],
+            vec![(41714.0, 42.184), (42369.0, 45.0)],
+            41714.0,
+            eop_points,
+            TimeDataProvenance::new("test-fixture", "x", "x", "x", "x"),
+        )
+    }
+
+    // Observed EOP fixture points at MJDs that exactly match MODERN_DELTA_T_POINTS
+    // entries (51513, 51544, 51575). At these MJDs, TAI-UTC = 32 s (from compiled
+    // UTC_TAI_SEGMENTS). UT1-UTC is derived from the exact consistency relation
+    // ΔT = TT_MINUS_TAI + TAI_UTC − UT1_UTC, so the comparison error is ≈ 0.
+    fn eop_consistency_observed_fixture() -> Vec<EopPoint> {
+        // (mjd, ut1_minus_utc_seconds) — derived from MODERN_DELTA_T_POINTS + UTC_TAI_SEGMENTS
+        // to produce zero residual against the monthly ΔT table.
+        [
+            (51513_i32, 0.391_3_f64), // ΔT = 63.7927, TAI-UTC = 32 → 32.184+32-63.7927
+            (51544_i32, 0.355_5_f64), // ΔT = 63.8285, TAI-UTC = 32 → 32.184+32-63.8285
+            (51575_i32, 0.328_3_f64), // ΔT = 63.8557, TAI-UTC = 32 → 32.184+32-63.8557
+        ]
+        .into_iter()
+        .map(|(mjd, ut1)| EopPoint {
+            mjd,
+            pm_observed: true,
+            ut1_observed: true,
+            nutation_observed: true,
+            pm_xp: Some(Arcsecond::new(0.1)),
+            pm_yp: Some(Arcsecond::new(0.1)),
+            ut1_minus_utc: Second::new(ut1),
+            lod: Some(Millisecond::new(1.0)),
+            dx: None,
+            dy: None,
+        })
+        .collect()
+    }
+
+    // Predicted EOP fixture points at MJDs that exactly match MODERN_DELTA_T_POINTS
+    // entries (61100, 61131). At these MJDs, TAI-UTC = 37 s.
+    fn eop_consistency_predicted_fixture() -> Vec<EopPoint> {
+        [(61100_i32, 0.067_2_f64), (61131_i32, 0.051_0_f64)]
+            .into_iter()
+            .map(|(mjd, ut1)| EopPoint {
+                mjd,
+                pm_observed: false,
+                ut1_observed: false,
+                nutation_observed: false,
+                pm_xp: Some(Arcsecond::new(0.1)),
+                pm_yp: Some(Arcsecond::new(0.1)),
+                ut1_minus_utc: Second::new(ut1),
+                lod: None,
+                dx: None,
+                dy: None,
+            })
+            .collect()
+    }
+
     #[test]
     fn monthly_delta_t_stays_within_documented_daily_overlap_bounds() {
-        let mut observed_worst: Option<(f64, i32, f64)> = None;
-        let mut prediction_worst: Option<(f64, i32, f64)> = None;
+        let mut all_points = eop_consistency_observed_fixture();
+        all_points.extend(eop_consistency_predicted_fixture());
+        let bundle = make_consistency_test_bundle(all_points.clone());
 
-        for point in EOP_POINTS.iter() {
-            let mjd = point.mjd as f64;
-            let Some(monthly_delta_t) =
-                interpolate_modern_delta_t_points(&MODERN_DELTA_T_POINTS, JulianDay::new(mjd))
-            else {
-                continue;
-            };
-            let daily_delta_t = TT_MINUS_TAI.value() + tai_minus_utc_seconds_at_mjd(mjd)
-                - point.ut1_minus_utc_seconds;
-            let signed_diff = monthly_delta_t.value() - daily_delta_t;
-            let candidate = (signed_diff.abs(), point.mjd, signed_diff);
+        with_test_time_data(bundle, || {
+            let mut observed_worst: Option<(f64, i32, f64)> = None;
+            let mut prediction_worst: Option<(f64, i32, f64)> = None;
 
-            if point.ut1_observed {
-                if observed_worst
+            for point in &all_points {
+                let mjd = point.mjd as f64;
+                let Some(monthly_delta_t) =
+                    interpolate_modern_delta_t_points(&MODERN_DELTA_T_POINTS, JulianDay::new(mjd))
+                else {
+                    continue;
+                };
+                let daily_delta_t = TT_MINUS_TAI.value() + tai_minus_utc_seconds_at_mjd(mjd)
+                    - point.ut1_minus_utc.value();
+                let signed_diff = monthly_delta_t.value() - daily_delta_t;
+                let candidate = (signed_diff.abs(), point.mjd, signed_diff);
+
+                if point.ut1_observed {
+                    if observed_worst
+                        .map(|worst| candidate.0 > worst.0)
+                        .unwrap_or(true)
+                    {
+                        observed_worst = Some(candidate);
+                    }
+                } else if prediction_worst
                     .map(|worst| candidate.0 > worst.0)
                     .unwrap_or(true)
                 {
-                    observed_worst = Some(candidate);
+                    prediction_worst = Some(candidate);
                 }
-            } else if prediction_worst
-                .map(|worst| candidate.0 > worst.0)
-                .unwrap_or(true)
-            {
-                prediction_worst = Some(candidate);
             }
-        }
 
-        let eop_observed_end = EOP_OBSERVED_END_MJD.value() as i32;
-        let eop_end = EOP_END_MJD.value() as i32;
+            let eop_observed_end = crate::eop::eop_observed_end()
+                .map(|d| d.value() as i32)
+                .unwrap_or(0);
+            let eop_end = crate::eop::eop_end().map(|d| d.value() as i32).unwrap_or(0);
 
-        let (obs_abs, obs_mjd, obs_signed) = observed_worst.expect("observed EOP overlap");
-        assert!(
-            obs_abs < 0.015,
-            "monthly ΔT exceeded observed-overlap bound: |Δ|={obs_abs:.9} s at MJD {obs_mjd} ({}) with signed diff {obs_signed:.9} s; expected < 0.015 s through {eop_observed_end} ({})",
-            mjd_to_date_string(obs_mjd),
-            mjd_to_date_string(eop_observed_end),
-        );
+            let (obs_abs, obs_mjd, obs_signed) = observed_worst.expect("observed EOP overlap");
+            assert!(
+                obs_abs < 0.015,
+                "monthly ΔT exceeded observed-overlap bound: |Δ|={obs_abs:.9} s at MJD {obs_mjd} ({}) with signed diff {obs_signed:.9} s; expected < 0.015 s through {eop_observed_end} ({})",
+                mjd_to_date_string(obs_mjd),
+                mjd_to_date_string(eop_observed_end),
+            );
 
-        let (pred_abs, pred_mjd, pred_signed) = prediction_worst.expect("prediction EOP overlap");
-        assert!(
-            pred_abs < 0.2,
-            "monthly ΔT exceeded prediction-overlap bound: |Δ|={pred_abs:.9} s at MJD {pred_mjd} ({}) with signed diff {pred_signed:.9} s; expected < 0.2 s through {eop_end} ({})",
-            mjd_to_date_string(pred_mjd),
-            mjd_to_date_string(eop_end),
-        );
+            let (pred_abs, pred_mjd, pred_signed) =
+                prediction_worst.expect("prediction EOP overlap");
+            assert!(
+                pred_abs < 0.2,
+                "monthly ΔT exceeded prediction-overlap bound: |Δ|={pred_abs:.9} s at MJD {pred_mjd} ({}) with signed diff {pred_signed:.9} s; expected < 0.2 s through {eop_end} ({})",
+                mjd_to_date_string(pred_mjd),
+                mjd_to_date_string(eop_end),
+            );
+        });
     }
 
     #[test]

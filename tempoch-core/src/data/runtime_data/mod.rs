@@ -6,7 +6,7 @@ mod store;
 mod utc_tai;
 
 pub(crate) use eop::{time_data_delta_t, time_data_eop_at};
-pub(crate) use store::active_time_data;
+pub(crate) use store::{active_time_data, active_time_data_source};
 #[cfg(test)]
 pub(crate) use store::{
     compiled_time_data, select_time_data, select_time_data_for_auto_refresh, set_active_time_data,
@@ -22,18 +22,43 @@ pub(crate) use utc_tai::{
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(any(test, feature = "runtime-data-fetch"))]
+    use crate::archive::time::TimeDataError as InternalDataError;
+    use crate::archive::time::{EopPoint, TimeDataBundle, TimeDataProvenance};
     use crate::format::{JulianDate, Unix, JD};
     use crate::{Time, TimeContext, TT, UT1, UTC};
     use chrono::DateTime;
-    use qtty::Day as DayQuantity;
-    use qtty::Second;
-    use tempoch_time_data::TimeDataBundle;
-    #[cfg(any(test, feature = "runtime-data-fetch"))]
-    use tempoch_time_data::TimeDataError as InternalDataError;
-    use tempoch_time_data::TimeDataProvenance;
+    use qtty::{Arcsecond, Day as DayQuantity, Millisecond, Second};
 
     fn compiled_bundle_owned() -> TimeDataBundle {
         (*compiled_time_data()).clone()
+    }
+
+    /// Build a bundle with a small EOP fixture spanning MJD 56_999–57_002.
+    /// The compiled UTC-TAI and ΔT tables are reused; only EOP is synthetic.
+    fn eop_fixture_bundle() -> TimeDataBundle {
+        let base = compiled_bundle_owned();
+        let eop_points: Vec<EopPoint> = (56_999_i32..=57_002)
+            .map(|mjd| EopPoint {
+                mjd,
+                pm_observed: true,
+                ut1_observed: true,
+                nutation_observed: true,
+                pm_xp: Some(Arcsecond::new(0.1)),
+                pm_yp: Some(Arcsecond::new(0.1)),
+                ut1_minus_utc: Second::new(0.3),
+                lod: Some(Millisecond::new(1.0)),
+                dx: None,
+                dy: None,
+            })
+            .collect();
+        TimeDataBundle::new(
+            base.utc_tai_segments().to_vec(),
+            base.modern_delta_t_points().to_vec(),
+            base.modern_delta_t_observed_end_mjd(),
+            eop_points,
+            base.provenance().clone(),
+        )
     }
 
     fn bundle_with_timestamp(timestamp: &str) -> TimeDataBundle {
@@ -135,19 +160,21 @@ mod tests {
 
     #[test]
     fn ordinary_ut1_api_uses_override_bundle() {
-        let bundle = compiled_bundle_owned();
-        let mut eop_points = bundle.eop_points().to_vec();
-        let point = eop_points.iter().position(|p| p.mjd == 57_000).unwrap();
-        eop_points[point].ut1_minus_utc_seconds += 0.5;
-        let bundle = TimeDataBundle::new(
-            bundle.utc_tai_segments().to_vec(),
-            bundle.modern_delta_t_points().to_vec(),
-            bundle.modern_delta_t_observed_end_mjd(),
-            eop_points,
-            bundle.provenance().clone(),
+        let base = eop_fixture_bundle();
+        let base_ut1_seconds = 0.3_f64;
+        let mut modified_eop = base.eop_points().to_vec();
+        if let Some(p) = modified_eop.iter_mut().find(|p| p.mjd == 57_000) {
+            p.ut1_minus_utc = Second::new(p.ut1_minus_utc.value() + 0.5);
+        }
+        let overridden = TimeDataBundle::new(
+            base.utc_tai_segments().to_vec(),
+            base.modern_delta_t_points().to_vec(),
+            base.modern_delta_t_observed_end_mjd(),
+            modified_eop,
+            base.provenance().clone(),
         );
 
-        with_test_time_data(bundle, || {
+        with_test_time_data(overridden, || {
             let ctx = TimeContext::with_builtin_eop();
             let tt = Time::<TT>::from_raw_j2000_seconds(crate::encoding::day_to_j2000_seconds::<
                 crate::format::JD,
@@ -155,14 +182,13 @@ mod tests {
                 2_400_000.5 + 57_000.0,
             )))
             .unwrap();
-            let compiled = {
-                let data = compiled_time_data();
-                time_data_eop_at(data.as_ref(), DayQuantity::new(57_000.0))
-                    .unwrap()
-                    .ut1_minus_utc
-            };
             let overridden = ctx.ut1_minus_utc(DayQuantity::new(57_000.0)).unwrap();
-            assert!((overridden - compiled).abs() > Second::new(0.1));
+            assert!(
+                (overridden - Second::new(base_ut1_seconds + 0.5)).abs() < Second::new(1e-6),
+                "expected overridden UT1-UTC ≈ {:.3} s, got {:.6} s",
+                base_ut1_seconds + 0.5,
+                overridden.value(),
+            );
 
             let ut1: Time<UT1> = tt.to_scale_with::<UT1>(&ctx).unwrap();
             assert!(ut1.to::<JD>().raw().is_finite());
@@ -172,14 +198,16 @@ mod tests {
     #[test]
     fn time_context_snapshots_ut1_data_across_active_bundle_updates() {
         with_runtime_data_lock(|| {
-            let baseline = compiled_bundle_owned();
+            let baseline = eop_fixture_bundle();
             let previous = active_time_data();
             set_active_time_data(baseline.clone());
             let ctx_before = TimeContext::with_builtin_eop();
 
             let mut eop_points = baseline.eop_points().to_vec();
-            let point = eop_points.iter().position(|p| p.mjd == 57_000).unwrap();
-            eop_points[point].ut1_minus_utc_seconds += 0.5;
+            {
+                let p = eop_points.iter_mut().find(|p| p.mjd == 57_000).unwrap();
+                p.ut1_minus_utc = Second::new(p.ut1_minus_utc.value() + 0.5);
+            }
             let overridden = TimeDataBundle::new(
                 baseline.utc_tai_segments().to_vec(),
                 baseline.modern_delta_t_points().to_vec(),
@@ -208,7 +236,7 @@ mod tests {
             .iter()
             .position(|segment| segment.start_mjd <= 60_000 && segment.end_mjd.is_none())
             .unwrap();
-        segments[segment].base_seconds += 1.0;
+        segments[segment].base = Second::new(segments[segment].base.value() + 1.0);
         let bundle = TimeDataBundle::new(
             segments,
             bundle.modern_delta_t_points().to_vec(),
@@ -258,7 +286,7 @@ mod tests {
                 .iter()
                 .position(|segment| segment.start_mjd <= 60_000 && segment.end_mjd.is_none())
                 .unwrap();
-            segments[segment].base_seconds += 1.0;
+            segments[segment].base = Second::new(segments[segment].base.value() + 1.0);
             let overridden = TimeDataBundle::new(
                 segments,
                 baseline.modern_delta_t_points().to_vec(),
@@ -338,15 +366,11 @@ mod tests {
 
     #[test]
     fn eop_lookup_returns_none_when_bundle_has_gap() {
-        let bundle = compiled_bundle_owned();
+        let bundle = eop_fixture_bundle();
         let mut eop_points = bundle.eop_points().to_vec();
-        let gap_idx = eop_points
-            .windows(2)
-            .position(|window| window[1].mjd == window[0].mjd + 1)
-            .expect("compiled EOP series should contain adjacent rows")
-            + 1;
-        let gap_after = eop_points[gap_idx - 1].mjd;
-        eop_points.remove(gap_idx);
+        // Remove MJD 57_001 to create a gap between 57_000 and 57_002.
+        let gap_after = 57_000_i32;
+        eop_points.retain(|p| p.mjd != 57_001);
         let bundle = TimeDataBundle::new(
             bundle.utc_tai_segments().to_vec(),
             bundle.modern_delta_t_points().to_vec(),
@@ -364,6 +388,11 @@ mod tests {
         let bundle = compiled_time_data();
         assert!(!bundle.utc_tai_segments().is_empty());
         assert!(!bundle.modern_delta_t_points().is_empty());
-        assert!(!bundle.eop_points().is_empty());
+        // EOP is not embedded in the compiled bundle; it requires an explicit
+        // runtime fetch via TimeDataManager. Verify the bundle reports None
+        // for EOP horizons when no EOP data is loaded.
+        assert!(bundle.eop_points().is_empty());
+        assert!(bundle.eop_start_mjd().is_none());
+        assert!(bundle.eop_end_mjd().is_none());
     }
 }

@@ -3,6 +3,55 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Removed
+
+- Removed redundant public Julian unit constants in favor of qtty's
+  `qtty::time::JULIAN_YEAR` and `qtty::time::JULIAN_CENTURY`.
+
+### Changed
+
+- Unix MJD and GPS epoch JD(TAI)/J2000-second coordinates are now derived from
+  canonical epoch and scale-offset facts instead of maintained as independent
+  public scalar constants.
+
+### Fixed
+
+- `scripts/publish-changed.sh` now runs Cargo's real publish dry-run
+  verification and no longer publishes with `--no-verify`.
+
+## [0.6.3] - 2026-05-30
+
+### Removed
+
+- Deleted the `tempoch-time-data` workspace member. Compiled UTC-TAI / ΔT
+  tables now live in `siderust-archive::time::bundled`.
+- Replaced the `archive/` git submodule with a direct dependency on
+  `siderust-archive` (local path via `[patch.crates-io]` during development).
+- Deleted `tempoch-time-data-updater` crate. Maintenance of the IERS dataset
+  has moved to the archive repository (`siderust-archive-update-time-data`).
+- Deleted `.github/workflows/update-time-data.yml` (weekly refresh runs in the
+  archive repo instead).
+
+### Changed
+
+- `tempoch-time-data`: migrated to thin re-export of `siderust-archive`
+  (was `siderust-archive-data` from the archive submodule). The embedded
+  5.3 MB IERS EOP array (`eop_data.rs`) had already been removed in a prior
+  patch; this release completes the migration by also removing the submodule.
+- `tempoch-core` now depends on `siderust-archive` directly (`time` +
+  `bundled-time`; `fetch` via `runtime-data-fetch`). The internal
+  `tempoch-time-data` adapter crate has been removed.
+
+### Fixed
+
+- `tempoch-time-data`: marked `publish = false` in `Cargo.toml`. The crate was
+  already published at 0.1.3 on crates.io; the publish-changed script was
+  attempting to re-publish the same version on every workspace release because the
+  root `Cargo.toml` change triggered all packages to be considered changed.
+  Dependents (`tempoch-core`) continue to resolve it via the registry version field.
+
 ## [0.6.2] - 2026-05-28
 
 ### Added
@@ -25,7 +74,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   - Parser hardening: empty fractional part (e.g. `12:34:56.Z`) and more than 9 fractional digits are rejected.
   - Fallible formatting API `try_format_rfc3339_with(...) -> Result<String, ConversionError>`; the infallible `format_rfc3339_with` delegates to it and returns `"<invalid>"` on error (documented).
 - Added GNSS week / seconds-of-week format (`GnssWeek` + `GnssWeekScale` trait) implemented for `GPST`, `GST`, `BDT`, and `QZSST`, with documented rollover periods (1024 / 4096 / 8192 / 1024) and overflow detection in `to_gnss_week` (returns `ConversionError::OutOfRange` for week numbers exceeding `u32::MAX`).
-- Added `tempoch_core::data::provenance` with a programmatic `ProvenanceSnapshot` (source URLs, SHA-256, validity horizons), and an `assert_fresh(now, max_age)` freshness checker exposed at the crate root as `time_data_provenance()` and `assert_time_data_fresh(...)`.
+- Added `tempoch_core::data::status` with a programmatic `TimeDataStatus` facade over archive-owned time-data provenance, validity horizons, active-source diagnostics, and an `assert_fresh(now, max_age)` freshness checker exposed at the crate root as `time_data_status()` and `assert_time_data_fresh(...)`.
 
 ### Fixed
 

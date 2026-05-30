@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Vallés Puig, Ramon
 
+use crate::archive::time::{TimeDataBundle, UtcTaiSegment};
 use crate::encoding::{
     day_to_j2000_seconds, j2000_seconds_to_day, jd_to_mjd, mjd_to_unix_seconds, unix_seconds_to_jd,
 };
@@ -10,7 +11,6 @@ use crate::foundation::error::ConversionError;
 use chrono::{DateTime, Utc};
 use qtty::unit::{Day, Nanosecond, Second as SecondUnit};
 use qtty::{Day as DayQuantity, Nanosecond as NanosecondQty, Second};
-use tempoch_time_data::{TimeDataBundle, UtcTaiSegment};
 
 const NANOS_PER_SECOND: NanosecondQty = NanosecondQty::new(1_000_000_000.0);
 
@@ -137,8 +137,7 @@ pub(crate) fn time_data_tai_seconds_is_in_leap_window(
 
 fn utc_offset_seconds_in_segment(mjd_utc: DayQuantity, segment: UtcTaiSegment) -> Second {
     let utc_offset = mjd_utc - DayQuantity::new(segment.reference_mjd);
-    Second::new(segment.base_seconds)
-        + Second::new(segment.slope_seconds_per_day) * (utc_offset / DayQuantity::new(1.0))
+    segment.base + Second::new(segment.slope_seconds_per_day) * (utc_offset / DayQuantity::new(1.0))
 }
 
 fn utc_mjd_to_tt_mjd_in_segment(mjd_utc: DayQuantity, segment: UtcTaiSegment) -> DayQuantity {
@@ -148,8 +147,7 @@ fn utc_mjd_to_tt_mjd_in_segment(mjd_utc: DayQuantity, segment: UtcTaiSegment) ->
 fn tt_mjd_to_utc_mjd_in_segment(mjd_tt: DayQuantity, segment: UtcTaiSegment) -> DayQuantity {
     let scale = DayQuantity::new(1.0) + Second::new(segment.slope_seconds_per_day).to::<Day>();
     let ref_days = DayQuantity::new(segment.reference_mjd) / DayQuantity::new(1.0);
-    let offset_days = (Second::new(segment.base_seconds)
-        - Second::new(segment.slope_seconds_per_day) * ref_days
+    let offset_days = (segment.base - Second::new(segment.slope_seconds_per_day) * ref_days
         + TT_MINUS_TAI)
         .to::<Day>();
     DayQuantity::new((mjd_tt - offset_days) / scale)

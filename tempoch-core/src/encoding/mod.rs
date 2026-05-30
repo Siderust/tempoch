@@ -89,7 +89,7 @@ pub(crate) use mjd::{jd_to_mjd, mjd_to_unix_seconds, unix_seconds_to_jd, unix_se
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::foundation::constats::{DAYS_PER_JC, J2000_JD_TT_DAY};
+    use crate::foundation::constats::J2000_JD_TT_DAY;
     use qtty::Second;
 
     const EPS_S: Second = Second::new(1e-9);
@@ -119,7 +119,7 @@ mod tests {
 
     #[test]
     fn julian_centuries_one_century() {
-        let jd = J2000_JD_TT_DAY + DAYS_PER_JC;
+        let jd = J2000_JD_TT_DAY + qtty::time::JULIAN_CENTURY.to::<qtty::unit::Day>();
         let t = jd_to_julian_centuries(jd);
         assert!((t - 1.0).abs() < 1e-12);
     }

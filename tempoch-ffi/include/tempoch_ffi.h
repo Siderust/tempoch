@@ -197,7 +197,7 @@ extern "C" {
 
 // Returns the tempoch-ffi ABI version (major*10000 + minor*100 + patch).
 //
-// Current ABI line: 0.6.2 -> 602
+// Current ABI line: 0.6.3 -> 603
  uint32_t tempoch_ffi_version(void);
 
 // J2000.0 epoch as JD(TT) — 2 451 545.0.
@@ -228,13 +228,13 @@ extern "C" {
 // available from the compiled USNO data.
  double tempoch_const_delta_t_prediction_horizon_mjd(void);
 
-// First MJD covered by the compiled IERS EOP series.
+// First MJD covered by the active IERS EOP series, or NaN when no EOP data is loaded.
  double tempoch_const_eop_start_mjd(void);
 
-// Last MJD covered by the compiled IERS EOP series.
+// Last MJD covered by the active IERS EOP series, or NaN when no EOP data is loaded.
  double tempoch_const_eop_end_mjd(void);
 
-// Last MJD with *observed* (Bulletin C04) EOP data in the compiled series.
+// Last MJD with *observed* (Bulletin C04) EOP data in the active series, or NaN when no data.
  double tempoch_const_eop_observed_end_mjd(void);
 
 // Last MJD with modern observed ΔT data (post-1955 atomic-clock era).
