@@ -61,9 +61,11 @@ pub mod foundation;
 pub mod model;
 pub mod period;
 
+pub(crate) use siderust_archive as archive;
+
 // Compiled ΔT tables live in `siderust-archive`; these are crate-local shims.
+use crate::archive::time::bundled::snapshot;
 use qtty::Day;
-use siderust_archive::time::bundled::snapshot;
 
 #[allow(unused_imports)]
 pub(crate) use snapshot as time_data;
@@ -73,13 +75,13 @@ pub(crate) const MODERN_DELTA_T_END_MJD: Day = Day::new(snapshot::MODERN_DELTA_T
 pub use earth::eop;
 pub use foundation::{constats, error};
 
-pub use data::provenance::{
-    assert_fresh as assert_time_data_fresh, provenance as time_data_provenance, DataHorizons,
-    FreshnessError, ProvenanceSnapshot, SourceUrls,
-};
 #[cfg(feature = "runtime-data-fetch")]
 pub use data::runtime_data::{
     fetch_latest_time_data, refresh_runtime_time_data, update_runtime_time_data,
+};
+pub use data::status::{
+    assert_fresh as assert_time_data_fresh, time_data_status, ActiveTimeDataSource, DataHorizons,
+    FreshnessError, TimeDataStatus,
 };
 pub use earth::context::TimeContext;
 pub use earth::delta_t::{

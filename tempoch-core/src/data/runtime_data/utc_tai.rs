@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Vallés Puig, Ramon
 
+use crate::archive::time::{TimeDataBundle, UtcTaiSegment};
 use crate::encoding::{
     day_to_j2000_seconds, j2000_seconds_to_day, jd_to_mjd, mjd_to_unix_seconds, unix_seconds_to_jd,
 };
@@ -10,7 +11,6 @@ use crate::foundation::error::ConversionError;
 use chrono::{DateTime, Utc};
 use qtty::unit::{Day, Nanosecond, Second as SecondUnit};
 use qtty::{Day as DayQuantity, Nanosecond as NanosecondQty, Second};
-use siderust_archive::time::{TimeDataBundle, UtcTaiSegment};
 
 const NANOS_PER_SECOND: NanosecondQty = NanosecondQty::new(1_000_000_000.0);
 

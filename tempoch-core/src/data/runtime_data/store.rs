@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Vallés Puig, Ramon
 
+use crate::archive::time::TimeDataBundle;
+#[cfg(any(test, feature = "runtime-data-fetch"))]
+use crate::archive::time::TimeDataError as InternalDataError;
+#[cfg(feature = "runtime-data-fetch")]
+use crate::archive::time::TimeDataManager;
+use crate::data::status::ActiveTimeDataSource;
 #[cfg(test)]
 use chrono::{DateTime, Utc};
-use siderust_archive::time::TimeDataBundle;
-#[cfg(any(test, feature = "runtime-data-fetch"))]
-use siderust_archive::time::TimeDataError as InternalDataError;
-#[cfg(feature = "runtime-data-fetch")]
-use siderust_archive::time::TimeDataManager;
 #[cfg(test)]
 use std::sync::Mutex;
 use std::sync::{Arc, OnceLock, RwLock};
@@ -49,6 +50,24 @@ pub(crate) fn active_time_data() -> Arc<TimeDataBundle> {
         .read()
         .unwrap_or_else(|err| err.into_inner())
         .clone()
+}
+
+pub(crate) fn active_time_data_source() -> ActiveTimeDataSource {
+    #[cfg(test)]
+    if TEST_TIME_DATA
+        .lock()
+        .unwrap_or_else(|err| err.into_inner())
+        .is_some()
+    {
+        return ActiveTimeDataSource::Override;
+    }
+
+    let bundle = active_time_data();
+    if bundle.provenance().fetched_utc() == "compiled" {
+        ActiveTimeDataSource::Bundled
+    } else {
+        ActiveTimeDataSource::RuntimeCache
+    }
 }
 
 /// Load runtime time data into the active bundle.
@@ -147,6 +166,6 @@ pub(crate) fn with_runtime_data_lock<T>(f: impl FnOnce() -> T) -> T {
 
 pub(crate) fn compiled_time_data() -> Arc<TimeDataBundle> {
     COMPILED_TIME_DATA
-        .get_or_init(|| Arc::new(siderust_archive::time::bundled_time_data()))
+        .get_or_init(|| Arc::new(crate::archive::time::bundled_time_data()))
         .clone()
 }

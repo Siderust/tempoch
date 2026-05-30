@@ -98,13 +98,13 @@ impl From<std::io::Error> for TimeDataError {
     }
 }
 
-impl From<siderust_archive::time::TimeDataError> for TimeDataError {
-    fn from(err: siderust_archive::time::TimeDataError) -> Self {
+impl From<crate::archive::time::TimeDataError> for TimeDataError {
+    fn from(err: crate::archive::time::TimeDataError) -> Self {
         match err {
-            siderust_archive::time::TimeDataError::Io(e) => Self::Io(e),
-            siderust_archive::time::TimeDataError::Download(msg) => Self::Download(msg),
-            siderust_archive::time::TimeDataError::Parse(msg) => Self::Parse(msg),
-            siderust_archive::time::TimeDataError::Integrity(msg) => Self::Integrity(msg),
+            crate::archive::time::TimeDataError::Io(e) => Self::Io(e),
+            crate::archive::time::TimeDataError::Download(msg) => Self::Download(msg),
+            crate::archive::time::TimeDataError::Parse(msg) => Self::Parse(msg),
+            crate::archive::time::TimeDataError::Integrity(msg) => Self::Integrity(msg),
         }
     }
 }
@@ -163,19 +163,19 @@ mod tests {
         assert!(matches!(io_mapped, TimeDataError::Io(_)));
 
         let mapped_download: TimeDataError =
-            siderust_archive::time::TimeDataError::Download("d".to_string()).into();
+            crate::archive::time::TimeDataError::Download("d".to_string()).into();
         assert!(matches!(mapped_download, TimeDataError::Download(msg) if msg == "d"));
 
         let mapped_parse: TimeDataError =
-            siderust_archive::time::TimeDataError::Parse("p".to_string()).into();
+            crate::archive::time::TimeDataError::Parse("p".to_string()).into();
         assert!(matches!(mapped_parse, TimeDataError::Parse(msg) if msg == "p"));
 
         let mapped_integrity: TimeDataError =
-            siderust_archive::time::TimeDataError::Integrity("i".to_string()).into();
+            crate::archive::time::TimeDataError::Integrity("i".to_string()).into();
         assert!(matches!(mapped_integrity, TimeDataError::Integrity(msg) if msg == "i"));
 
         let mapped_io: TimeDataError =
-            siderust_archive::time::TimeDataError::Io(io_error("x")).into();
+            crate::archive::time::TimeDataError::Io(io_error("x")).into();
         assert!(matches!(mapped_io, TimeDataError::Io(_)));
     }
 }

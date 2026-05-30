@@ -534,13 +534,13 @@ ut1_through_tt!(BDT);
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::archive::time::{EopPoint, TimeDataBundle, TimeDataProvenance, UtcTaiSegment};
     use crate::data::runtime_data::with_test_time_data;
     use crate::earth::delta_t::interpolate_modern_delta_t_points;
     use crate::foundation::constats::TT_MINUS_TAI;
     use crate::time_data::{MODERN_DELTA_T_POINTS, UTC_TAI_SEGMENTS};
     use chrono::{Duration, NaiveDate};
     use qtty::{Arcsecond, Day as JulianDay, Millisecond, Second};
-    use siderust_archive::time::{EopPoint, TimeDataBundle, TimeDataProvenance, UtcTaiSegment};
 
     const TDB_TT_GOLDEN_SAMPLES: &[(f64, f64)] = &[
         // Curated from an independent maintenance-time reference script that

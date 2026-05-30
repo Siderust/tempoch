@@ -9,7 +9,7 @@
 //!
 //! EOP data is **not** compiled into the crate.  It must be loaded at runtime
 //! via [`crate::data::runtime_data::update_runtime_time_data`] or
-//! [`siderust_archive::time::TimeDataManager`].  Until a bundle is loaded,
+//! [`crate::archive::time::TimeDataManager`].  Until a bundle is loaded,
 //! [`builtin_eop_at`] always returns `None`.
 
 use crate::data::runtime_data::{active_time_data, time_data_eop_at};
@@ -87,9 +87,9 @@ pub fn builtin_eop_at(mjd_utc: Day) -> Option<EopValues> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::archive::time::{EopPoint, TimeDataBundle, TimeDataProvenance, UtcTaiSegment};
     use crate::data::runtime_data::with_test_time_data;
     use qtty::{Arcsecond, Day, MilliArcsecond, Millisecond, Second};
-    use siderust_archive::time::{EopPoint, TimeDataBundle, TimeDataProvenance, UtcTaiSegment};
 
     fn make_test_eop_bundle(points: Vec<EopPoint>) -> TimeDataBundle {
         TimeDataBundle::new(

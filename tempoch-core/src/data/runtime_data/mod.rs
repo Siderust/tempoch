@@ -6,7 +6,7 @@ mod store;
 mod utc_tai;
 
 pub(crate) use eop::{time_data_delta_t, time_data_eop_at};
-pub(crate) use store::active_time_data;
+pub(crate) use store::{active_time_data, active_time_data_source};
 #[cfg(test)]
 pub(crate) use store::{
     compiled_time_data, select_time_data, select_time_data_for_auto_refresh, set_active_time_data,
@@ -22,13 +22,13 @@ pub(crate) use utc_tai::{
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(any(test, feature = "runtime-data-fetch"))]
+    use crate::archive::time::TimeDataError as InternalDataError;
+    use crate::archive::time::{EopPoint, TimeDataBundle, TimeDataProvenance};
     use crate::format::{JulianDate, Unix, JD};
     use crate::{Time, TimeContext, TT, UT1, UTC};
     use chrono::DateTime;
     use qtty::{Arcsecond, Day as DayQuantity, Millisecond, Second};
-    #[cfg(any(test, feature = "runtime-data-fetch"))]
-    use siderust_archive::time::TimeDataError as InternalDataError;
-    use siderust_archive::time::{EopPoint, TimeDataBundle, TimeDataProvenance};
 
     fn compiled_bundle_owned() -> TimeDataBundle {
         (*compiled_time_data()).clone()

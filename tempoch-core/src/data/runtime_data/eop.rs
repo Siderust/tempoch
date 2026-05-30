@@ -2,12 +2,12 @@
 // Copyright (C) 2026 Vallés Puig, Ramon
 
 use super::utc_tai::time_data_tai_minus_utc_mjd_extrapolated;
+use crate::archive::time::{EopPoint, TimeDataBundle};
 use crate::earth::delta_t::delta_t_seconds_from_modern_points;
 use crate::earth::eop::EopValues;
 use crate::foundation::error::ConversionError;
 use qtty::Day as DayQuantity;
 use qtty::Second;
-use siderust_archive::time::{EopPoint, TimeDataBundle};
 
 pub(crate) fn time_data_delta_t(
     data: &TimeDataBundle,

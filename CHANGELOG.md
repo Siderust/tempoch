@@ -61,7 +61,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   - Parser hardening: empty fractional part (e.g. `12:34:56.Z`) and more than 9 fractional digits are rejected.
   - Fallible formatting API `try_format_rfc3339_with(...) -> Result<String, ConversionError>`; the infallible `format_rfc3339_with` delegates to it and returns `"<invalid>"` on error (documented).
 - Added GNSS week / seconds-of-week format (`GnssWeek` + `GnssWeekScale` trait) implemented for `GPST`, `GST`, `BDT`, and `QZSST`, with documented rollover periods (1024 / 4096 / 8192 / 1024) and overflow detection in `to_gnss_week` (returns `ConversionError::OutOfRange` for week numbers exceeding `u32::MAX`).
-- Added `tempoch_core::data::provenance` with a programmatic `ProvenanceSnapshot` (source URLs, SHA-256, validity horizons), and an `assert_fresh(now, max_age)` freshness checker exposed at the crate root as `time_data_provenance()` and `assert_time_data_fresh(...)`.
+- Added `tempoch_core::data::status` with a programmatic `TimeDataStatus` facade over archive-owned time-data provenance, validity horizons, active-source diagnostics, and an `assert_fresh(now, max_age)` freshness checker exposed at the crate root as `time_data_status()` and `assert_time_data_fresh(...)`.
 
 ### Fixed
 
