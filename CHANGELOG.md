@@ -3,24 +3,6 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Removed
-
-- Removed redundant public Julian unit constants in favor of qtty's
-  `qtty::time::JULIAN_YEAR` and `qtty::time::JULIAN_CENTURY`.
-
-### Changed
-
-- Unix MJD and GPS epoch JD(TAI)/J2000-second coordinates are now derived from
-  canonical epoch and scale-offset facts instead of maintained as independent
-  public scalar constants.
-
-### Fixed
-
-- `scripts/publish-changed.sh` now runs Cargo's real publish dry-run
-  verification and no longer publishes with `--no-verify`.
-
 ## [0.6.3] - 2026-05-30
 
 ### Removed
@@ -33,6 +15,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   has moved to the archive repository (`siderust-archive-update-time-data`).
 - Deleted `.github/workflows/update-time-data.yml` (weekly refresh runs in the
   archive repo instead).
+- Removed redundant public Julian unit constants in favor of qtty's
+  `qtty::time::JULIAN_YEAR` and `qtty::time::JULIAN_CENTURY`.
 
 ### Changed
 
@@ -43,6 +27,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - `tempoch-core` now depends on `siderust-archive` directly (`time` +
   `bundled-time`; `fetch` via `runtime-data-fetch`). The internal
   `tempoch-time-data` adapter crate has been removed.
+- Unix MJD and GPS epoch JD(TAI)/J2000-second coordinates are now derived from
+  canonical epoch and scale-offset facts instead of maintained as independent
+  public scalar constants.
 
 ### Fixed
 
@@ -51,6 +38,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   attempting to re-publish the same version on every workspace release because the
   root `Cargo.toml` change triggered all packages to be considered changed.
   Dependents (`tempoch-core`) continue to resolve it via the registry version field.
+- `scripts/publish-changed.sh` now runs Cargo's real publish dry-run
+  verification and no longer publishes with `--no-verify`.
 
 ## [0.6.2] - 2026-05-28
 
