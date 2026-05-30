@@ -77,10 +77,10 @@ pub struct SourceUrls {
 impl SourceUrls {
     /// The constant URLs the updater fetches from.
     pub const DEFAULT: Self = Self {
-        utc_tai: tempoch_time_data::UTC_TAI_HISTORY_URL,
-        delta_t_observed: tempoch_time_data::DELTA_T_OBSERVED_URL,
-        delta_t_predictions: tempoch_time_data::DELTA_T_PREDICTIONS_URL,
-        eop_finals: tempoch_time_data::EOP_FINALS_URL,
+        utc_tai: siderust_archive::time::UTC_TAI_HISTORY_URL,
+        delta_t_observed: siderust_archive::time::DELTA_T_OBSERVED_URL,
+        delta_t_predictions: siderust_archive::time::DELTA_T_PREDICTIONS_URL,
+        eop_finals: siderust_archive::time::EOP_FINALS_URL,
     };
 }
 
@@ -162,7 +162,7 @@ pub fn assert_fresh(now: DateTime<Utc>, max_age: chrono::Duration) -> Result<(),
 mod tests {
     use super::*;
     use crate::data::runtime_data::with_test_time_data;
-    use tempoch_time_data::{EopPoint, TimeDataBundle, TimeDataProvenance, UtcTaiSegment};
+    use siderust_archive::time::{EopPoint, TimeDataBundle, TimeDataProvenance, UtcTaiSegment};
 
     fn eop_bundle_for_provenance_test() -> TimeDataBundle {
         TimeDataBundle::new(

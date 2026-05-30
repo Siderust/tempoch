@@ -61,11 +61,14 @@ pub mod foundation;
 pub mod model;
 pub mod period;
 
-// Compiled ΔT tables live in `tempoch-time-data`; these are crate-local shims for tests and helpers.
+// Compiled ΔT tables live in `siderust-archive`; these are crate-local shims.
+use qtty::Day;
+use siderust_archive::time::bundled::snapshot;
+
 #[allow(unused_imports)]
-pub(crate) use tempoch_time_data::generated::time_data;
-#[allow(unused_imports)]
-pub(crate) use tempoch_time_data::generated::{MODERN_DELTA_T_END_MJD, MODERN_DELTA_T_START_MJD};
+pub(crate) use snapshot as time_data;
+pub(crate) const MODERN_DELTA_T_START_MJD: Day = Day::new(snapshot::MODERN_DELTA_T_START_MJD);
+pub(crate) const MODERN_DELTA_T_END_MJD: Day = Day::new(snapshot::MODERN_DELTA_T_END_MJD);
 
 pub use earth::eop;
 pub use foundation::{constats, error};
@@ -96,7 +99,7 @@ pub use foundation::constats::{
     GPS_EPOCH_TAI_MINUS_UTC, GPS_EPOCH_TAI_SECONDS, IAU_TIME_EPOCH_T0_JD_DAY, J2000_JD_TT_DAY,
     JULIAN_YEAR_DAYS, TDB_TT_MODEL_HIGH_ACCURACY_END_JD_DAY,
     TDB_TT_MODEL_HIGH_ACCURACY_START_JD_DAY, TT_MINUS_TAI, UNIX_EPOCH_JD_DAY, UNIX_EPOCH_MJD_DAY,
-    UTC_DEFINED_FROM_MJD_DAY,
+    UTC_DEFINED_FROM_MJD_DAY, DAYS_PER_JULIAN_CENTURY,
 };
 pub use foundation::duration::{DurationError, ExactDuration, NANOS_PER_SECOND};
 pub use foundation::error::{ConversionError, TimeDataError};
@@ -110,7 +113,7 @@ pub use period::{
     complement_within, series::TimeSeries, series::TimeSeriesError, Interval, InvalidIntervalError,
     Period, PeriodListError,
 };
-pub use tempoch_time_data::generated::MODERN_DELTA_T_OBSERVED_END_MJD;
+pub const MODERN_DELTA_T_OBSERVED_END_MJD: Day = Day::new(snapshot::MODERN_DELTA_T_OBSERVED_END_MJD);
 
 #[cfg(feature = "serde")]
 pub use features::tagged;

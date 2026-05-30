@@ -7,7 +7,7 @@ use crate::earth::eop::EopValues;
 use crate::foundation::error::ConversionError;
 use qtty::Day as DayQuantity;
 use qtty::Second;
-use tempoch_time_data::{EopPoint, TimeDataBundle};
+use siderust_archive::time::{EopPoint, TimeDataBundle};
 
 pub(crate) fn time_data_delta_t(
     data: &TimeDataBundle,

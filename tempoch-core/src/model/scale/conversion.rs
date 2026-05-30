@@ -539,8 +539,8 @@ mod tests {
     use crate::foundation::constats::TT_MINUS_TAI;
     use chrono::{Duration, NaiveDate};
     use qtty::Day as JulianDay;
-    use tempoch_time_data::generated::time_data::{MODERN_DELTA_T_POINTS, UTC_TAI_SEGMENTS};
-    use tempoch_time_data::{EopPoint, TimeDataBundle, TimeDataProvenance, UtcTaiSegment};
+    use crate::time_data::{MODERN_DELTA_T_POINTS, UTC_TAI_SEGMENTS};
+    use siderust_archive::time::{EopPoint, TimeDataBundle, TimeDataProvenance, UtcTaiSegment};
 
     const TDB_TT_GOLDEN_SAMPLES: &[(f64, f64)] = &[
         // Curated from an independent maintenance-time reference script that

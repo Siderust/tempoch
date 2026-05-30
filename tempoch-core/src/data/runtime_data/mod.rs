@@ -28,9 +28,8 @@ mod tests {
     use qtty::Day as DayQuantity;
     use qtty::Second;
     #[cfg(any(test, feature = "runtime-data-fetch"))]
-    use tempoch_time_data::TimeDataError as InternalDataError;
-    use tempoch_time_data::TimeDataProvenance;
-    use tempoch_time_data::{EopPoint, TimeDataBundle};
+    use siderust_archive::time::TimeDataError as InternalDataError;
+    use siderust_archive::time::{EopPoint, TimeDataBundle, TimeDataProvenance};
 
     fn compiled_bundle_owned() -> TimeDataBundle {
         (*compiled_time_data()).clone()

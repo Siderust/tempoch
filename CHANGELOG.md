@@ -7,26 +7,20 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
-- Replaced the `archive/` git submodule with a regular crates.io-style git
-  dependency on `siderust-archive` (sourced via `[patch.crates-io]` from
-  `https://github.com/Siderust/archive.git` until the crate is published).
-- `tempoch-time-data` now depends on `siderust-archive` with only the `time`
-  feature (or `time` + `fetch` when `tempoch-time-data/fetch` is enabled).
-  Runtime download (`TimeDataManager`) continues to work behind the
-  `runtime-data-fetch` feature on `tempoch-core`.
+- `tempoch-core` now depends on `siderust-archive` directly (`time` +
+  `bundled-time`; `fetch` via `runtime-data-fetch`). The internal
+  `tempoch-time-data` adapter crate has been removed.
 
 ### Removed
 
-- Deleted `archive/` git submodule (and `.gitmodules`). Downstream consumers
-  no longer need `git submodule update --init --recursive`.
+- Deleted the `tempoch-time-data` workspace member. Compiled UTC-TAI / ΔT
+  tables now live in `siderust-archive::time::bundled`.
+- Replaced the `archive/` git submodule with a direct dependency on
+  `siderust-archive` (local path via `[patch.crates-io]` during development).
 - Deleted `tempoch-time-data-updater` crate. Maintenance of the IERS dataset
-  has moved to the archive repository, where the
-  `siderust-archive-update-time-data` binary plus the
-  `update-time-data.yml` GitHub Actions workflow regenerate the bundle and
-  cut a new patch release on crates.io.
-- Deleted `.github/workflows/update-time-data.yml` and the supporting scripts
-  in `.github/scripts/` (no longer needed; weekly refresh runs in the archive
-  repo instead).
+  has moved to the archive repository (`siderust-archive-update-time-data`).
+- Deleted `.github/workflows/update-time-data.yml` (weekly refresh runs in the
+  archive repo instead).
 
 ### Changed
 

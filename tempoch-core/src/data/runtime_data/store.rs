@@ -6,11 +6,11 @@ use chrono::{DateTime, Utc};
 #[cfg(test)]
 use std::sync::Mutex;
 use std::sync::{Arc, OnceLock, RwLock};
-use tempoch_time_data::TimeDataBundle;
+use siderust_archive::time::TimeDataBundle;
 #[cfg(any(test, feature = "runtime-data-fetch"))]
-use tempoch_time_data::TimeDataError as InternalDataError;
+use siderust_archive::time::TimeDataError as InternalDataError;
 #[cfg(feature = "runtime-data-fetch")]
-use tempoch_time_data::TimeDataManager;
+use siderust_archive::time::TimeDataManager;
 
 #[cfg(test)]
 const RUNTIME_DATA_MAX_AGE_SECONDS: i64 = 24 * 60 * 60;
@@ -147,6 +147,6 @@ pub(crate) fn with_runtime_data_lock<T>(f: impl FnOnce() -> T) -> T {
 
 pub(crate) fn compiled_time_data() -> Arc<TimeDataBundle> {
     COMPILED_TIME_DATA
-        .get_or_init(|| Arc::new(tempoch_time_data::bundled_time_data()))
+        .get_or_init(|| Arc::new(siderust_archive::time::bundled_time_data()))
         .clone()
 }

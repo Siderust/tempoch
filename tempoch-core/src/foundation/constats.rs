@@ -94,9 +94,10 @@ pub const GPS_EPOCH_TAI_SECONDS: Second = Second::new(-630_763_181.0);
 /// UTC-TAI value; no standard UTC existed before 1961.
 pub const UTC_DEFINED_FROM_MJD_DAY: Day = Day::new(37_300.0);
 
-/// One Julian century in days (36 525 d), used for the Fairhead–Bretagnon
-/// parameter.
-pub(crate) const DAYS_PER_JC: Day = Day::new(36_525.0);
+/// One Julian century in days (36 525 d).
+pub const DAYS_PER_JULIAN_CENTURY: Day = Day::new(36_525.0);
+
+pub(crate) const DAYS_PER_JC: Day = DAYS_PER_JULIAN_CENTURY;
 
 pub(crate) const UTC_INTERVAL_EPS: Day = Day::new(1e-15);
 pub(crate) const L_G: f64 = 6.969_290_134e-10;

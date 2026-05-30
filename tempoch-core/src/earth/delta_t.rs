@@ -32,8 +32,8 @@ use crate::foundation::constats::DAYS_PER_JC;
 use crate::foundation::error::ConversionError;
 use qtty::{Day, Second};
 use std::sync::OnceLock;
-use tempoch_time_data::generated::time_data::MODERN_DELTA_T_POINTS;
-use tempoch_time_data::generated::{MODERN_DELTA_T_END_MJD, MODERN_DELTA_T_START_MJD};
+use crate::time_data::MODERN_DELTA_T_POINTS;
+use crate::{MODERN_DELTA_T_END_MJD, MODERN_DELTA_T_START_MJD};
 
 const JD_EPOCH_948_UT: Day = Day::new(2_067_314.5);
 const JD_EPOCH_1850_UT: Day = Day::new(2_396_758.5);
@@ -499,7 +499,7 @@ mod tests {
     #[test]
     fn regime_boundary_1973_biennial_to_modern_is_continuous() {
         use crate::foundation::constats::JD_MINUS_MJD;
-        use tempoch_time_data::generated::MODERN_DELTA_T_START_MJD;
+        use crate::MODERN_DELTA_T_START_MJD;
         // Convert MJD start to JD.
         let jd_start = MODERN_DELTA_T_START_MJD + JD_MINUS_MJD;
         let eps = Day::new(1e-4); // ~8.6 s
@@ -516,7 +516,7 @@ mod tests {
     /// point array (so delta_t lookup works at that boundary).
     #[test]
     fn modern_delta_t_observed_end_is_in_range() {
-        use tempoch_time_data::generated::MODERN_DELTA_T_OBSERVED_END_MJD;
+        use crate::MODERN_DELTA_T_OBSERVED_END_MJD;
         assert!(
             MODERN_DELTA_T_OBSERVED_END_MJD > MODERN_DELTA_T_START_MJD,
             "observed end must be after series start"

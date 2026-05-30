@@ -10,7 +10,7 @@ use crate::foundation::error::ConversionError;
 use chrono::{DateTime, Utc};
 use qtty::unit::{Day, Nanosecond, Second as SecondUnit};
 use qtty::{Day as DayQuantity, Nanosecond as NanosecondQty, Second};
-use tempoch_time_data::{TimeDataBundle, UtcTaiSegment};
+use siderust_archive::time::{TimeDataBundle, UtcTaiSegment};
 
 const NANOS_PER_SECOND: NanosecondQty = NanosecondQty::new(1_000_000_000.0);
 
