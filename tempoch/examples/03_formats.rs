@@ -2,8 +2,8 @@
 
 use qtty::Second;
 use tempoch::{
-    J2000Seconds, J2000s, JulianDate, ModifiedJulianDate, Time, Unix, UnixTime, J2000_JD_TT_DAY,
-    JD, MJD, TT, UNIX_EPOCH_JD_DAY, UNIX_EPOCH_MJD_DAY, UTC,
+    J2000Seconds, J2000s, JulianDate, Time, Unix, UnixTime, J2000_JD_TT_DAY, JD, MJD, TT,
+    UNIX_EPOCH_JD_DAY, UTC,
 };
 
 fn main() {
@@ -15,7 +15,7 @@ fn main() {
     let j2000_from_jd = JulianDate::<TT>::new(J2000_JD_TT_DAY.value());
     let unix_epoch_jd = JulianDate::<TT>::new(UNIX_EPOCH_JD_DAY.value());
     let half_day_jd = JulianDate::<TT>::new(2_451_545.5);
-    let unix_epoch_mjd = ModifiedJulianDate::<TT>::new(UNIX_EPOCH_MJD_DAY.value());
+    let unix_epoch_mjd = tempoch::unix_epoch_mjd();
 
     let utc: Time<UTC> = UnixTime::try_new(Second::new(1_700_000_000.25))
         .unwrap()
@@ -27,7 +27,7 @@ fn main() {
     println!("J2000 from JD     : {:.9}", j2000_from_jd.to::<J2000s>());
     println!("Unix epoch JD(TT) : {:.9}", unix_epoch_jd.to::<JD>());
     println!("Half-day JD(TT)   : {:.9}", half_day_jd.to::<JD>());
-    println!("Unix epoch MJD(TT): {:.9}", unix_epoch_mjd.to::<MJD>());
+    println!("Unix epoch MJD(UTC): {:.9}", unix_epoch_mjd.to::<MJD>());
     println!("UTC POSIX         : {:.3}", utc.try_to::<Unix>().unwrap());
 
     // suppress unused warnings

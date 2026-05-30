@@ -5,11 +5,23 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Removed
+
+- Removed redundant public Julian unit constants in favor of qtty's
+  `qtty::time::JULIAN_YEAR` and `qtty::time::JULIAN_CENTURY`.
+
 ### Changed
 
-- `tempoch-core` now depends on `siderust-archive` directly (`time` +
-  `bundled-time`; `fetch` via `runtime-data-fetch`). The internal
-  `tempoch-time-data` adapter crate has been removed.
+- Unix MJD and GPS epoch JD(TAI)/J2000-second coordinates are now derived from
+  canonical epoch and scale-offset facts instead of maintained as independent
+  public scalar constants.
+
+### Fixed
+
+- `scripts/publish-changed.sh` now runs Cargo's real publish dry-run
+  verification and no longer publishes with `--no-verify`.
+
+## [0.6.3] - 2026-05-30
 
 ### Removed
 
@@ -28,8 +40,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   (was `siderust-archive-data` from the archive submodule). The embedded
   5.3 MB IERS EOP array (`eop_data.rs`) had already been removed in a prior
   patch; this release completes the migration by also removing the submodule.
-
-## [0.6.3] - 2026-05-28
+- `tempoch-core` now depends on `siderust-archive` directly (`time` +
+  `bundled-time`; `fetch` via `runtime-data-fetch`). The internal
+  `tempoch-time-data` adapter crate has been removed.
 
 ### Fixed
 

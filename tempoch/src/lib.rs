@@ -9,8 +9,8 @@
 //! - [`Scale`] markers such as [`TT`], [`TAI`], [`UTC`], and [`UT1`]
 //! - unified conversion targets via `time.to::<Target>()`, `try_to`, and
 //!   `to_with`
-//! - [`constats`] for epoch [`Time`] helpers plus `qtty::Day` / `qtty::Second`
-//!   scratch constants
+//! - [`constats`] for epoch [`Time`] helpers plus canonical astronomical
+//!   `qtty::Day` / `qtty::Second` facts
 
 pub use tempoch_core::{
     assert_time_data_fresh, complement_within, constats, delta_t_seconds,
@@ -23,12 +23,11 @@ pub use tempoch_core::{
     GpsTime, InfallibleConversionTarget, InfallibleFormatForScale, Interval, InvalidIntervalError,
     J2000Seconds, J2000s, JulianDate, ModifiedJulianDate, Period, PeriodListError, Scale, Time,
     TimeContext, TimeDataError, TimeDataStatus, TimeFormat, TimeInstant, TimeSeries,
-    TimeSeriesError, Unix, UnixTime, BDT, DAYS_PER_JULIAN_CENTURY, DELTA_T_PREDICTION_HORIZON_MJD,
-    ET, GPS, GPST, GPS_EPOCH_JD_TAI_DAY, GPS_EPOCH_JD_UTC_DAY, GPS_EPOCH_TAI_MINUS_UTC,
-    GPS_EPOCH_TAI_SECONDS, GST, IAU_TIME_EPOCH_T0_JD_DAY, J2000_JD_TT_DAY, JD, JULIAN_YEAR_DAYS,
-    MJD, MODERN_DELTA_T_OBSERVED_END_MJD, NANOS_PER_SECOND, QZSST, TAI, TCB, TCG, TDB,
+    TimeSeriesError, Unix, UnixTime, BDT, DELTA_T_PREDICTION_HORIZON_MJD, ET, GPS, GPST,
+    GPS_EPOCH_JD_UTC_DAY, GPS_EPOCH_TAI_MINUS_UTC, GST, IAU_TIME_EPOCH_T0_JD_DAY, J2000_JD_TT_DAY,
+    JD, MJD, MODERN_DELTA_T_OBSERVED_END_MJD, NANOS_PER_SECOND, QZSST, TAI, TCB, TCG, TDB,
     TDB_TT_MODEL_HIGH_ACCURACY_END_JD_DAY, TDB_TT_MODEL_HIGH_ACCURACY_START_JD_DAY, TT,
-    TT_MINUS_TAI, UNIX_EPOCH_JD_DAY, UNIX_EPOCH_MJD_DAY, UT1, UTC, UTC_DEFINED_FROM_MJD_DAY,
+    TT_MINUS_TAI, UNIX_EPOCH_JD_DAY, UT1, UTC, UTC_DEFINED_FROM_MJD_DAY,
 };
 
 /// Historical name for [`Time<S, F>`] after the format-parameter merge.

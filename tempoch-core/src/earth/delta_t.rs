@@ -28,7 +28,6 @@
 //! sub-models (±15 s for 948–1620; ±hundreds of seconds before 948).
 
 use crate::encoding::jd_to_mjd;
-use crate::foundation::constats::DAYS_PER_JC;
 use crate::foundation::error::ConversionError;
 use crate::time_data::MODERN_DELTA_T_POINTS;
 use crate::{MODERN_DELTA_T_END_MJD, MODERN_DELTA_T_START_MJD};
@@ -38,7 +37,9 @@ use std::sync::OnceLock;
 const JD_EPOCH_948_UT: Day = Day::new(2_067_314.5);
 const JD_EPOCH_1850_UT: Day = Day::new(2_396_758.5);
 const JD_TABLE_START_1620: Day = Day::new(2_312_752.5);
-const BIENNIAL_STEP_D: Day = Day::new(730.5);
+const BIENNIAL_STEP_D: Day = qtty::time::JULIAN_YEAR
+    .const_mul(2.0)
+    .to_const::<qtty::unit::Day>();
 
 // C0 continuity offsets (see module doc).
 // MEDIEVAL_OFFSET = DELTA_T[0] − medieval(JD_TABLE_START_1620) = 124.0 − 119.020750
@@ -77,14 +78,18 @@ fn delta_t_ancient(jd_ut: Day) -> Second {
     const DT_A0: f64 = 1_830.0;
     const DT_A1: f64 = -405.0;
     const DT_A2: f64 = 46.5;
-    let c = (jd_ut - JD_EPOCH_948_UT) / DAYS_PER_JC;
+    let c = (jd_ut - JD_EPOCH_948_UT)
+        .to::<qtty::unit::JulianCentury>()
+        .value();
     Second::new(DT_A0 + ANCIENT_OFFSET + DT_A1 * c + DT_A2 * c * c)
 }
 
 #[inline]
 fn delta_t_medieval(jd_ut: Day) -> Second {
     const DT_A2: f64 = 22.5;
-    let c = (jd_ut - JD_EPOCH_1850_UT) / DAYS_PER_JC;
+    let c = (jd_ut - JD_EPOCH_1850_UT)
+        .to::<qtty::unit::JulianCentury>()
+        .value();
     Second::new(DT_A2 * c * c + MEDIEVAL_OFFSET)
 }
 

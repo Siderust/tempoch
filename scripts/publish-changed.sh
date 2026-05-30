@@ -7,7 +7,7 @@
 # Options:
 #   --confirm-ffi   Allow publishing FFI crates (those named *-ffi or in an ffi/
 #                   directory). Absent by default; required for any FFI publish.
-#   --dry-run       Print the cargo publish commands without executing them.
+#   --dry-run       Run Cargo's publish verification without uploading crates.
 #
 # Environment:
 #   PUBLISH_BASE_TAG  Git tag to diff against. Defaults to the most recent
@@ -203,12 +203,13 @@ print('false' if p is not None and len(p) == 0 else 'true')
         fi
     fi
 
-    cmd="cargo publish -p $name --no-verify"
     if [[ "$DRY_RUN" == "true" ]]; then
-        echo "DRY-RUN: $cmd"
+        echo "Verifying package: $name"
+        cargo publish -p "$name" --dry-run
     else
         echo "Publishing: $name"
-        eval "$cmd"
+        cargo publish -p "$name" --dry-run
+        cargo publish -p "$name"
         wait_for_crate_version "$name" "$version"
     fi
     ((PUBLISHED++)) || true
