@@ -6,6 +6,3 @@ members = [
     "tempoch-ffi",
     "tempoch-validation",
 ]
-
-[patch.crates-io]
-siderust-archive = { path = "../archive" }

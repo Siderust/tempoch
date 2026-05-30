@@ -952,6 +952,8 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 [[package]]
 name = "siderust-archive"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e059c30e9d50dd922ee995e457790f1cd8f2acb89e6c44fa20ee033cb5a85f1"
 dependencies = [
  "anyhow",
  "chrono",
