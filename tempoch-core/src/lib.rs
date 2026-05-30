@@ -95,11 +95,11 @@ pub use format::{
 pub use foundation::constats::{
     gps_epoch_jd_tai, gps_epoch_jd_utc, gps_epoch_tai, iau_time_epoch_t0_jd, j2000_jd_tt,
     tdb_tt_model_high_accuracy_end_jd, tdb_tt_model_high_accuracy_start_jd, unix_epoch_jd,
-    unix_epoch_mjd, utc_defined_from_mjd, GPS_EPOCH_JD_TAI_DAY, GPS_EPOCH_JD_UTC_DAY,
-    GPS_EPOCH_TAI_MINUS_UTC, GPS_EPOCH_TAI_SECONDS, IAU_TIME_EPOCH_T0_JD_DAY, J2000_JD_TT_DAY,
-    JULIAN_YEAR_DAYS, TDB_TT_MODEL_HIGH_ACCURACY_END_JD_DAY,
+    unix_epoch_mjd, utc_defined_from_mjd, DAYS_PER_JULIAN_CENTURY, GPS_EPOCH_JD_TAI_DAY,
+    GPS_EPOCH_JD_UTC_DAY, GPS_EPOCH_TAI_MINUS_UTC, GPS_EPOCH_TAI_SECONDS, IAU_TIME_EPOCH_T0_JD_DAY,
+    J2000_JD_TT_DAY, JULIAN_YEAR_DAYS, TDB_TT_MODEL_HIGH_ACCURACY_END_JD_DAY,
     TDB_TT_MODEL_HIGH_ACCURACY_START_JD_DAY, TT_MINUS_TAI, UNIX_EPOCH_JD_DAY, UNIX_EPOCH_MJD_DAY,
-    UTC_DEFINED_FROM_MJD_DAY, DAYS_PER_JULIAN_CENTURY,
+    UTC_DEFINED_FROM_MJD_DAY,
 };
 pub use foundation::duration::{DurationError, ExactDuration, NANOS_PER_SECOND};
 pub use foundation::error::{ConversionError, TimeDataError};
@@ -113,7 +113,8 @@ pub use period::{
     complement_within, series::TimeSeries, series::TimeSeriesError, Interval, InvalidIntervalError,
     Period, PeriodListError,
 };
-pub const MODERN_DELTA_T_OBSERVED_END_MJD: Day = Day::new(snapshot::MODERN_DELTA_T_OBSERVED_END_MJD);
+pub const MODERN_DELTA_T_OBSERVED_END_MJD: Day =
+    Day::new(snapshot::MODERN_DELTA_T_OBSERVED_END_MJD);
 
 #[cfg(feature = "serde")]
 pub use features::tagged;

@@ -25,8 +25,7 @@ mod tests {
     use crate::format::{JulianDate, Unix, JD};
     use crate::{Time, TimeContext, TT, UT1, UTC};
     use chrono::DateTime;
-    use qtty::Day as DayQuantity;
-    use qtty::Second;
+    use qtty::{Arcsecond, Day as DayQuantity, Millisecond, Second};
     #[cfg(any(test, feature = "runtime-data-fetch"))]
     use siderust_archive::time::TimeDataError as InternalDataError;
     use siderust_archive::time::{EopPoint, TimeDataBundle, TimeDataProvenance};
@@ -45,12 +44,12 @@ mod tests {
                 pm_observed: true,
                 ut1_observed: true,
                 nutation_observed: true,
-                pm_xp_arcsec: Some(0.1),
-                pm_yp_arcsec: Some(0.1),
-                ut1_minus_utc_seconds: 0.3,
-                lod_milliseconds: Some(1.0),
-                dx_milliarcsec: None,
-                dy_milliarcsec: None,
+                pm_xp: Some(Arcsecond::new(0.1)),
+                pm_yp: Some(Arcsecond::new(0.1)),
+                ut1_minus_utc: Second::new(0.3),
+                lod: Some(Millisecond::new(1.0)),
+                dx: None,
+                dy: None,
             })
             .collect();
         TimeDataBundle::new(
@@ -164,11 +163,9 @@ mod tests {
         let base = eop_fixture_bundle();
         let base_ut1_seconds = 0.3_f64;
         let mut modified_eop = base.eop_points().to_vec();
-        modified_eop
-            .iter_mut()
-            .find(|p| p.mjd == 57_000)
-            .unwrap()
-            .ut1_minus_utc_seconds += 0.5;
+        if let Some(p) = modified_eop.iter_mut().find(|p| p.mjd == 57_000) {
+            p.ut1_minus_utc = Second::new(p.ut1_minus_utc.value() + 0.5);
+        }
         let overridden = TimeDataBundle::new(
             base.utc_tai_segments().to_vec(),
             base.modern_delta_t_points().to_vec(),
@@ -207,11 +204,10 @@ mod tests {
             let ctx_before = TimeContext::with_builtin_eop();
 
             let mut eop_points = baseline.eop_points().to_vec();
-            eop_points
-                .iter_mut()
-                .find(|p| p.mjd == 57_000)
-                .unwrap()
-                .ut1_minus_utc_seconds += 0.5;
+            {
+                let p = eop_points.iter_mut().find(|p| p.mjd == 57_000).unwrap();
+                p.ut1_minus_utc = Second::new(p.ut1_minus_utc.value() + 0.5);
+            }
             let overridden = TimeDataBundle::new(
                 baseline.utc_tai_segments().to_vec(),
                 baseline.modern_delta_t_points().to_vec(),
@@ -240,7 +236,7 @@ mod tests {
             .iter()
             .position(|segment| segment.start_mjd <= 60_000 && segment.end_mjd.is_none())
             .unwrap();
-        segments[segment].base_seconds += 1.0;
+        segments[segment].base = Second::new(segments[segment].base.value() + 1.0);
         let bundle = TimeDataBundle::new(
             segments,
             bundle.modern_delta_t_points().to_vec(),
@@ -290,7 +286,7 @@ mod tests {
                 .iter()
                 .position(|segment| segment.start_mjd <= 60_000 && segment.end_mjd.is_none())
                 .unwrap();
-            segments[segment].base_seconds += 1.0;
+            segments[segment].base = Second::new(segments[segment].base.value() + 1.0);
             let overridden = TimeDataBundle::new(
                 segments,
                 baseline.modern_delta_t_points().to_vec(),

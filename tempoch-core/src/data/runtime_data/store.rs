@@ -3,14 +3,14 @@
 
 #[cfg(test)]
 use chrono::{DateTime, Utc};
-#[cfg(test)]
-use std::sync::Mutex;
-use std::sync::{Arc, OnceLock, RwLock};
 use siderust_archive::time::TimeDataBundle;
 #[cfg(any(test, feature = "runtime-data-fetch"))]
 use siderust_archive::time::TimeDataError as InternalDataError;
 #[cfg(feature = "runtime-data-fetch")]
 use siderust_archive::time::TimeDataManager;
+#[cfg(test)]
+use std::sync::Mutex;
+use std::sync::{Arc, OnceLock, RwLock};
 
 #[cfg(test)]
 const RUNTIME_DATA_MAX_AGE_SECONDS: i64 = 24 * 60 * 60;

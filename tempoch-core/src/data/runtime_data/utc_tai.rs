@@ -137,8 +137,7 @@ pub(crate) fn time_data_tai_seconds_is_in_leap_window(
 
 fn utc_offset_seconds_in_segment(mjd_utc: DayQuantity, segment: UtcTaiSegment) -> Second {
     let utc_offset = mjd_utc - DayQuantity::new(segment.reference_mjd);
-    Second::new(segment.base_seconds)
-        + Second::new(segment.slope_seconds_per_day) * (utc_offset / DayQuantity::new(1.0))
+    segment.base + Second::new(segment.slope_seconds_per_day) * (utc_offset / DayQuantity::new(1.0))
 }
 
 fn utc_mjd_to_tt_mjd_in_segment(mjd_utc: DayQuantity, segment: UtcTaiSegment) -> DayQuantity {
@@ -148,8 +147,7 @@ fn utc_mjd_to_tt_mjd_in_segment(mjd_utc: DayQuantity, segment: UtcTaiSegment) ->
 fn tt_mjd_to_utc_mjd_in_segment(mjd_tt: DayQuantity, segment: UtcTaiSegment) -> DayQuantity {
     let scale = DayQuantity::new(1.0) + Second::new(segment.slope_seconds_per_day).to::<Day>();
     let ref_days = DayQuantity::new(segment.reference_mjd) / DayQuantity::new(1.0);
-    let offset_days = (Second::new(segment.base_seconds)
-        - Second::new(segment.slope_seconds_per_day) * ref_days
+    let offset_days = (segment.base - Second::new(segment.slope_seconds_per_day) * ref_days
         + TT_MINUS_TAI)
         .to::<Day>();
     DayQuantity::new((mjd_tt - offset_days) / scale)

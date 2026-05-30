@@ -162,6 +162,7 @@ pub fn assert_fresh(now: DateTime<Utc>, max_age: chrono::Duration) -> Result<(),
 mod tests {
     use super::*;
     use crate::data::runtime_data::with_test_time_data;
+    use qtty::{Arcsecond, Millisecond, Second};
     use siderust_archive::time::{EopPoint, TimeDataBundle, TimeDataProvenance, UtcTaiSegment};
 
     fn eop_bundle_for_provenance_test() -> TimeDataBundle {
@@ -169,7 +170,7 @@ mod tests {
             vec![UtcTaiSegment {
                 start_mjd: 41317,
                 end_mjd: None,
-                base_seconds: 37.0,
+                base: Second::new(37.0),
                 reference_mjd: 41317.0,
                 slope_seconds_per_day: 0.0,
             }],
@@ -181,24 +182,24 @@ mod tests {
                     pm_observed: true,
                     ut1_observed: true,
                     nutation_observed: true,
-                    pm_xp_arcsec: Some(0.1),
-                    pm_yp_arcsec: Some(0.1),
-                    ut1_minus_utc_seconds: 0.3,
-                    lod_milliseconds: Some(1.0),
-                    dx_milliarcsec: None,
-                    dy_milliarcsec: None,
+                    pm_xp: Some(Arcsecond::new(0.1)),
+                    pm_yp: Some(Arcsecond::new(0.1)),
+                    ut1_minus_utc: Second::new(0.3),
+                    lod: Some(Millisecond::new(1.0)),
+                    dx: None,
+                    dy: None,
                 },
                 EopPoint {
                     mjd: 50001,
                     pm_observed: false,
                     ut1_observed: false,
                     nutation_observed: false,
-                    pm_xp_arcsec: Some(0.2),
-                    pm_yp_arcsec: Some(0.2),
-                    ut1_minus_utc_seconds: 0.4,
-                    lod_milliseconds: None,
-                    dx_milliarcsec: None,
-                    dy_milliarcsec: None,
+                    pm_xp: Some(Arcsecond::new(0.2)),
+                    pm_yp: Some(Arcsecond::new(0.2)),
+                    ut1_minus_utc: Second::new(0.4),
+                    lod: None,
+                    dx: None,
+                    dy: None,
                 },
             ],
             TimeDataProvenance::new("2024-01-01T00:00:00Z", "aaaa", "bbbb", "cccc", "dddd"),

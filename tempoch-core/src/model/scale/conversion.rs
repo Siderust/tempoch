@@ -537,9 +537,9 @@ mod tests {
     use crate::data::runtime_data::with_test_time_data;
     use crate::earth::delta_t::interpolate_modern_delta_t_points;
     use crate::foundation::constats::TT_MINUS_TAI;
-    use chrono::{Duration, NaiveDate};
-    use qtty::Day as JulianDay;
     use crate::time_data::{MODERN_DELTA_T_POINTS, UTC_TAI_SEGMENTS};
+    use chrono::{Duration, NaiveDate};
+    use qtty::{Arcsecond, Day as JulianDay, Millisecond, Second};
     use siderust_archive::time::{EopPoint, TimeDataBundle, TimeDataProvenance, UtcTaiSegment};
 
     const TDB_TT_GOLDEN_SAMPLES: &[(f64, f64)] = &[
@@ -585,7 +585,7 @@ mod tests {
             vec![UtcTaiSegment {
                 start_mjd: 41317,
                 end_mjd: None,
-                base_seconds: 37.0,
+                base: Second::new(37.0),
                 reference_mjd: 41317.0,
                 slope_seconds_per_day: 0.0,
             }],
@@ -614,12 +614,12 @@ mod tests {
             pm_observed: true,
             ut1_observed: true,
             nutation_observed: true,
-            pm_xp_arcsec: Some(0.1),
-            pm_yp_arcsec: Some(0.1),
-            ut1_minus_utc_seconds: ut1,
-            lod_milliseconds: Some(1.0),
-            dx_milliarcsec: None,
-            dy_milliarcsec: None,
+            pm_xp: Some(Arcsecond::new(0.1)),
+            pm_yp: Some(Arcsecond::new(0.1)),
+            ut1_minus_utc: Second::new(ut1),
+            lod: Some(Millisecond::new(1.0)),
+            dx: None,
+            dy: None,
         })
         .collect()
     }
@@ -634,12 +634,12 @@ mod tests {
                 pm_observed: false,
                 ut1_observed: false,
                 nutation_observed: false,
-                pm_xp_arcsec: Some(0.1),
-                pm_yp_arcsec: Some(0.1),
-                ut1_minus_utc_seconds: ut1,
-                lod_milliseconds: None,
-                dx_milliarcsec: None,
-                dy_milliarcsec: None,
+                pm_xp: Some(Arcsecond::new(0.1)),
+                pm_yp: Some(Arcsecond::new(0.1)),
+                ut1_minus_utc: Second::new(ut1),
+                lod: None,
+                dx: None,
+                dy: None,
             })
             .collect()
     }
@@ -662,7 +662,7 @@ mod tests {
                     continue;
                 };
                 let daily_delta_t = TT_MINUS_TAI.value() + tai_minus_utc_seconds_at_mjd(mjd)
-                    - point.ut1_minus_utc_seconds;
+                    - point.ut1_minus_utc.value();
                 let signed_diff = monthly_delta_t.value() - daily_delta_t;
                 let candidate = (signed_diff.abs(), point.mjd, signed_diff);
 

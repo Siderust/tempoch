@@ -88,6 +88,7 @@ pub fn builtin_eop_at(mjd_utc: Day) -> Option<EopValues> {
 mod tests {
     use super::*;
     use crate::data::runtime_data::with_test_time_data;
+    use qtty::{Arcsecond, Day, MilliArcsecond, Millisecond, Second};
     use siderust_archive::time::{EopPoint, TimeDataBundle, TimeDataProvenance, UtcTaiSegment};
 
     fn make_test_eop_bundle(points: Vec<EopPoint>) -> TimeDataBundle {
@@ -95,7 +96,7 @@ mod tests {
             vec![UtcTaiSegment {
                 start_mjd: 41317,
                 end_mjd: None,
-                base_seconds: 37.0,
+                base: Second::new(37.0),
                 reference_mjd: 41317.0,
                 slope_seconds_per_day: 0.0,
             }],
@@ -113,36 +114,36 @@ mod tests {
                 pm_observed: true,
                 ut1_observed: true,
                 nutation_observed: true,
-                pm_xp_arcsec: Some(0.1),
-                pm_yp_arcsec: Some(0.2),
-                ut1_minus_utc_seconds: 0.3,
-                lod_milliseconds: Some(1.0),
-                dx_milliarcsec: Some(0.01),
-                dy_milliarcsec: Some(0.02),
+                pm_xp: Some(Arcsecond::new(0.1)),
+                pm_yp: Some(Arcsecond::new(0.2)),
+                ut1_minus_utc: Second::new(0.3),
+                lod: Some(Millisecond::new(1.0)),
+                dx: Some(MilliArcsecond::new(0.01)),
+                dy: Some(MilliArcsecond::new(0.02)),
             },
             EopPoint {
                 mjd: 50001,
                 pm_observed: true,
                 ut1_observed: true,
                 nutation_observed: true,
-                pm_xp_arcsec: Some(0.2),
-                pm_yp_arcsec: Some(0.4),
-                ut1_minus_utc_seconds: 0.5,
-                lod_milliseconds: Some(2.0),
-                dx_milliarcsec: None,
-                dy_milliarcsec: None,
+                pm_xp: Some(Arcsecond::new(0.2)),
+                pm_yp: Some(Arcsecond::new(0.4)),
+                ut1_minus_utc: Second::new(0.5),
+                lod: Some(Millisecond::new(2.0)),
+                dx: None,
+                dy: None,
             },
             EopPoint {
                 mjd: 50002,
                 pm_observed: false,
                 ut1_observed: false,
                 nutation_observed: false,
-                pm_xp_arcsec: Some(0.3),
-                pm_yp_arcsec: Some(0.6),
-                ut1_minus_utc_seconds: 0.7,
-                lod_milliseconds: None,
-                dx_milliarcsec: None,
-                dy_milliarcsec: None,
+                pm_xp: Some(Arcsecond::new(0.3)),
+                pm_yp: Some(Arcsecond::new(0.6)),
+                ut1_minus_utc: Second::new(0.7),
+                lod: None,
+                dx: None,
+                dy: None,
             },
         ]
     }
@@ -165,16 +166,16 @@ mod tests {
         with_test_time_data(bundle, || {
             let mid = &points[1];
             let got = builtin_eop_at(Day::new(mid.mjd as f64)).unwrap();
-            assert_eq!(got.pm_xp.map(|v| v.value()), mid.pm_xp_arcsec);
-            assert_eq!(got.pm_yp.map(|v| v.value()), mid.pm_yp_arcsec);
+            assert_eq!(got.pm_xp.map(|v| v.value()), mid.pm_xp.map(|v| v.value()));
+            assert_eq!(got.pm_yp.map(|v| v.value()), mid.pm_yp.map(|v| v.value()));
             assert!(
-                (got.ut1_minus_utc.value() - mid.ut1_minus_utc_seconds).abs() < 1e-12,
+                (got.ut1_minus_utc.value() - mid.ut1_minus_utc.value()).abs() < 1e-12,
                 "ut1: {} vs {}",
                 got.ut1_minus_utc.value(),
-                mid.ut1_minus_utc_seconds
+                mid.ut1_minus_utc.value()
             );
-            assert_eq!(got.dx.map(|v| v.value()), mid.dx_milliarcsec);
-            assert_eq!(got.dy.map(|v| v.value()), mid.dy_milliarcsec);
+            assert_eq!(got.dx.map(|v| v.value()), mid.dx.map(|v| v.value()));
+            assert_eq!(got.dy.map(|v| v.value()), mid.dy.map(|v| v.value()));
         });
     }
 
@@ -185,7 +186,7 @@ mod tests {
         with_test_time_data(bundle, || {
             let got = builtin_eop_at(Day::new(50000.5)).unwrap();
             let expected =
-                0.5 * (points[0].ut1_minus_utc_seconds + points[1].ut1_minus_utc_seconds);
+                0.5 * (points[0].ut1_minus_utc.value() + points[1].ut1_minus_utc.value());
             assert!((got.ut1_minus_utc.value() - expected).abs() < 1e-12);
         });
     }
