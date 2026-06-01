@@ -9,8 +9,8 @@ use crate::time::TempochUtc;
 use crate::{catch_panic, QttyQuantity, UnitId};
 use qtty::Second;
 use tempoch::{
-    ConversionError, FormatForScale, GpsTime, J2000Seconds, Time, TimeContext, Unix, UnixTime, JD,
-    MJD, TAI, TCB, TCG, TDB, TT, UT1, UTC,
+    ConversionError, FormatForScale, GpsTime, J2000Seconds, Time, TimeContext, Unix, UnixTime, BDT,
+    ET, GPST, GST, JD, MJD, QZSST, TAI, TCB, TCG, TDB, TT, UT1, UTC,
 };
 
 /// Scale tags used by the split-instant C ABI.
@@ -33,6 +33,16 @@ pub enum TempochScaleTag {
     TCG = 5,
     /// Barycentric Coordinate Time.
     TCB = 6,
+    /// Ephemeris Time (NAIF/SPICE compatibility marker; routes through TDB).
+    ET = 7,
+    /// GPS System Time (`TAI − 19 s`).
+    GPST = 8,
+    /// Galileo System Time (`TAI − 19 s`).
+    GST = 9,
+    /// BeiDou Navigation Satellite System Time (`TAI − 33 s`).
+    BDT = 10,
+    /// Quasi-Zenith Satellite System Time (aligned with GPST).
+    QZSST = 11,
 }
 
 impl TempochScaleTag {
@@ -47,6 +57,11 @@ impl TempochScaleTag {
             4 => Some(Self::TDB),
             5 => Some(Self::TCG),
             6 => Some(Self::TCB),
+            7 => Some(Self::ET),
+            8 => Some(Self::GPST),
+            9 => Some(Self::GST),
+            10 => Some(Self::BDT),
+            11 => Some(Self::QZSST),
             _ => None,
         }
     }
@@ -131,7 +146,7 @@ unsafe fn context_or_default<'a>(ptr: *const TempochContext) -> ContextBorrow<'a
 }
 
 #[inline]
-fn status_from_conversion(err: ConversionError) -> TempochStatus {
+pub(crate) fn status_from_conversion(err: ConversionError) -> TempochStatus {
     match err {
         ConversionError::Ut1HorizonExceeded => TempochStatus::Ut1HorizonExceeded,
         _ => TempochStatus::ConversionFailed,
@@ -177,6 +192,26 @@ macro_rules! with_scale {
                 type $Scale = TCB;
                 $body
             }
+            TempochScaleTag::ET => {
+                type $Scale = ET;
+                $body
+            }
+            TempochScaleTag::GPST => {
+                type $Scale = GPST;
+                $body
+            }
+            TempochScaleTag::GST => {
+                type $Scale = GST;
+                $body
+            }
+            TempochScaleTag::BDT => {
+                type $Scale = BDT;
+                $body
+            }
+            TempochScaleTag::QZSST => {
+                type $Scale = QZSST;
+                $body
+            }
         }
     };
 }
@@ -189,6 +224,41 @@ fn split_time<S: tempoch::CoordinateScale>(raw: TempochTime) -> Result<Time<S>, 
     )
 }
 
+/// Exhaustively convert an infallible coordinate-scale instant to `target`.
+///
+/// All targets are reachable infallibly except `UT1`, which is context-driven.
+macro_rules! convert_infallible_to_target {
+    ($time:expr, $target:expr, $ctx:expr) => {
+        match $target {
+            TempochScaleTag::TT => Ok(TempochTime::from_time($time.to::<TT>())),
+            TempochScaleTag::TAI => Ok(TempochTime::from_time($time.to::<TAI>())),
+            TempochScaleTag::UTC => Ok(TempochTime::from_time($time.to::<UTC>())),
+            TempochScaleTag::UT1 => Ok(TempochTime::from_time($time.to_with::<UT1>($ctx)?)),
+            TempochScaleTag::TDB => Ok(TempochTime::from_time($time.to::<TDB>())),
+            TempochScaleTag::TCG => Ok(TempochTime::from_time($time.to::<TCG>())),
+            TempochScaleTag::TCB => Ok(TempochTime::from_time($time.to::<TCB>())),
+            TempochScaleTag::ET => Ok(TempochTime::from_time($time.to::<ET>())),
+            TempochScaleTag::GPST => Ok(TempochTime::from_time($time.to::<GPST>())),
+            TempochScaleTag::GST => Ok(TempochTime::from_time($time.to::<GST>())),
+            TempochScaleTag::BDT => Ok(TempochTime::from_time($time.to::<BDT>())),
+            TempochScaleTag::QZSST => Ok(TempochTime::from_time($time.to::<QZSST>())),
+        }
+    };
+}
+
+/// Encode an infallible coordinate-scale instant in the requested public format.
+macro_rules! encode_infallible {
+    ($time:expr, $format:expr, $ctx:expr) => {
+        match $format {
+            TempochFormatTag::JD => Ok($time.to::<JD>().raw().value()),
+            TempochFormatTag::MJD => Ok($time.to::<MJD>().raw().value()),
+            TempochFormatTag::J2000Seconds => Ok($time.to::<tempoch::J2000s>().raw().value()),
+            TempochFormatTag::Unix => encode_unix_from_utc_time($time.to::<UTC>(), $ctx),
+            TempochFormatTag::GPS => encode_gps_from_tai_time($time.to::<TAI>()),
+        }
+    };
+}
+
 fn decode_unix_to_target(
     raw_seconds: f64,
     target: TempochScaleTag,
@@ -198,15 +268,7 @@ fn decode_unix_to_target(
         return Err(ConversionError::NonFinite);
     }
     let utc = UnixTime::try_new(Second::new(raw_seconds))?.to_j2000s();
-    match target {
-        TempochScaleTag::TT => Ok(TempochTime::from_time(utc.to::<TT>())),
-        TempochScaleTag::TAI => Ok(TempochTime::from_time(utc.to::<TAI>())),
-        TempochScaleTag::UTC => Ok(TempochTime::from_time(utc)),
-        TempochScaleTag::UT1 => Ok(TempochTime::from_time(utc.to_with::<UT1>(ctx)?)),
-        TempochScaleTag::TDB => Ok(TempochTime::from_time(utc.to::<TDB>())),
-        TempochScaleTag::TCG => Ok(TempochTime::from_time(utc.to::<TCG>())),
-        TempochScaleTag::TCB => Ok(TempochTime::from_time(utc.to::<TCB>())),
-    }
+    convert_infallible_to_target!(utc, target, ctx)
 }
 
 fn decode_gps_to_target(
@@ -218,15 +280,7 @@ fn decode_gps_to_target(
         return Err(ConversionError::NonFinite);
     }
     let tai = GpsTime::new(raw_seconds).to_j2000s();
-    match target {
-        TempochScaleTag::TT => Ok(TempochTime::from_time(tai.to::<TT>())),
-        TempochScaleTag::TAI => Ok(TempochTime::from_time(tai)),
-        TempochScaleTag::UTC => Ok(TempochTime::from_time(tai.to::<UTC>())),
-        TempochScaleTag::UT1 => Ok(TempochTime::from_time(tai.to_with::<UT1>(ctx)?)),
-        TempochScaleTag::TDB => Ok(TempochTime::from_time(tai.to::<TDB>())),
-        TempochScaleTag::TCG => Ok(TempochTime::from_time(tai.to::<TCG>())),
-        TempochScaleTag::TCB => Ok(TempochTime::from_time(tai.to::<TCB>())),
-    }
+    convert_infallible_to_target!(tai, target, ctx)
 }
 
 fn encode_unix_from_utc_time(utc: Time<UTC>, ctx: &TimeContext) -> Result<f64, ConversionError> {
@@ -237,48 +291,61 @@ fn encode_gps_from_tai_time(tai: Time<TAI>) -> Result<f64, ConversionError> {
     Ok(tai.to::<tempoch::GPS>().raw().value())
 }
 
-fn encode_time_tt(
-    raw: TempochTime,
-    format: TempochFormatTag,
-    ctx: &TimeContext,
-) -> Result<f64, ConversionError> {
-    let time = split_time::<TT>(raw)?;
-    match format {
-        TempochFormatTag::JD => Ok(time.to::<JD>().raw().value()),
-        TempochFormatTag::MJD => Ok(time.to::<MJD>().raw().value()),
-        TempochFormatTag::J2000Seconds => Ok(time.to::<tempoch::J2000s>().raw().value()),
-        TempochFormatTag::Unix => encode_unix_from_utc_time(time.to::<UTC>(), ctx),
-        TempochFormatTag::GPS => encode_gps_from_tai_time(time.to::<TAI>()),
-    }
+/// Generate the per-source scale converter and format encoder for an infallible
+/// coordinate scale.
+macro_rules! define_scale_codec {
+    ($convert_fn:ident, $encode_fn:ident, $Scale:ty) => {
+        fn $convert_fn(
+            raw: TempochTime,
+            target: TempochScaleTag,
+            ctx: &TimeContext,
+        ) -> Result<TempochTime, ConversionError> {
+            let time = split_time::<$Scale>(raw)?;
+            convert_infallible_to_target!(time, target, ctx)
+        }
+
+        fn $encode_fn(
+            raw: TempochTime,
+            format: TempochFormatTag,
+            ctx: &TimeContext,
+        ) -> Result<f64, ConversionError> {
+            let time = split_time::<$Scale>(raw)?;
+            encode_infallible!(time, format, ctx)
+        }
+    };
 }
 
-fn encode_time_tai(
-    raw: TempochTime,
-    format: TempochFormatTag,
-    ctx: &TimeContext,
-) -> Result<f64, ConversionError> {
-    let time = split_time::<TAI>(raw)?;
-    match format {
-        TempochFormatTag::JD => Ok(time.to::<JD>().raw().value()),
-        TempochFormatTag::MJD => Ok(time.to::<MJD>().raw().value()),
-        TempochFormatTag::J2000Seconds => Ok(time.to::<tempoch::J2000s>().raw().value()),
-        TempochFormatTag::Unix => encode_unix_from_utc_time(time.to::<UTC>(), ctx),
-        TempochFormatTag::GPS => encode_gps_from_tai_time(time),
-    }
-}
+define_scale_codec!(scale_convert_tt, encode_time_tt, TT);
+define_scale_codec!(scale_convert_tai, encode_time_tai, TAI);
+define_scale_codec!(scale_convert_utc, encode_time_utc, UTC);
+define_scale_codec!(scale_convert_tdb, encode_time_tdb, TDB);
+define_scale_codec!(scale_convert_tcg, encode_time_tcg, TCG);
+define_scale_codec!(scale_convert_tcb, encode_time_tcb, TCB);
+define_scale_codec!(scale_convert_et, encode_time_et, ET);
+define_scale_codec!(scale_convert_gpst, encode_time_gpst, GPST);
+define_scale_codec!(scale_convert_gst, encode_time_gst, GST);
+define_scale_codec!(scale_convert_bdt, encode_time_bdt, BDT);
+define_scale_codec!(scale_convert_qzsst, encode_time_qzsst, QZSST);
 
-fn encode_time_utc(
+fn scale_convert_ut1(
     raw: TempochTime,
-    format: TempochFormatTag,
+    target: TempochScaleTag,
     ctx: &TimeContext,
-) -> Result<f64, ConversionError> {
-    let time = split_time::<UTC>(raw)?;
-    match format {
-        TempochFormatTag::JD => Ok(time.to::<JD>().raw().value()),
-        TempochFormatTag::MJD => Ok(time.to::<MJD>().raw().value()),
-        TempochFormatTag::J2000Seconds => Ok(time.to::<tempoch::J2000s>().raw().value()),
-        TempochFormatTag::Unix => encode_unix_from_utc_time(time, ctx),
-        TempochFormatTag::GPS => encode_gps_from_tai_time(time.to::<TAI>()),
+) -> Result<TempochTime, ConversionError> {
+    let time = split_time::<UT1>(raw)?;
+    match target {
+        TempochScaleTag::UT1 => Ok(TempochTime::from_time(time)),
+        TempochScaleTag::TT => Ok(TempochTime::from_time(time.to_with::<TT>(ctx)?)),
+        TempochScaleTag::TAI => Ok(TempochTime::from_time(time.to_with::<TAI>(ctx)?)),
+        TempochScaleTag::UTC => Ok(TempochTime::from_time(time.to_with::<UTC>(ctx)?)),
+        TempochScaleTag::TDB => Ok(TempochTime::from_time(time.to_with::<TDB>(ctx)?)),
+        TempochScaleTag::TCG => Ok(TempochTime::from_time(time.to_with::<TCG>(ctx)?)),
+        TempochScaleTag::TCB => Ok(TempochTime::from_time(time.to_with::<TCB>(ctx)?)),
+        TempochScaleTag::ET => Ok(TempochTime::from_time(time.to_with::<ET>(ctx)?)),
+        TempochScaleTag::GPST => Ok(TempochTime::from_time(time.to_with::<GPST>(ctx)?)),
+        TempochScaleTag::GST => Ok(TempochTime::from_time(time.to_with::<GST>(ctx)?)),
+        TempochScaleTag::BDT => Ok(TempochTime::from_time(time.to_with::<BDT>(ctx)?)),
+        TempochScaleTag::QZSST => Ok(TempochTime::from_time(time.to_with::<QZSST>(ctx)?)),
     }
 }
 
@@ -294,170 +361,6 @@ fn encode_time_ut1(
         TempochFormatTag::J2000Seconds => Ok(time.to::<tempoch::J2000s>().raw().value()),
         TempochFormatTag::Unix => encode_unix_from_utc_time(time.to_with::<UTC>(ctx)?, ctx),
         TempochFormatTag::GPS => encode_gps_from_tai_time(time.to_with::<TAI>(ctx)?),
-    }
-}
-
-fn encode_time_tdb(
-    raw: TempochTime,
-    format: TempochFormatTag,
-    ctx: &TimeContext,
-) -> Result<f64, ConversionError> {
-    let time = split_time::<TDB>(raw)?;
-    match format {
-        TempochFormatTag::JD => Ok(time.to::<JD>().raw().value()),
-        TempochFormatTag::MJD => Ok(time.to::<MJD>().raw().value()),
-        TempochFormatTag::J2000Seconds => Ok(time.to::<tempoch::J2000s>().raw().value()),
-        TempochFormatTag::Unix => encode_unix_from_utc_time(time.to::<UTC>(), ctx),
-        TempochFormatTag::GPS => encode_gps_from_tai_time(time.to::<TAI>()),
-    }
-}
-
-fn encode_time_tcg(
-    raw: TempochTime,
-    format: TempochFormatTag,
-    ctx: &TimeContext,
-) -> Result<f64, ConversionError> {
-    let time = split_time::<TCG>(raw)?;
-    match format {
-        TempochFormatTag::JD => Ok(time.to::<JD>().raw().value()),
-        TempochFormatTag::MJD => Ok(time.to::<MJD>().raw().value()),
-        TempochFormatTag::J2000Seconds => Ok(time.to::<tempoch::J2000s>().raw().value()),
-        TempochFormatTag::Unix => encode_unix_from_utc_time(time.to::<UTC>(), ctx),
-        TempochFormatTag::GPS => encode_gps_from_tai_time(time.to::<TAI>()),
-    }
-}
-
-fn encode_time_tcb(
-    raw: TempochTime,
-    format: TempochFormatTag,
-    ctx: &TimeContext,
-) -> Result<f64, ConversionError> {
-    let time = split_time::<TCB>(raw)?;
-    match format {
-        TempochFormatTag::JD => Ok(time.to::<JD>().raw().value()),
-        TempochFormatTag::MJD => Ok(time.to::<MJD>().raw().value()),
-        TempochFormatTag::J2000Seconds => Ok(time.to::<tempoch::J2000s>().raw().value()),
-        TempochFormatTag::Unix => encode_unix_from_utc_time(time.to::<UTC>(), ctx),
-        TempochFormatTag::GPS => encode_gps_from_tai_time(time.to::<TAI>()),
-    }
-}
-
-fn scale_convert_tt(
-    raw: TempochTime,
-    target: TempochScaleTag,
-    ctx: &TimeContext,
-) -> Result<TempochTime, ConversionError> {
-    let time = split_time::<TT>(raw)?;
-    match target {
-        TempochScaleTag::TT => Ok(TempochTime::from_time(time)),
-        TempochScaleTag::TAI => Ok(TempochTime::from_time(time.to::<TAI>())),
-        TempochScaleTag::UTC => Ok(TempochTime::from_time(time.to::<UTC>())),
-        TempochScaleTag::UT1 => Ok(TempochTime::from_time(time.to_with::<UT1>(ctx)?)),
-        TempochScaleTag::TDB => Ok(TempochTime::from_time(time.to::<TDB>())),
-        TempochScaleTag::TCG => Ok(TempochTime::from_time(time.to::<TCG>())),
-        TempochScaleTag::TCB => Ok(TempochTime::from_time(time.to::<TCB>())),
-    }
-}
-
-fn scale_convert_tai(
-    raw: TempochTime,
-    target: TempochScaleTag,
-    ctx: &TimeContext,
-) -> Result<TempochTime, ConversionError> {
-    let time = split_time::<TAI>(raw)?;
-    match target {
-        TempochScaleTag::TT => Ok(TempochTime::from_time(time.to::<TT>())),
-        TempochScaleTag::TAI => Ok(TempochTime::from_time(time)),
-        TempochScaleTag::UTC => Ok(TempochTime::from_time(time.to::<UTC>())),
-        TempochScaleTag::UT1 => Ok(TempochTime::from_time(time.to_with::<UT1>(ctx)?)),
-        TempochScaleTag::TDB => Ok(TempochTime::from_time(time.to::<TDB>())),
-        TempochScaleTag::TCG => Ok(TempochTime::from_time(time.to::<TCG>())),
-        TempochScaleTag::TCB => Ok(TempochTime::from_time(time.to::<TCB>())),
-    }
-}
-
-fn scale_convert_utc(
-    raw: TempochTime,
-    target: TempochScaleTag,
-    ctx: &TimeContext,
-) -> Result<TempochTime, ConversionError> {
-    let time = split_time::<UTC>(raw)?;
-    match target {
-        TempochScaleTag::TT => Ok(TempochTime::from_time(time.to::<TT>())),
-        TempochScaleTag::TAI => Ok(TempochTime::from_time(time.to::<TAI>())),
-        TempochScaleTag::UTC => Ok(TempochTime::from_time(time)),
-        TempochScaleTag::UT1 => Ok(TempochTime::from_time(time.to_with::<UT1>(ctx)?)),
-        TempochScaleTag::TDB => Ok(TempochTime::from_time(time.to::<TDB>())),
-        TempochScaleTag::TCG => Ok(TempochTime::from_time(time.to::<TCG>())),
-        TempochScaleTag::TCB => Ok(TempochTime::from_time(time.to::<TCB>())),
-    }
-}
-
-fn scale_convert_ut1(
-    raw: TempochTime,
-    target: TempochScaleTag,
-    ctx: &TimeContext,
-) -> Result<TempochTime, ConversionError> {
-    let time = split_time::<UT1>(raw)?;
-    match target {
-        TempochScaleTag::TT => Ok(TempochTime::from_time(time.to_with::<TT>(ctx)?)),
-        TempochScaleTag::TAI => Ok(TempochTime::from_time(time.to_with::<TAI>(ctx)?)),
-        TempochScaleTag::UTC => Ok(TempochTime::from_time(time.to_with::<UTC>(ctx)?)),
-        TempochScaleTag::UT1 => Ok(TempochTime::from_time(time)),
-        TempochScaleTag::TDB => Ok(TempochTime::from_time(time.to_with::<TDB>(ctx)?)),
-        TempochScaleTag::TCG => Ok(TempochTime::from_time(time.to_with::<TCG>(ctx)?)),
-        TempochScaleTag::TCB => Ok(TempochTime::from_time(time.to_with::<TCB>(ctx)?)),
-    }
-}
-
-fn scale_convert_tdb(
-    raw: TempochTime,
-    target: TempochScaleTag,
-    ctx: &TimeContext,
-) -> Result<TempochTime, ConversionError> {
-    let time = split_time::<TDB>(raw)?;
-    match target {
-        TempochScaleTag::TT => Ok(TempochTime::from_time(time.to::<TT>())),
-        TempochScaleTag::TAI => Ok(TempochTime::from_time(time.to::<TAI>())),
-        TempochScaleTag::UTC => Ok(TempochTime::from_time(time.to::<UTC>())),
-        TempochScaleTag::UT1 => Ok(TempochTime::from_time(time.to_with::<UT1>(ctx)?)),
-        TempochScaleTag::TDB => Ok(TempochTime::from_time(time)),
-        TempochScaleTag::TCG => Ok(TempochTime::from_time(time.to::<TCG>())),
-        TempochScaleTag::TCB => Ok(TempochTime::from_time(time.to::<TCB>())),
-    }
-}
-
-fn scale_convert_tcg(
-    raw: TempochTime,
-    target: TempochScaleTag,
-    ctx: &TimeContext,
-) -> Result<TempochTime, ConversionError> {
-    let time = split_time::<TCG>(raw)?;
-    match target {
-        TempochScaleTag::TT => Ok(TempochTime::from_time(time.to::<TT>())),
-        TempochScaleTag::TAI => Ok(TempochTime::from_time(time.to::<TAI>())),
-        TempochScaleTag::UTC => Ok(TempochTime::from_time(time.to::<UTC>())),
-        TempochScaleTag::UT1 => Ok(TempochTime::from_time(time.to_with::<UT1>(ctx)?)),
-        TempochScaleTag::TDB => Ok(TempochTime::from_time(time.to::<TDB>())),
-        TempochScaleTag::TCG => Ok(TempochTime::from_time(time)),
-        TempochScaleTag::TCB => Ok(TempochTime::from_time(time.to::<TCB>())),
-    }
-}
-
-fn scale_convert_tcb(
-    raw: TempochTime,
-    target: TempochScaleTag,
-    ctx: &TimeContext,
-) -> Result<TempochTime, ConversionError> {
-    let time = split_time::<TCB>(raw)?;
-    match target {
-        TempochScaleTag::TT => Ok(TempochTime::from_time(time.to::<TT>())),
-        TempochScaleTag::TAI => Ok(TempochTime::from_time(time.to::<TAI>())),
-        TempochScaleTag::UTC => Ok(TempochTime::from_time(time.to::<UTC>())),
-        TempochScaleTag::UT1 => Ok(TempochTime::from_time(time.to_with::<UT1>(ctx)?)),
-        TempochScaleTag::TDB => Ok(TempochTime::from_time(time.to::<TDB>())),
-        TempochScaleTag::TCG => Ok(TempochTime::from_time(time.to::<TCG>())),
-        TempochScaleTag::TCB => Ok(TempochTime::from_time(time)),
     }
 }
 
@@ -522,6 +425,11 @@ pub unsafe extern "C" fn tempoch_time_scale_convert(
             TempochScaleTag::TDB => scale_convert_tdb(value, to_scale, ctx.as_ref()),
             TempochScaleTag::TCG => scale_convert_tcg(value, to_scale, ctx.as_ref()),
             TempochScaleTag::TCB => scale_convert_tcb(value, to_scale, ctx.as_ref()),
+            TempochScaleTag::ET => scale_convert_et(value, to_scale, ctx.as_ref()),
+            TempochScaleTag::GPST => scale_convert_gpst(value, to_scale, ctx.as_ref()),
+            TempochScaleTag::GST => scale_convert_gst(value, to_scale, ctx.as_ref()),
+            TempochScaleTag::BDT => scale_convert_bdt(value, to_scale, ctx.as_ref()),
+            TempochScaleTag::QZSST => scale_convert_qzsst(value, to_scale, ctx.as_ref()),
         };
         match converted {
             Ok(time) => {
@@ -567,6 +475,11 @@ pub unsafe extern "C" fn tempoch_time_to_format(
             TempochScaleTag::TDB => encode_time_tdb(value, format, ctx.as_ref()),
             TempochScaleTag::TCG => encode_time_tcg(value, format, ctx.as_ref()),
             TempochScaleTag::TCB => encode_time_tcb(value, format, ctx.as_ref()),
+            TempochScaleTag::ET => encode_time_et(value, format, ctx.as_ref()),
+            TempochScaleTag::GPST => encode_time_gpst(value, format, ctx.as_ref()),
+            TempochScaleTag::GST => encode_time_gst(value, format, ctx.as_ref()),
+            TempochScaleTag::BDT => encode_time_bdt(value, format, ctx.as_ref()),
+            TempochScaleTag::QZSST => encode_time_qzsst(value, format, ctx.as_ref()),
         };
         match encoded {
             Ok(raw) => {

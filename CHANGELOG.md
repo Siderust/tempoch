@@ -3,6 +3,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.4] - 2026-06-01
+
+### Changed
+
+- Refreshed the vendored `qtty-cpp` integration to the latest patch release,
+  including the corrected angular trig helpers and the `Ratio` FFI unit.
+- Kept the `tempoch` workspace aligned with the new patch-level `qtty` API
+  and dependency versions used by the vendored adapter crates.
+
 ## [0.6.3] - 2026-05-30
 
 ### Removed
