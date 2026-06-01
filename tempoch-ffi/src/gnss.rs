@@ -8,12 +8,12 @@
 //! coordinate scales (`GPST`, `GST`, `BDT`, `QZSST`).  Any other scale tag is
 //! rejected with [`TempochStatus::InvalidScaleId`].
 
+use crate::catch_panic;
 use crate::error::TempochStatus;
 use crate::typed::{status_from_conversion, TempochScaleTag, TempochTime};
-use crate::catch_panic;
 use qtty::Second;
-use tempoch::{GnssWeek, Time, BDT, GPST, GST, QZSST};
 use tempoch::ConversionError;
+use tempoch::{GnssWeek, Time, BDT, GPST, GST, QZSST};
 
 /// Decomposed GNSS week-number form since the constellation's defined epoch.
 ///
@@ -162,11 +162,7 @@ mod tests {
             subsecond_nanos: u32::MAX,
         };
         let status = unsafe {
-            tempoch_time_to_gnss_week(
-                gpst_epoch_instant(),
-                TempochScaleTag::GPST as i32,
-                &mut gw,
-            )
+            tempoch_time_to_gnss_week(gpst_epoch_instant(), TempochScaleTag::GPST as i32, &mut gw)
         };
         assert_eq!(status, TempochStatus::Ok);
         assert_eq!(gw.week, 0);
@@ -177,9 +173,8 @@ mod tests {
             hi_seconds: 0.0,
             lo_seconds: 0.0,
         };
-        let status = unsafe {
-            tempoch_time_from_gnss_week(gw, TempochScaleTag::GPST as i32, &mut back)
-        };
+        let status =
+            unsafe { tempoch_time_from_gnss_week(gw, TempochScaleTag::GPST as i32, &mut back) };
         assert_eq!(status, TempochStatus::Ok);
         assert!((back.hi_seconds + back.lo_seconds - (-630_763_200.0)).abs() < 1e-6);
     }

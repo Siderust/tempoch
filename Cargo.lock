@@ -638,9 +638,9 @@ dependencies = [
 
 [[package]]
 name = "qtty"
-version = "0.8.4"
+version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ad9c85853b4435eb62be239f8cd0e8740ad67b65245c165d68004672c0eb1da"
+checksum = "311988508597047d023edfb10cf4299b22a317be2b2c95745aaa4d489d9a9265"
 dependencies = [
  "qtty-core",
  "qtty-derive",
@@ -648,9 +648,9 @@ dependencies = [
 
 [[package]]
 name = "qtty-core"
-version = "0.8.4"
+version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0977cb3d61376379cdb24781f2d1c53ad09fbadcfc925813703442b84249a97"
+checksum = "dc07e03ed9d81d4b4494b661635dc87f0a1a38cdce3e51136c39af6887716b02"
 dependencies = [
  "libm",
  "qtty-derive",
@@ -660,9 +660,9 @@ dependencies = [
 
 [[package]]
 name = "qtty-derive"
-version = "0.8.4"
+version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "593b4191ff7f54e773a9560a22b24851383ca56b35c6fbdb6fb30cdcf9be96c2"
+checksum = "7ee2574d42b017be334315c8cf4fdb241d728b093c5c7aba9bb1e7c5a3a708e8"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1016,7 +1016,7 @@ dependencies = [
 
 [[package]]
 name = "tempoch"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "chrono",
  "qtty",
@@ -1026,7 +1026,7 @@ dependencies = [
 
 [[package]]
 name = "tempoch-core"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "affn",
  "chrono",
@@ -1039,7 +1039,7 @@ dependencies = [
 
 [[package]]
 name = "tempoch-ffi"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "cbindgen",
  "chrono",

@@ -60,9 +60,7 @@ pub struct TempochDataHorizons {
 /// # Safety
 /// `out` must be a valid, writable pointer to `TempochDataHorizons`.
 #[no_mangle]
-pub unsafe extern "C" fn tempoch_time_data_status(
-    out: *mut TempochDataHorizons,
-) -> TempochStatus {
+pub unsafe extern "C" fn tempoch_time_data_status(out: *mut TempochDataHorizons) -> TempochStatus {
     if out.is_null() {
         return TempochStatus::NullPointer;
     }
