@@ -9,8 +9,11 @@
 //! canonical typed helpers.
 
 use tempoch::{
-    DELTA_T_PREDICTION_HORIZON_MJD, GPS_EPOCH_JD_UTC_DAY, GPS_EPOCH_TAI_MINUS_UTC, J2000_JD_TT_DAY,
-    MODERN_DELTA_T_OBSERVED_END_MJD, UNIX_EPOCH_JD_DAY, UTC_DEFINED_FROM_MJD_DAY,
+    delta_t_seconds, delta_t_seconds_extrapolated, DELTA_T_PREDICTION_HORIZON_MJD,
+    GPS_EPOCH_JD_UTC_DAY, GPS_EPOCH_TAI_MINUS_UTC, IAU_TIME_EPOCH_T0_JD_DAY, J2000_JD_TT_DAY,
+    MODERN_DELTA_T_OBSERVED_END_MJD, NANOS_PER_SECOND, TDB_TT_MODEL_HIGH_ACCURACY_END_JD_DAY,
+    TDB_TT_MODEL_HIGH_ACCURACY_START_JD_DAY, TT_MINUS_TAI, UNIX_EPOCH_JD_DAY,
+    UTC_DEFINED_FROM_MJD_DAY,
 };
 
 /// J2000.0 epoch as JD(TT) — 2 451 545.0.
@@ -96,6 +99,52 @@ pub extern "C" fn tempoch_const_eop_observed_end_mjd() -> f64 {
 #[no_mangle]
 pub extern "C" fn tempoch_const_modern_delta_t_observed_end_mjd() -> f64 {
     MODERN_DELTA_T_OBSERVED_END_MJD.value()
+}
+
+/// Constant TT − TAI offset, in seconds (32.184).
+#[no_mangle]
+pub extern "C" fn tempoch_const_tt_minus_tai_seconds() -> f64 {
+    TT_MINUS_TAI.value()
+}
+
+/// Number of nanoseconds in one SI second (1e9).
+#[no_mangle]
+pub extern "C" fn tempoch_const_nanos_per_second() -> f64 {
+    NANOS_PER_SECOND as f64
+}
+
+/// IAU time-scale epoch T0 as a Julian Day on the TT axis (1977-01-01 TAI).
+#[no_mangle]
+pub extern "C" fn tempoch_const_iau_time_epoch_t0_jd() -> f64 {
+    IAU_TIME_EPOCH_T0_JD_DAY.value()
+}
+
+/// First JD(TT) of the high-accuracy TDB−TT model validity window.
+#[no_mangle]
+pub extern "C" fn tempoch_const_tdb_tt_model_high_accuracy_start_jd() -> f64 {
+    TDB_TT_MODEL_HIGH_ACCURACY_START_JD_DAY.value()
+}
+
+/// Last JD(TT) of the high-accuracy TDB−TT model validity window.
+#[no_mangle]
+pub extern "C" fn tempoch_const_tdb_tt_model_high_accuracy_end_jd() -> f64 {
+    TDB_TT_MODEL_HIGH_ACCURACY_END_JD_DAY.value()
+}
+
+/// ΔT = TT − UT1 in seconds for a UT1 Julian Day, using the compiled USNO
+/// model. Returns NaN when the requested epoch is outside the model domain.
+#[no_mangle]
+pub extern "C" fn tempoch_delta_t_seconds(jd_ut1: f64) -> f64 {
+    delta_t_seconds(qtty::Day::new(jd_ut1))
+        .map(|s| s.value())
+        .unwrap_or(f64::NAN)
+}
+
+/// ΔT = TT − UT1 in seconds for a UT1 Julian Day, extrapolating with the
+/// long-term parabola beyond the tabulated range (always finite).
+#[no_mangle]
+pub extern "C" fn tempoch_delta_t_seconds_extrapolated(jd_ut1: f64) -> f64 {
+    delta_t_seconds_extrapolated(qtty::Day::new(jd_ut1)).value()
 }
 
 #[cfg(test)]

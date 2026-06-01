@@ -23,7 +23,9 @@ mod constats;
 mod context;
 mod eop;
 mod error;
+mod gnss;
 mod period;
+mod status;
 mod time;
 mod typed;
 
@@ -145,6 +147,11 @@ mod tests {
         assert_eq!(TempochScaleTag::TDB as i32, 4);
         assert_eq!(TempochScaleTag::TCG as i32, 5);
         assert_eq!(TempochScaleTag::TCB as i32, 6);
+        assert_eq!(TempochScaleTag::ET as i32, 7);
+        assert_eq!(TempochScaleTag::GPST as i32, 8);
+        assert_eq!(TempochScaleTag::GST as i32, 9);
+        assert_eq!(TempochScaleTag::BDT as i32, 10);
+        assert_eq!(TempochScaleTag::QZSST as i32, 11);
     }
 
     #[test]

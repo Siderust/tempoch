@@ -111,6 +111,16 @@ enum tempoch_scale_tag_t
   TEMPOCH_SCALE_TAG_T_TCG = 5,
   // Barycentric Coordinate Time.
   TEMPOCH_SCALE_TAG_T_TCB = 6,
+  // Ephemeris Time (NAIF/SPICE compatibility marker; routes through TDB).
+  TEMPOCH_SCALE_TAG_T_ET = 7,
+  // GPS System Time (`TAI − 19 s`).
+  TEMPOCH_SCALE_TAG_T_GPST = 8,
+  // Galileo System Time (`TAI − 19 s`).
+  TEMPOCH_SCALE_TAG_T_GST = 9,
+  // BeiDou Navigation Satellite System Time (`TAI − 33 s`).
+  TEMPOCH_SCALE_TAG_T_BDT = 10,
+  // Quasi-Zenith Satellite System Time (aligned with GPST).
+  TEMPOCH_SCALE_TAG_T_QZSST = 11,
 };
 #ifndef __cplusplus
 #if __STDC_VERSION__ >= 202311L
@@ -157,6 +167,28 @@ typedef struct tempoch_eop_values_t {
   uint8_t ut1_observed;
 } tempoch_eop_values_t;
 
+// Split J2000-second instant on a scale-specific axis.
+typedef struct tempoch_time_t {
+  // High part of the compensated J2000-second pair.
+  double hi_seconds;
+  // Low residual part of the compensated J2000-second pair.
+  double lo_seconds;
+} tempoch_time_t;
+
+// Decomposed GNSS week-number form since the constellation's defined epoch.
+//
+// Mirrors [`tempoch::GnssWeek`]. The week number is *full* (no rollover);
+// `seconds_of_week` lies in `[0, 604_800)` and `subsecond_nanos` in
+// `[0, 1_000_000_000)`.
+typedef struct TempochGnssWeek {
+  // Full week number since the constellation's epoch (no rollover applied).
+  uint32_t week;
+  // Seconds since the start of `week`, in `[0, 604_800)`.
+  uint32_t seconds_of_week;
+  // Subsecond nanoseconds remainder, in `[0, 1_000_000_000)`.
+  uint32_t subsecond_nanos;
+} TempochGnssWeek;
+
 // A time period expressed in Modified Julian Date, suitable for C interop.
 typedef struct tempoch_period_mjd_t {
   // Start of the period (MJD).
@@ -165,13 +197,23 @@ typedef struct tempoch_period_mjd_t {
   double end_mjd;
 } tempoch_period_mjd_t;
 
-// Split J2000-second instant on a scale-specific axis.
-typedef struct tempoch_time_t {
-  // High part of the compensated J2000-second pair.
-  double hi_seconds;
-  // Low residual part of the compensated J2000-second pair.
-  double lo_seconds;
-} tempoch_time_t;
+// Validity horizons of the active time-data bundle, in MJD (UTC days).
+//
+// EOP horizon fields are `NaN` when no EOP data is loaded.
+typedef struct TempochDataHorizons {
+  // First MJD covered by the EOP series, or `NaN` when no EOP is loaded.
+  double eop_start_mjd;
+  // Last observed (non-predicted) EOP MJD, or `NaN` when no EOP is loaded.
+  double eop_observed_end_mjd;
+  // Last EOP MJD including predictions, or `NaN` when no EOP is loaded.
+  double eop_end_mjd;
+  // Last MJD with observed ΔT in the archive-provided modern table.
+  double modern_delta_t_observed_end_mjd;
+  // Last MJD covered by the ΔT prediction table.
+  double delta_t_prediction_horizon_mjd;
+  // Source of the active bundle as a [`TempochTimeDataSource`] discriminant.
+  int32_t source;
+} TempochDataHorizons;
 
 // UTC date-time breakdown for C interop.
 typedef struct tempoch_utc_t {
@@ -240,6 +282,29 @@ extern "C" {
 // Last MJD with modern observed ΔT data (post-1955 atomic-clock era).
  double tempoch_const_modern_delta_t_observed_end_mjd(void);
 
+// Constant TT − TAI offset, in seconds (32.184).
+ double tempoch_const_tt_minus_tai_seconds(void);
+
+// Number of nanoseconds in one SI second (1e9).
+ double tempoch_const_nanos_per_second(void);
+
+// IAU time-scale epoch T0 as a Julian Day on the TT axis (1977-01-01 TAI).
+ double tempoch_const_iau_time_epoch_t0_jd(void);
+
+// First JD(TT) of the high-accuracy TDB−TT model validity window.
+ double tempoch_const_tdb_tt_model_high_accuracy_start_jd(void);
+
+// Last JD(TT) of the high-accuracy TDB−TT model validity window.
+ double tempoch_const_tdb_tt_model_high_accuracy_end_jd(void);
+
+// ΔT = TT − UT1 in seconds for a UT1 Julian Day, using the compiled USNO
+// model. Returns NaN when the requested epoch is outside the model domain.
+ double tempoch_delta_t_seconds(double jd_ut1);
+
+// ΔT = TT − UT1 in seconds for a UT1 Julian Day, extrapolating with the
+// long-term parabola beyond the tabulated range (always finite).
+ double tempoch_delta_t_seconds_extrapolated(double jd_ut1);
+
 // Create a default context backed by the monthly ΔT model.
 //
 // # Safety
@@ -279,6 +344,24 @@ tempoch_status_t tempoch_context_allow_pre_definition_utc(const struct tempoch_c
 // # Safety
 // `out` must be a valid, writable pointer to `TempochEopValues`.
  tempoch_status_t tempoch_eop_at(double mjd_utc, struct tempoch_eop_values_t *out);
+
+// Decompose a GNSS-scale split instant into its week-number form.
+//
+// # Safety
+// `out` must be a valid, writable pointer to `TempochGnssWeek`.
+
+tempoch_status_t tempoch_time_to_gnss_week(struct tempoch_time_t value,
+                                           int32_t scale,
+                                           struct TempochGnssWeek *out);
+
+// Build a GNSS-scale split instant from a week-number decomposition.
+//
+// # Safety
+// `out` must be a valid, writable pointer to `TempochTime`.
+
+tempoch_status_t tempoch_time_from_gnss_week(struct TempochGnssWeek value,
+                                             int32_t scale,
+                                             struct tempoch_time_t *out);
 
 // Create a new MJD period. Returns `InvalidPeriod` when an endpoint is NaN or `start_mjd > end_mjd`.
 //
@@ -428,6 +511,12 @@ tempoch_status_t tempoch_period_list_normalize(const struct tempoch_period_mjd_t
                                                uintptr_t count,
                                                struct tempoch_period_mjd_t **out,
                                                uintptr_t *out_count);
+
+// Capture the active time-data status into `out`.
+//
+// # Safety
+// `out` must be a valid, writable pointer to `TempochDataHorizons`.
+ tempoch_status_t tempoch_time_data_status(struct TempochDataHorizons *out);
 
 // Validate and normalize a split J2000-second pair.
 //
