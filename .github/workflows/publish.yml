@@ -19,10 +19,8 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      # Publish changed publishable packages.
-      # tempoch-ffi and tempoch-time-data have publish = false and are skipped automatically.
-      # Pass --confirm-ffi and protect behind a manual environment for FFI releases.
+      # Publishing an FFI crate requires the script's explicit safety confirmation.
       - name: Publish changed packages
-        run: bash scripts/publish-changed.sh
+        run: bash scripts/publish-changed.sh --confirm-ffi
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
