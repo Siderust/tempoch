@@ -982,7 +982,7 @@ dependencies = [
 
 [[package]]
 name = "tempoch-ffi"
-version = "0.6.5"
+version = "0.6.6"
 dependencies = [
  "cbindgen",
  "chrono",

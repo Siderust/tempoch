@@ -1,12 +1,11 @@
 [package]
 name = "tempoch-ffi"
-version = "0.6.5"
+version = "0.6.6"
 edition = "2021"
 authors = ["VPRamon <vallespuigramon@gmail.com>"]
 description = "C FFI bindings for tempoch — astronomical time primitives."
 license = "AGPL-3.0-only"
 repository = "https://github.com/Siderust/tempoch"
-publish    = false
 
 [lib]
 name = "tempoch_ffi"
@@ -15,9 +14,9 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 [dependencies]
 tempoch = { path = "../tempoch", version = "0.6.5" }
 tempoch-core = { path = "../tempoch-core", version = "0.6.5" }
-qtty = "0.8.5"
-qtty-ffi = "0.8.2"
-chrono = "0.4.44"
+qtty = "0.8"
+qtty-ffi = "0.8"
+chrono = "0.4"
 
 [build-dependencies]
-cbindgen = "0.29.3"
+cbindgen = "0.29"
