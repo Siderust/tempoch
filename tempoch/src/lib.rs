@@ -30,6 +30,9 @@ pub use tempoch_core::{
     TT_MINUS_TAI, UNIX_EPOCH_JD_DAY, UT1, UTC, UTC_DEFINED_FROM_MJD_DAY,
 };
 
+/// Re-export of the `qtty` crate used by tempoch's public API (via `affn`).
+pub use tempoch_core::qtty;
+
 /// Historical name for [`Time<S, F>`] after the format-parameter merge.
 pub type EncodedTime<S, F> = Time<S, F>;
 #[cfg(feature = "runtime-data-fetch")]

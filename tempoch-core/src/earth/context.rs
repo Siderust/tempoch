@@ -6,7 +6,7 @@
 use crate::archive::time::TimeDataBundle;
 use crate::data::runtime_data::{active_time_data, time_data_eop_at};
 use crate::earth::eop::EopValues;
-use qtty::{Day, Second};
+use crate::qtty::{Day, Second};
 use std::sync::Arc;
 
 /// Explicit, immutable context for conversions that need one.

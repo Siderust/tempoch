@@ -6,7 +6,7 @@
 //! These tests verify the fixed-offset relationships between GNSS system
 //! times and TAI, and the ET-TDB identity, without depending on EOP/ΔT data.
 
-use qtty::Second;
+use tempoch::qtty::Second;
 use tempoch::{ExactDuration, Time, BDT, ET, GPST, GST, QZSST, TAI, TDB, TT};
 
 #[test]

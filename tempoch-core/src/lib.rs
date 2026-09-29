@@ -60,12 +60,13 @@ pub mod format;
 pub mod foundation;
 pub mod model;
 pub mod period;
+pub use affn::qtty;
 
 pub(crate) use siderust_archive as archive;
 
 // Compiled ΔT tables live in `siderust-archive`; these are crate-local shims.
 use crate::archive::time::bundled::snapshot;
-use qtty::Day;
+use crate::qtty::Day;
 
 #[allow(unused_imports)]
 pub(crate) use snapshot as time_data;

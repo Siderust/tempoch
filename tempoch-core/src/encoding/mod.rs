@@ -28,15 +28,14 @@
 
 use crate::format::{TimeFormat, JD, MJD};
 use crate::foundation::constats::{J2000_JD_TT_DAY, JD_MINUS_MJD};
+use crate::qtty::{self, Day, Second};
 use affn::algebra::{AffineMap1, Point1, Space};
-use qtty::unit::{Day as DayUnit, Second as SecondUnit};
-use qtty::{Day, Second};
 
 /// Sealed trait for day-based time formats with a well-defined J2000 TT
 /// origin expressed in their own day coordinate.  Implementing this trait
 /// is sufficient to obtain the generic `day_to_j2000_seconds` /
 /// `j2000_seconds_to_day` converters for free.
-pub(crate) trait DayEncoding: TimeFormat<Unit = DayUnit> {
+pub(crate) trait DayEncoding: TimeFormat<Unit = qtty::unit::Day> {
     fn j2000_origin() -> Day;
 }
 
@@ -62,22 +61,29 @@ impl Space for TargetDayAxis {}
 
 #[inline]
 pub(crate) fn affine_day_coordinate(source: Day, source_origin: Day, target_origin: Day) -> Day {
-    let map =
-        AffineMap1::<SourceDayAxis, TargetDayAxis, DayUnit>::new(source_origin, target_origin, 1.0);
-    map.apply_point(Point1::<SourceDayAxis, DayUnit>::new(source))
+    let map = AffineMap1::<SourceDayAxis, TargetDayAxis, qtty::unit::Day>::new(
+        source_origin,
+        target_origin,
+        1.0,
+    );
+    map.apply_point(Point1::<SourceDayAxis, qtty::unit::Day>::new(source))
         .x()
 }
 
 /// Day-based time format value → SI seconds since J2000 TT.
 #[inline]
 pub(crate) fn day_to_j2000_seconds<F: DayEncoding>(day: Day) -> Second {
-    affine_day_coordinate(day, F::j2000_origin(), Day::new(0.0)).to::<SecondUnit>()
+    affine_day_coordinate(day, F::j2000_origin(), Day::new(0.0)).to::<qtty::unit::Second>()
 }
 
 /// SI seconds since J2000 TT → day-based time format value.
 #[inline]
 pub(crate) fn j2000_seconds_to_day<F: DayEncoding>(seconds: Second) -> Day {
-    affine_day_coordinate(seconds.to::<DayUnit>(), Day::new(0.0), F::j2000_origin())
+    affine_day_coordinate(
+        seconds.to::<qtty::unit::Day>(),
+        Day::new(0.0),
+        F::j2000_origin(),
+    )
 }
 
 mod jd;
@@ -90,7 +96,7 @@ pub(crate) use mjd::{jd_to_mjd, mjd_to_unix_seconds, unix_seconds_to_jd, unix_se
 mod tests {
     use super::*;
     use crate::foundation::constats::J2000_JD_TT_DAY;
-    use qtty::Second;
+    use crate::qtty::Second;
 
     const EPS_S: Second = Second::new(1e-9);
     const EPS_D: Day = Day::new(1e-15);
@@ -119,7 +125,7 @@ mod tests {
 
     #[test]
     fn julian_centuries_one_century() {
-        let jd = J2000_JD_TT_DAY + qtty::time::JULIAN_CENTURY.to::<qtty::unit::Day>();
+        let jd = J2000_JD_TT_DAY + crate::qtty::time::JULIAN_CENTURY.to::<crate::qtty::unit::Day>();
         let t = jd_to_julian_centuries(jd);
         assert!((t - 1.0).abs() < 1e-12);
     }

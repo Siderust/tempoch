@@ -12,9 +12,9 @@
 //! canonical epoch facts instead of being exposed as independent public facts.
 //!
 //! Pure SI-second offsets between scales (e.g. [`TT_MINUS_TAI`]) stay as bare
-//! [`qtty::Second`] values: they are durations, not instants.
+//! [`crate::qtty::Second`] values: they are durations, not instants.
 
-use qtty::{Day, Second};
+use crate::qtty::{Day, Second};
 
 use crate::format::{J2000s, JD, MJD};
 use crate::model::scale::{TAI, TT, UTC};
@@ -33,7 +33,7 @@ pub(crate) const JD_MINUS_MJD: Day = Day::new(2_400_000.5);
 /// Exact `TT - TAI` offset (32.184 s).
 ///
 /// This is a pure SI-second offset between two coordinate scales, not an
-/// instant; it is intentionally kept as a [`qtty::Second`] for algebraic
+/// instant; it is intentionally kept as a [`crate::qtty::Second`] for algebraic
 /// use in scale conversions.
 pub const TT_MINUS_TAI: Second = Second::new(32.184);
 
@@ -46,7 +46,7 @@ pub const GPS_EPOCH_JD_UTC_DAY: Day = Day::new(2_444_244.5);
 /// Exact `TAI - UTC` offset at the GPS epoch.
 ///
 /// Like [`TT_MINUS_TAI`], this is a pure SI-second offset and stays as a
-/// bare [`qtty::Second`].
+/// bare [`crate::qtty::Second`].
 pub const GPS_EPOCH_TAI_MINUS_UTC: Second = Second::new(19.0);
 
 /// IAU 2000 B1.9 reference epoch `T0` as a JD value on the TT axis.
@@ -86,12 +86,13 @@ pub(crate) fn unix_epoch_mjd_day() -> Day {
 
 #[inline]
 pub(crate) fn gps_epoch_jd_tai_day() -> Day {
-    GPS_EPOCH_JD_UTC_DAY + GPS_EPOCH_TAI_MINUS_UTC.to::<qtty::unit::Day>()
+    GPS_EPOCH_JD_UTC_DAY + GPS_EPOCH_TAI_MINUS_UTC.to::<crate::qtty::unit::Day>()
 }
 
 #[inline]
 pub(crate) fn gps_epoch_tai_seconds() -> Second {
-    (GPS_EPOCH_JD_UTC_DAY - J2000_JD_TT_DAY).to::<qtty::unit::Second>() + GPS_EPOCH_TAI_MINUS_UTC
+    (GPS_EPOCH_JD_UTC_DAY - J2000_JD_TT_DAY).to::<crate::qtty::unit::Second>()
+        + GPS_EPOCH_TAI_MINUS_UTC
 }
 
 /// J2000 epoch as [`Time<TT, JD>`].
@@ -174,7 +175,7 @@ mod tests {
         assert!(
             (gps_epoch_jd_tai_day()
                 - GPS_EPOCH_JD_UTC_DAY
-                - GPS_EPOCH_TAI_MINUS_UTC.to::<qtty::unit::Day>())
+                - GPS_EPOCH_TAI_MINUS_UTC.to::<crate::qtty::unit::Day>())
             .abs()
                 < Day::new(1e-9)
         );

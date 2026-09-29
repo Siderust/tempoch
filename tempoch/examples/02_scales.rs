@@ -1,4 +1,4 @@
-use qtty::Second;
+use tempoch::qtty::Second;
 use tempoch::{
     J2000s, JulianDate, Time, TimeContext, J2000_JD_TT_DAY, JD, TAI, TCB, TCG, TDB, TT, UT1, UTC,
 };

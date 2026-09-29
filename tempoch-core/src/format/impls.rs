@@ -11,7 +11,7 @@ use crate::format::TimeFormat;
 use crate::foundation::error::ConversionError;
 use crate::model::scale::{CoordinateScale, TAI, UTC};
 use crate::model::time::Time;
-use qtty::{Day, Second};
+use crate::qtty::{Day, Second};
 
 impl<S: CoordinateScale> FormatForScale<S> for J2000s {
     #[inline]

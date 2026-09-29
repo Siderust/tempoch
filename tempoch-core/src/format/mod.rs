@@ -92,7 +92,7 @@ mod tests {
     use crate::earth::context::TimeContext;
     use crate::model::scale::{TAI, TT, UTC};
     use crate::model::target::ConversionTarget;
-    use qtty::{Day, Second};
+    use crate::qtty::{Day, Second};
 
     #[test]
     fn encoded_time_display_delegates_to_quantity() {

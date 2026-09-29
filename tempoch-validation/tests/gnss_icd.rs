@@ -10,7 +10,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use qtty::Second;
+use tempoch::qtty::Second;
 use tempoch::{ConversionError, ExactDuration, Time, BDT, GPST, GST, QZSST, TAI, UTC};
 use tempoch_validation::tolerance::GNSS_TAI_NS;
 

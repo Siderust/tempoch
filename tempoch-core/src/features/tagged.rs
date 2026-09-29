@@ -12,7 +12,7 @@ use crate::format::J2000s;
 use crate::model::scale::{CoordinateScale, Scale};
 use crate::model::time::Time;
 use crate::period::Interval;
-use qtty::Second;
+use crate::qtty::Second;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -167,8 +167,8 @@ impl<'de, S: Scale + CoordinateScale> Deserialize<'de> for TaggedPeriod<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::qtty::Second;
     use crate::{Period, TT, UTC};
-    use qtty::Second;
     use serde_json::json;
 
     #[test]

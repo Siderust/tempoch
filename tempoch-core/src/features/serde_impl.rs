@@ -5,8 +5,8 @@ use crate::format::TimeFormat;
 use crate::model::scale::CoordinateScale;
 use crate::model::time::Time;
 use crate::period::Interval;
+use crate::qtty::{Quantity, Unit};
 use crate::InfallibleFormatForScale;
-use qtty::{Quantity, Unit};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 

@@ -9,7 +9,7 @@ use crate::foundation::error::ConversionError;
 use crate::foundation::sealed::Sealed;
 use crate::model::scale::Scale;
 use crate::model::time::Time;
-use qtty::Quantity;
+use crate::qtty::Quantity;
 
 /// Witness that format `F` can encode and decode instants on scale `S`.
 #[allow(private_bounds)]

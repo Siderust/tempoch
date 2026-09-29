@@ -44,25 +44,25 @@ use crate::foundation::error::ConversionError;
 use crate::model::scale::{CoordinateScale, BDT, GPST, GST, QZSST};
 use crate::model::time::Time;
 
-const SECONDS_PER_WEEK: qtty::i128::Second = qtty::i128::Second::new(7 * 86_400);
+const SECONDS_PER_WEEK: crate::qtty::i128::Second = crate::qtty::i128::Second::new(7 * 86_400);
 
 /// Decomposed GNSS week-number form.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GnssWeek {
     /// Full week number since the constellation's defined epoch (no rollover).
-    pub week: qtty::u32::Week,
+    pub week: crate::qtty::u32::Week,
     /// Seconds since the start of `week` in `[0, 604800)`.
-    pub seconds_of_week: qtty::u32::Second,
+    pub seconds_of_week: crate::qtty::u32::Second,
     /// Subsecond nanoseconds remainder in `[0, 1_000_000_000)`.
-    pub subsecond_nanos: qtty::u32::Nanosecond,
+    pub subsecond_nanos: crate::qtty::u32::Nanosecond,
 }
 
 impl GnssWeek {
     /// Construct, validating ranges.
     pub fn new(
-        week: qtty::u32::Week,
-        seconds_of_week: qtty::u32::Second,
-        subsecond_nanos: qtty::u32::Nanosecond,
+        week: crate::qtty::u32::Week,
+        seconds_of_week: crate::qtty::u32::Second,
+        subsecond_nanos: crate::qtty::u32::Nanosecond,
     ) -> Result<Self, ConversionError> {
         if seconds_of_week.value() as i128 >= SECONDS_PER_WEEK.value()
             || subsecond_nanos.value() >= 1_000_000_000
@@ -79,14 +79,14 @@ impl GnssWeek {
     /// Return the subsecond nanoseconds remainder as a typed unsigned integer quantity.
     ///
     /// The returned value is always in `[0, 1_000_000_000)` nanoseconds.
-    pub fn subsecond_nanoseconds_u(&self) -> qtty::u32::Nanosecond {
+    pub fn subsecond_nanoseconds_u(&self) -> crate::qtty::u32::Nanosecond {
         self.subsecond_nanos
     }
 
     /// Return the seconds since the start of the week as a typed unsigned integer quantity.
     ///
     /// The returned value is always in `[0, 604_800)` seconds.
-    pub fn seconds_of_week_u(&self) -> qtty::u32::Second {
+    pub fn seconds_of_week_u(&self) -> crate::qtty::u32::Second {
         self.seconds_of_week
     }
 
@@ -94,9 +94,9 @@ impl GnssWeek {
     ///
     /// Rejects values ≥ 1 × 10⁹ ns.
     pub fn new_with_nanoseconds_u(
-        week: qtty::u32::Week,
-        seconds_of_week: qtty::u32::Second,
-        subsecond: qtty::u32::Nanosecond,
+        week: crate::qtty::u32::Week,
+        seconds_of_week: crate::qtty::u32::Second,
+        subsecond: crate::qtty::u32::Nanosecond,
     ) -> Result<Self, ConversionError> {
         Self::new(week, seconds_of_week, subsecond)
     }
@@ -224,9 +224,9 @@ impl<S: GnssWeekScale> Time<S> {
         let seconds_of_week = (total_secs % SECONDS_PER_WEEK.value() as u64) as u32;
 
         Ok(GnssWeek {
-            week: qtty::u32::Week::new(week),
-            seconds_of_week: qtty::u32::Second::new(seconds_of_week),
-            subsecond_nanos: qtty::u32::Nanosecond::new(sub_nanos),
+            week: crate::qtty::u32::Week::new(week),
+            seconds_of_week: crate::qtty::u32::Second::new(seconds_of_week),
+            subsecond_nanos: crate::qtty::u32::Nanosecond::new(sub_nanos),
         })
     }
 
@@ -237,7 +237,8 @@ impl<S: GnssWeekScale> Time<S> {
     /// components to the epoch separately, preserving sub-millisecond
     /// precision within the split-f64 storage limits.
     pub fn from_gnss_week(gw: GnssWeek) -> Result<Self, ConversionError> {
-        let epoch = Time::<S>::from_raw_j2000_seconds(qtty::Second::new(S::epoch_j2000_seconds()))?;
+        let epoch =
+            Time::<S>::from_raw_j2000_seconds(crate::qtty::Second::new(S::epoch_j2000_seconds()))?;
         Ok(epoch.add_exact(gw.to_duration_since_epoch()))
     }
 }
@@ -295,9 +296,9 @@ mod tests {
     #[test]
     fn gps_week_round_trip_nanosecond_accurate() {
         let gw = GnssWeek::new(
-            qtty::u32::Week::new(2200),
-            qtty::u32::Second::new(345_600),
-            qtty::u32::Nanosecond::new(123_456_789),
+            crate::qtty::u32::Week::new(2200),
+            crate::qtty::u32::Second::new(345_600),
+            crate::qtty::u32::Nanosecond::new(123_456_789),
         )
         .unwrap();
         let t = Time::<GPST>::from_gnss_week(gw).unwrap();
@@ -321,9 +322,9 @@ mod tests {
     #[test]
     fn gps_week_boundary() {
         let gw = GnssWeek::new(
-            qtty::u32::Week::new(2200),
-            qtty::u32::Second::new(604_799),
-            qtty::u32::Nanosecond::new(999_999_999),
+            crate::qtty::u32::Week::new(2200),
+            crate::qtty::u32::Second::new(604_799),
+            crate::qtty::u32::Nanosecond::new(999_999_999),
         )
         .unwrap();
         let t = Time::<GPST>::from_gnss_week(gw).unwrap();
@@ -345,9 +346,9 @@ mod tests {
     #[test]
     fn gps_week_1024_no_rollover() {
         let gw = GnssWeek::new(
-            qtty::u32::Week::new(1024),
-            qtty::u32::Second::new(0),
-            qtty::u32::Nanosecond::new(0),
+            crate::qtty::u32::Week::new(1024),
+            crate::qtty::u32::Second::new(0),
+            crate::qtty::u32::Nanosecond::new(0),
         )
         .unwrap();
         let t = Time::<GPST>::from_gnss_week(gw).unwrap();
@@ -361,9 +362,9 @@ mod tests {
     #[test]
     fn gps_week_2048_no_rollover() {
         let gw = GnssWeek::new(
-            qtty::u32::Week::new(2048),
-            qtty::u32::Second::new(0),
-            qtty::u32::Nanosecond::new(0),
+            crate::qtty::u32::Week::new(2048),
+            crate::qtty::u32::Second::new(0),
+            crate::qtty::u32::Nanosecond::new(0),
         )
         .unwrap();
         let t = Time::<GPST>::from_gnss_week(gw).unwrap();
@@ -384,15 +385,15 @@ mod tests {
     #[test]
     fn out_of_range_inputs_rejected() {
         assert!(GnssWeek::new(
-            qtty::u32::Week::new(0),
-            qtty::u32::Second::new(604_800),
-            qtty::u32::Nanosecond::new(0),
+            crate::qtty::u32::Week::new(0),
+            crate::qtty::u32::Second::new(604_800),
+            crate::qtty::u32::Nanosecond::new(0),
         )
         .is_err());
         assert!(GnssWeek::new(
-            qtty::u32::Week::new(0),
-            qtty::u32::Second::new(0),
-            qtty::u32::Nanosecond::new(1_000_000_000),
+            crate::qtty::u32::Week::new(0),
+            crate::qtty::u32::Second::new(0),
+            crate::qtty::u32::Nanosecond::new(1_000_000_000),
         )
         .is_err());
     }
@@ -400,9 +401,9 @@ mod tests {
     #[test]
     fn subsecond_nanoseconds_u_matches_field() {
         let gw = GnssWeek::new(
-            qtty::u32::Week::new(100),
-            qtty::u32::Second::new(12_345),
-            qtty::u32::Nanosecond::new(987_654_321),
+            crate::qtty::u32::Week::new(100),
+            crate::qtty::u32::Second::new(12_345),
+            crate::qtty::u32::Nanosecond::new(987_654_321),
         )
         .unwrap();
         assert_eq!(gw.subsecond_nanoseconds_u().value(), 987_654_321_u32);
@@ -410,10 +411,10 @@ mod tests {
 
     #[test]
     fn new_with_nanoseconds_u_accepts_valid() {
-        let ns = qtty::u32::Nanosecond::new(123_456_789);
+        let ns = crate::qtty::u32::Nanosecond::new(123_456_789);
         let gw = GnssWeek::new_with_nanoseconds_u(
-            qtty::u32::Week::new(500),
-            qtty::u32::Second::new(100_000),
+            crate::qtty::u32::Week::new(500),
+            crate::qtty::u32::Second::new(100_000),
             ns,
         )
         .unwrap();
@@ -423,10 +424,10 @@ mod tests {
     #[test]
     fn new_with_nanoseconds_u_rejects_invalid() {
         // out of range
-        let big = qtty::u32::Nanosecond::new(1_000_000_000);
+        let big = crate::qtty::u32::Nanosecond::new(1_000_000_000);
         assert!(GnssWeek::new_with_nanoseconds_u(
-            qtty::u32::Week::new(0),
-            qtty::u32::Second::new(0),
+            crate::qtty::u32::Week::new(0),
+            crate::qtty::u32::Second::new(0),
             big,
         )
         .is_err());
@@ -447,9 +448,9 @@ mod tests {
         // and to_gnss_week on the result should return the correct week (u32::MAX).
         // Actually: let's verify that from_gnss_week does not silently wrap week.
         let gw_max = GnssWeek {
-            week: qtty::u32::Week::new(u32::MAX),
-            seconds_of_week: qtty::u32::Second::new(0),
-            subsecond_nanos: qtty::u32::Nanosecond::new(0),
+            week: crate::qtty::u32::Week::new(u32::MAX),
+            seconds_of_week: crate::qtty::u32::Second::new(0),
+            subsecond_nanos: crate::qtty::u32::Nanosecond::new(0),
         };
         // The duration is u32::MAX * 604800 * 1e9 ns ≈ 2.6e21 ns which fits in i128.
         let dur = gw_max.to_duration_since_epoch();
@@ -457,9 +458,10 @@ mod tests {
             .as_seconds_i64_nanos_checked()
             .expect("should fit in i64");
         // s ≈ 2.6e12 which is < i64::MAX, so add_exact should succeed.
-        let epoch =
-            Time::<GPST>::from_raw_j2000_seconds(qtty::Second::new(GPST_EPOCH_J2000_SECONDS))
-                .unwrap();
+        let epoch = Time::<GPST>::from_raw_j2000_seconds(crate::qtty::Second::new(
+            GPST_EPOCH_J2000_SECONDS,
+        ))
+        .unwrap();
         let t = epoch.add_exact(dur);
         // Convert back — week_u64 = u32::MAX, which is exactly u32::MAX, should succeed.
         let back = t.to_gnss_week().unwrap();
@@ -472,8 +474,8 @@ mod tests {
         let epoch_j2000 = GPST_EPOCH_J2000_SECONDS as i128;
         let j2000_secs = epoch_j2000 + overflow_secs;
         // This is ~2.6e12 s past J2000, well within f64 precision for large integers.
-        let t2 =
-            Time::<GPST>::from_raw_j2000_seconds(qtty::Second::new(j2000_secs as f64)).unwrap();
+        let t2 = Time::<GPST>::from_raw_j2000_seconds(crate::qtty::Second::new(j2000_secs as f64))
+            .unwrap();
         let result = t2.to_gnss_week();
         assert!(
             result.is_err(),

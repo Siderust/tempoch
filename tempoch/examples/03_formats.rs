@@ -1,6 +1,6 @@
 //! Constructor/accessor showcase for the scale-only API.
 
-use qtty::Second;
+use tempoch::qtty::Second;
 use tempoch::{
     J2000Seconds, J2000s, JulianDate, Time, Unix, UnixTime, J2000_JD_TT_DAY, JD, MJD, TT,
     UNIX_EPOCH_JD_DAY, UTC,

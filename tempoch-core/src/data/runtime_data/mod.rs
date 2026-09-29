@@ -26,9 +26,9 @@ mod tests {
     use crate::archive::time::TimeDataError as InternalDataError;
     use crate::archive::time::{EopPoint, TimeDataBundle, TimeDataProvenance};
     use crate::format::{JulianDate, Unix, JD};
+    use crate::qtty::{Arcsecond, Day, Millisecond, Second};
     use crate::{Time, TimeContext, TT, UT1, UTC};
     use chrono::DateTime;
-    use qtty::{Arcsecond, Day as DayQuantity, Millisecond, Second};
 
     fn compiled_bundle_owned() -> TimeDataBundle {
         (*compiled_time_data()).clone()
@@ -178,11 +178,11 @@ mod tests {
             let ctx = TimeContext::with_builtin_eop();
             let tt = Time::<TT>::from_raw_j2000_seconds(crate::encoding::day_to_j2000_seconds::<
                 crate::format::JD,
-            >(DayQuantity::new(
+            >(Day::new(
                 2_400_000.5 + 57_000.0,
             )))
             .unwrap();
-            let overridden = ctx.ut1_minus_utc(DayQuantity::new(57_000.0)).unwrap();
+            let overridden = ctx.ut1_minus_utc(Day::new(57_000.0)).unwrap();
             assert!(
                 (overridden - Second::new(base_ut1_seconds + 0.5)).abs() < Second::new(1e-6),
                 "expected overridden UT1-UTC ≈ {:.3} s, got {:.6} s",
@@ -218,10 +218,8 @@ mod tests {
             set_active_time_data(overridden);
             let ctx_after = TimeContext::with_builtin_eop();
 
-            let before = ctx_before
-                .ut1_minus_utc(DayQuantity::new(57_000.0))
-                .unwrap();
-            let after = ctx_after.ut1_minus_utc(DayQuantity::new(57_000.0)).unwrap();
+            let before = ctx_before.ut1_minus_utc(Day::new(57_000.0)).unwrap();
+            let after = ctx_after.ut1_minus_utc(Day::new(57_000.0)).unwrap();
             set_active_time_data((*previous).clone());
 
             assert!((after - before).abs() > Second::new(0.1));
@@ -349,7 +347,7 @@ mod tests {
             bundle.eop_points().to_vec(),
             bundle.provenance().clone(),
         );
-        let beyond = crate::DELTA_T_PREDICTION_HORIZON_MJD + DayQuantity::new(15.0);
+        let beyond = crate::DELTA_T_PREDICTION_HORIZON_MJD + Day::new(15.0);
         let jd = beyond + crate::foundation::constats::JD_MINUS_MJD;
         let tt = JulianDate::<TT>::new(jd.value()).to_j2000s();
 
@@ -379,8 +377,8 @@ mod tests {
             bundle.provenance().clone(),
         );
 
-        assert!(time_data_eop_at(&bundle, DayQuantity::new(gap_after as f64 + 0.5)).is_none());
-        assert!(time_data_eop_at(&bundle, DayQuantity::new((gap_after + 1) as f64)).is_none());
+        assert!(time_data_eop_at(&bundle, Day::new(gap_after as f64 + 0.5)).is_none());
+        assert!(time_data_eop_at(&bundle, Day::new((gap_after + 1) as f64)).is_none());
     }
 
     #[test]

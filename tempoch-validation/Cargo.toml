@@ -18,4 +18,3 @@ path = "src/lib.rs"
 
 [dependencies]
 tempoch = { path = "../tempoch", version = "0.6.5" }
-qtty = { version = "0.8.5" }

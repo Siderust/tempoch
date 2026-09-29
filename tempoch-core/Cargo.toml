@@ -9,7 +9,7 @@ repository = "https://github.com/Siderust/tempoch"
 
 [features]
 default = []
-serde = ["dep:serde", "qtty/serde"]
+serde = ["dep:serde", "affn/serde"]
 runtime-data-fetch = ["siderust-archive/fetch"]
 
 [lib]
@@ -17,9 +17,9 @@ name = "tempoch_core"
 path = "src/lib.rs"
 
 [dependencies]
-affn = { version = "0.8" }
+# `astro` forwards `qtty/astro` (incl. `julian-time`); quantities come via `affn::qtty`.
+affn = { version = "0.9", features = ["astro"] }
 chrono = "0.4.44"
-qtty = { version = "0.8.5", features = ["julian-time", "astro"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "alloc"], optional = true }
 siderust-archive = { version = "0.1.4", features = ["time"] }
 
