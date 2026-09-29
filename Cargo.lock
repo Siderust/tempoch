@@ -972,7 +972,7 @@ dependencies = [
 
 [[package]]
 name = "tempoch"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "chrono",
  "serde_json",
@@ -981,7 +981,7 @@ dependencies = [
 
 [[package]]
 name = "tempoch-core"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "affn",
  "chrono",
@@ -993,7 +993,7 @@ dependencies = [
 
 [[package]]
 name = "tempoch-ffi"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "cbindgen",
  "chrono",

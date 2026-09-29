@@ -3,7 +3,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.7] - 2026-09-29
 
 ### Changed
 
@@ -11,6 +11,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   dropping the direct `qtty` dependency from `tempoch-core`, `tempoch`, and
   `tempoch-validation`. `tempoch::qtty` / `tempoch_core::qtty` are re-exported for
   callers that need compatible quantity types.
+- Synchronized the reported `tempoch-ffi` ABI version with this release.
 
 ## [0.6.6] - 2026-06-21
 
