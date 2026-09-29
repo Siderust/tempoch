@@ -11,10 +11,10 @@ use alloc::sync::Arc;
 
 #[cfg(test)]
 use chrono::{DateTime, Utc};
-#[cfg(feature = "std")]
-use std::sync::{OnceLock, RwLock};
 #[cfg(test)]
 use std::sync::Mutex;
+#[cfg(feature = "std")]
+use std::sync::{OnceLock, RwLock};
 
 #[cfg(test)]
 const RUNTIME_DATA_MAX_AGE_SECONDS: i64 = 24 * 60 * 60;
