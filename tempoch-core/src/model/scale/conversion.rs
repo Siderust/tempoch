@@ -16,9 +16,10 @@ use crate::foundation::constats::{IAU_TIME_EPOCH_T0_JD_DAY, L_B, L_G, TDB0, TT_M
 use crate::foundation::error::ConversionError;
 use crate::foundation::sealed::Sealed;
 use crate::model::scale::{Scale, BDT, ET, GPST, GST, QZSST, TAI, TCB, TCG, TDB, TT, UT1, UTC};
+#[cfg(not(feature = "std"))]
+use crate::qtty::Transcendental;
+use crate::qtty::{self, Day, Second};
 use affn::algebra::{AffineMap1, Space, SplitPoint1, SplitQuantity};
-use qtty::unit::{Day, Second as SecondUnit};
-use qtty::{Day as JdDay, Second};
 
 #[derive(Debug, Copy, Clone)]
 struct SourceAxis;
@@ -30,19 +31,19 @@ impl Space for TargetAxis {}
 
 #[inline]
 fn normalize_pair(hi: f64, lo: f64) -> (Second, Second) {
-    SplitQuantity::<SecondUnit>::new(Second::new(hi), Second::new(lo)).pair()
+    SplitQuantity::<qtty::unit::Second>::new(Second::new(hi), Second::new(lo)).pair()
 }
 
 #[inline]
 fn add_constant(src_hi: Second, src_lo: Second, offset: Second) -> (Second, Second) {
-    SplitQuantity::<SecondUnit>::new(src_hi, src_lo)
+    SplitQuantity::<qtty::unit::Second>::new(src_hi, src_lo)
         .add_quantity(offset)
         .pair()
 }
 
 #[inline]
 fn total_seconds(src_hi: Second, src_lo: Second) -> Second {
-    SplitQuantity::<SecondUnit>::new(src_hi, src_lo).total()
+    SplitQuantity::<qtty::unit::Second>::new(src_hi, src_lo).total()
 }
 
 #[inline]
@@ -53,15 +54,20 @@ fn linear_map_pair(
     target_origin: Second,
     scale: f64,
 ) -> (Second, Second) {
-    let map =
-        AffineMap1::<SourceAxis, TargetAxis, SecondUnit>::new(source_origin, target_origin, scale);
-    map.apply_split_point(SplitPoint1::<SourceAxis, SecondUnit>::new(src_hi, src_lo))
-        .coordinate()
-        .pair()
+    let map = AffineMap1::<SourceAxis, TargetAxis, qtty::unit::Second>::new(
+        source_origin,
+        target_origin,
+        scale,
+    );
+    map.apply_split_point(SplitPoint1::<SourceAxis, qtty::unit::Second>::new(
+        src_hi, src_lo,
+    ))
+    .coordinate()
+    .pair()
 }
 
 #[inline]
-fn tdb_minus_tt_seconds(jd_tt: JdDay) -> Second {
+fn tdb_minus_tt_seconds(jd_tt: Day) -> Second {
     // Source: USNO Circular 179 truncated seven-term Fairhead-Bretagnon
     // approximation for TDB - TT. The documented high-accuracy regime for this
     // specific truncation is about 10 microseconds over 1600-01-01 to
@@ -275,14 +281,14 @@ utc_through_tai!(TCG);
 utc_through_tai!(TCB);
 
 #[inline]
-fn context_delta_t(jd_ut1: JdDay, ctx: &TimeContext) -> Result<Second, ConversionError> {
+fn context_delta_t(jd_ut1: Day, ctx: &TimeContext) -> Result<Second, ConversionError> {
     let data = active_time_data();
     let mut mjd_utc = jd_to_mjd(jd_ut1);
     for _ in 0..2 {
         let Some(eop) = ctx.eop_at(mjd_utc) else {
             return time_data_delta_t(data.as_ref(), jd_ut1).or_else(|_| delta_t_seconds(jd_ut1));
         };
-        mjd_utc = jd_to_mjd(jd_ut1 - eop.ut1_minus_utc.to::<Day>());
+        mjd_utc = jd_to_mjd(jd_ut1 - eop.ut1_minus_utc.to::<qtty::unit::Day>());
     }
 
     if let Some(eop) = ctx.eop_at(mjd_utc) {
@@ -538,9 +544,9 @@ mod tests {
     use crate::data::runtime_data::with_test_time_data;
     use crate::earth::delta_t::interpolate_modern_delta_t_points;
     use crate::foundation::constats::TT_MINUS_TAI;
+    use crate::qtty::{Arcsecond, Day, Millisecond, Second};
     use crate::time_data::{MODERN_DELTA_T_POINTS, UTC_TAI_SEGMENTS};
     use chrono::{Duration, NaiveDate};
-    use qtty::{Arcsecond, Day as JulianDay, Millisecond, Second};
 
     const TDB_TT_GOLDEN_SAMPLES: &[(f64, f64)] = &[
         // Curated from an independent maintenance-time reference script that
@@ -567,7 +573,7 @@ mod tests {
     #[test]
     fn tdb_minus_tt_matches_curated_circular_179_samples() {
         for &(jd_tt, expected_delta_seconds) in TDB_TT_GOLDEN_SAMPLES {
-            let got = tdb_minus_tt_seconds(JulianDay::new(jd_tt)).value();
+            let got = tdb_minus_tt_seconds(Day::new(jd_tt)).value();
             let delta = (got - expected_delta_seconds).abs();
             assert!(
                 delta < 1e-12,
@@ -657,7 +663,7 @@ mod tests {
             for point in &all_points {
                 let mjd = point.mjd as f64;
                 let Some(monthly_delta_t) =
-                    interpolate_modern_delta_t_points(&MODERN_DELTA_T_POINTS, JulianDay::new(mjd))
+                    interpolate_modern_delta_t_points(&MODERN_DELTA_T_POINTS, Day::new(mjd))
                 else {
                     continue;
                 };

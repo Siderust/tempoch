@@ -9,4 +9,6 @@ pub mod error;
 pub(crate) mod sealed;
 
 pub use duration::{DurationError, ExactDuration, NANOS_PER_SECOND};
-pub use error::{ConversionError, TimeDataError};
+pub use error::ConversionError;
+#[cfg(feature = "std")]
+pub use error::TimeDataError;

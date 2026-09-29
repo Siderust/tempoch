@@ -10,6 +10,8 @@
 
 use core::fmt;
 
+use alloc::vec::Vec;
+
 use crate::Time;
 
 mod error;
@@ -280,20 +282,20 @@ impl<T: Copy + PartialOrd> Interval<T> {
         merged
     }
 
-    pub fn length<U>(&self) -> qtty::Quantity<U>
+    pub fn length<U>(&self) -> crate::qtty::Quantity<U>
     where
-        T: core::ops::Sub<Output = qtty::Quantity<U>>,
-        U: qtty::time::TimeUnit,
+        T: core::ops::Sub<Output = crate::qtty::Quantity<U>>,
+        U: crate::qtty::time::TimeUnit,
     {
         self.end - self.start
     }
 
     /// Backward-compatible alias for [`Self::length`].
     #[inline]
-    pub fn duration<U>(&self) -> qtty::Quantity<U>
+    pub fn duration<U>(&self) -> crate::qtty::Quantity<U>
     where
-        T: core::ops::Sub<Output = qtty::Quantity<U>>,
-        U: qtty::time::TimeUnit,
+        T: core::ops::Sub<Output = crate::qtty::Quantity<U>>,
+        U: crate::qtty::time::TimeUnit,
     {
         self.length()
     }
@@ -334,10 +336,10 @@ mod tests {
     #[cfg(feature = "serde")]
     use crate::format::JulianDate;
     use crate::format::{ModifiedJulianDate, MJD};
+    use crate::qtty::Day;
     #[cfg(feature = "serde")]
     use crate::Time;
     use crate::TT;
-    use qtty::Day;
     #[cfg(feature = "serde")]
     use serde::de::IntoDeserializer;
     #[cfg(feature = "serde")]
@@ -459,7 +461,7 @@ mod tests {
             ModifiedJulianDate::<TT>::new(51_544.75).to_j2000s(),
         );
 
-        assert_eq!(p.length(), qtty::Second::new(21_600.0));
+        assert_eq!(p.length(), crate::qtty::Second::new(21_600.0));
     }
 
     #[test]
@@ -605,8 +607,8 @@ mod tests {
             JulianDate::<TT>::new(2_451_546.0).to_j2000s(),
         );
         let native = Period::<TT>::new(
-            Time::<TT>::from_raw_j2000_seconds(qtty::Second::new(100.0)).unwrap(),
-            Time::<TT>::from_raw_j2000_seconds(qtty::Second::new(200.0)).unwrap(),
+            Time::<TT>::from_raw_j2000_seconds(crate::qtty::Second::new(100.0)).unwrap(),
+            Time::<TT>::from_raw_j2000_seconds(crate::qtty::Second::new(200.0)).unwrap(),
         );
 
         let mjd_json = serde_json::to_value(mjd).unwrap();

@@ -13,7 +13,7 @@
 //!
 //! ```
 //! use tempoch_core::{ExactDuration, Time, TimeSeries, TT};
-//! use qtty::Second;
+//! use tempoch_core::qtty::Second;
 //!
 //! let start = Time::<TT>::from_raw_j2000_seconds(Second::new(0.0)).unwrap();
 //! let end = Time::<TT>::from_raw_j2000_seconds(Second::new(10.0)).unwrap();
@@ -53,6 +53,7 @@ impl core::fmt::Display for TimeSeriesError {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for TimeSeriesError {}
 
 impl From<DurationError> for TimeSeriesError {
@@ -219,8 +220,8 @@ impl<S: CoordinateScale, F: TimeFormat> ExactSizeIterator for TimeSeries<S, F> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::qtty::Second;
     use crate::{Time, TT};
-    use qtty::Second;
 
     fn t(s: f64) -> Time<TT> {
         Time::<TT>::from_raw_j2000_seconds(Second::new(s)).unwrap()

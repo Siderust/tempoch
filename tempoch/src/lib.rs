@@ -11,6 +11,17 @@
 //!   `to_with`
 //! - [`constats`] for epoch [`Time`] helpers plus canonical astronomical
 //!   `qtty::Day` / `qtty::Second` facts
+//!
+//! ## `no_std`
+//!
+//! Feature flags match [`tempoch_core`]: default `std` (implies `alloc`),
+//! or `default-features = false, features = ["alloc"]` for a `no_std` + heap
+//! build (including bare-metal targets).
+
+#![cfg_attr(not(feature = "std"), no_std)]
+
+#[cfg(feature = "alloc")]
+extern crate alloc;
 
 pub use tempoch_core::{
     assert_time_data_fresh, complement_within, constats, delta_t_seconds,
@@ -22,13 +33,19 @@ pub use tempoch_core::{
     FormatForScale, FormatOptions, FormatPrecision, FreshnessError, GnssWeek, GnssWeekScale,
     GpsTime, InfallibleConversionTarget, InfallibleFormatForScale, Interval, InvalidIntervalError,
     J2000Seconds, J2000s, JulianDate, ModifiedJulianDate, Period, PeriodListError, Scale, Time,
-    TimeContext, TimeDataError, TimeDataStatus, TimeFormat, TimeInstant, TimeSeries,
-    TimeSeriesError, Unix, UnixTime, BDT, DELTA_T_PREDICTION_HORIZON_MJD, ET, GPS, GPST,
-    GPS_EPOCH_JD_UTC_DAY, GPS_EPOCH_TAI_MINUS_UTC, GST, IAU_TIME_EPOCH_T0_JD_DAY, J2000_JD_TT_DAY,
-    JD, MJD, MODERN_DELTA_T_OBSERVED_END_MJD, NANOS_PER_SECOND, QZSST, TAI, TCB, TCG, TDB,
+    TimeContext, TimeDataStatus, TimeFormat, TimeInstant, TimeSeries, TimeSeriesError, Unix,
+    UnixTime, BDT, DELTA_T_PREDICTION_HORIZON_MJD, ET, GPS, GPST, GPS_EPOCH_JD_UTC_DAY,
+    GPS_EPOCH_TAI_MINUS_UTC, GST, IAU_TIME_EPOCH_T0_JD_DAY, J2000_JD_TT_DAY, JD, MJD,
+    MODERN_DELTA_T_OBSERVED_END_MJD, NANOS_PER_SECOND, QZSST, TAI, TCB, TCG, TDB,
     TDB_TT_MODEL_HIGH_ACCURACY_END_JD_DAY, TDB_TT_MODEL_HIGH_ACCURACY_START_JD_DAY, TT,
     TT_MINUS_TAI, UNIX_EPOCH_JD_DAY, UT1, UTC, UTC_DEFINED_FROM_MJD_DAY,
 };
+
+#[cfg(feature = "std")]
+pub use tempoch_core::TimeDataError;
+
+/// Re-export of the `qtty` crate used by tempoch's public API (via `affn`).
+pub use tempoch_core::qtty;
 
 /// Historical name for [`Time<S, F>`] after the format-parameter merge.
 pub type EncodedTime<S, F> = Time<S, F>;

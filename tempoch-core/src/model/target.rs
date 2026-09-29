@@ -227,7 +227,7 @@ impl<S: Scale + ContextScaleConvert<TAI>, SrcF: TimeFormat> ContextConversionTar
 mod tests {
     use crate::format::{J2000s, Unix, GPS, JD, MJD};
     use crate::model::scale::{TAI, TT, UT1, UTC};
-    use qtty::Second;
+    use crate::qtty::Second;
 
     #[test]
     fn scalar_targets_match_coordinate_helpers() {

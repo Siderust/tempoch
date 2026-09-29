@@ -16,8 +16,8 @@ use crate::foundation::constats::gps_epoch_tai_seconds;
 use crate::foundation::error::ConversionError;
 use crate::model::scale::{TAI, UTC};
 use crate::model::time::Time;
+use crate::qtty::Second;
 use chrono::{DateTime, Utc};
-use qtty::Second;
 
 impl<F: TimeFormat> Time<UTC, F> {
     /// Build a UTC instant from a `chrono::DateTime<Utc>` using the context's

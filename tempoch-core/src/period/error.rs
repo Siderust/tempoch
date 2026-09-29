@@ -18,6 +18,7 @@ impl fmt::Display for InvalidIntervalError {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for InvalidIntervalError {}
 
 /// Invariants on a period list.
@@ -47,4 +48,5 @@ impl fmt::Display for PeriodListError {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for PeriodListError {}

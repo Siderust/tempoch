@@ -3,15 +3,15 @@
 
 //! Feature-style extension traits for time-adjacent algorithms.
 
-use qtty::Day;
+use crate::qtty::Day;
 
 use crate::format::{JulianDate, ModifiedJulianDate};
 use crate::format::{JD, MJD};
 use crate::model::scale::CoordinateScale;
 use crate::model::scale::TT;
 use crate::model::time::Time;
+use crate::qtty::Second;
 use crate::InfallibleFormatForScale;
-use qtty::Second;
 
 /// Provides arithmetic on [`Time<S>`] values via seconds duration.
 ///

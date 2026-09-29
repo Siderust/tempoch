@@ -90,6 +90,7 @@ impl core::fmt::Display for FreshnessError {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for FreshnessError {}
 
 /// Capture status for the currently active time-data bundle.
@@ -137,7 +138,7 @@ mod tests {
     use super::*;
     use crate::archive::time::{EopPoint, TimeDataBundle, TimeDataProvenance, UtcTaiSegment};
     use crate::data::runtime_data::{with_runtime_data_lock, with_test_time_data};
-    use qtty::{Arcsecond, Millisecond, Second};
+    use crate::qtty::{Arcsecond, Millisecond, Second};
 
     fn eop_bundle_for_status_test(fetched_utc: &str) -> TimeDataBundle {
         TimeDataBundle::new(

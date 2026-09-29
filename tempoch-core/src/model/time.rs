@@ -14,11 +14,10 @@ use crate::foundation::error::ConversionError;
 use crate::model::scale::conversion::{ContextScaleConvert, InfallibleScaleConvert};
 use crate::model::scale::{CoordinateScale, Scale, TT, UTC};
 use crate::model::target::{ContextConversionTarget, ConversionTarget, InfallibleConversionTarget};
+use crate::qtty::time::TimeUnit;
+use crate::qtty::{self, Quantity, Second};
 use crate::{FormatForScale, InfallibleFormatForScale};
 use affn::algebra::{Space, SplitPoint1, SplitQuantity};
-use qtty::time::TimeUnit;
-use qtty::unit::Second as SecondUnit;
-use qtty::{Quantity, Second};
 
 /// Split-axis scalars must not be NaN; ±∞ may be stored but many conversions still reject them.
 #[inline]
@@ -52,7 +51,7 @@ impl<S: Scale> Space for ScaleAxis<S> {}
 /// **±∞** may be carried when callers use instants as sentinels; operations that require finite coordinates
 /// (ΔT loops, UTC civil decoding, POSIX Unix mapping, …) may still return [`ConversionError::NonFinite`].
 pub struct Time<S: Scale, F: TimeFormat = J2000s> {
-    instant: SplitPoint1<ScaleAxis<S>, SecondUnit>,
+    instant: SplitPoint1<ScaleAxis<S>, qtty::unit::Second>,
     _fmt: PhantomData<fn() -> F>,
 }
 
@@ -99,7 +98,7 @@ impl<S: Scale, F: TimeFormat> fmt::Debug for Time<S, F> {
 impl<S: CoordinateScale, F> fmt::Display for Time<S, F>
 where
     F: InfallibleFormatForScale<S>,
-    qtty::Quantity<F::Unit>: fmt::Display,
+    crate::qtty::Quantity<F::Unit>: fmt::Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if F::NAME == J2000s::NAME {
@@ -122,7 +121,7 @@ impl fmt::Display for Time<UTC, crate::format::Unix> {
 impl<S: CoordinateScale, F> fmt::LowerExp for Time<S, F>
 where
     F: InfallibleFormatForScale<S>,
-    qtty::Quantity<F::Unit>: fmt::LowerExp,
+    crate::qtty::Quantity<F::Unit>: fmt::LowerExp,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::LowerExp::fmt(&F::from_time(*self), f)
@@ -132,7 +131,7 @@ where
 impl<S: CoordinateScale, F> fmt::UpperExp for Time<S, F>
 where
     F: InfallibleFormatForScale<S>,
-    qtty::Quantity<F::Unit>: fmt::UpperExp,
+    crate::qtty::Quantity<F::Unit>: fmt::UpperExp,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::UpperExp::fmt(&F::from_time(*self), f)
@@ -222,7 +221,7 @@ impl<S: CoordinateScale> Time<S, J2000s> {
 
     /// Shift this instant forward by a typed duration.
     #[inline]
-    pub fn shifted_by<U>(self, delta: qtty::Quantity<U>) -> Self
+    pub fn shifted_by<U>(self, delta: crate::qtty::Quantity<U>) -> Self
     where
         U: TimeUnit,
     {
@@ -231,7 +230,7 @@ impl<S: CoordinateScale> Time<S, J2000s> {
 
     /// Shift this instant backward by a typed duration.
     #[inline]
-    pub fn shifted_back_by<U>(self, delta: qtty::Quantity<U>) -> Self
+    pub fn shifted_back_by<U>(self, delta: crate::qtty::Quantity<U>) -> Self
     where
         U: TimeUnit,
     {
@@ -570,7 +569,7 @@ where
     #[inline]
     fn add(self, rhs: Quantity<U>) -> Self::Output {
         Self {
-            instant: self.instant + rhs.to::<SecondUnit>(),
+            instant: self.instant + rhs.to::<qtty::unit::Second>(),
             _fmt: PhantomData,
         }
     }
@@ -586,7 +585,7 @@ where
     #[inline]
     fn sub(self, rhs: Quantity<U>) -> Self::Output {
         Self {
-            instant: self.instant - rhs.to::<SecondUnit>(),
+            instant: self.instant - rhs.to::<qtty::unit::Second>(),
             _fmt: PhantomData,
         }
     }

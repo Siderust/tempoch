@@ -13,7 +13,7 @@
 //! [`builtin_eop_at`] always returns `None`.
 
 use crate::data::runtime_data::{active_time_data, time_data_eop_at};
-use qtty::{Day, Second};
+use crate::qtty::{Day, Second};
 
 /// First MJD present in the currently active EOP series, or `None` when no
 /// EOP data has been loaded.
@@ -52,12 +52,12 @@ pub fn eop_end() -> Option<Day> {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct EopValues {
     pub mjd_utc: Day,
-    pub pm_xp: Option<qtty::f64::Arcsecond>,
-    pub pm_yp: Option<qtty::f64::Arcsecond>,
+    pub pm_xp: Option<crate::qtty::f64::Arcsecond>,
+    pub pm_yp: Option<crate::qtty::f64::Arcsecond>,
     pub ut1_minus_utc: Second,
-    pub lod: Option<qtty::f64::Millisecond>,
-    pub dx: Option<qtty::f64::MilliArcsecond>,
-    pub dy: Option<qtty::f64::MilliArcsecond>,
+    pub lod: Option<crate::qtty::f64::Millisecond>,
+    pub dx: Option<crate::qtty::f64::MilliArcsecond>,
+    pub dy: Option<crate::qtty::f64::MilliArcsecond>,
     /// `true` when both bracketing rows are flagged observed (`I`).
     pub ut1_observed: bool,
 }
@@ -89,7 +89,7 @@ mod tests {
     use super::*;
     use crate::archive::time::{EopPoint, TimeDataBundle, TimeDataProvenance, UtcTaiSegment};
     use crate::data::runtime_data::with_test_time_data;
-    use qtty::{Arcsecond, Day, MilliArcsecond, Millisecond, Second};
+    use crate::qtty::{Arcsecond, Day, MilliArcsecond, Millisecond, Second};
 
     fn make_test_eop_bundle(points: Vec<EopPoint>) -> TimeDataBundle {
         TimeDataBundle::new(

@@ -29,17 +29,16 @@
 
 use crate::encoding::jd_to_mjd;
 use crate::foundation::error::ConversionError;
+use crate::qtty::{Day, Second};
 use crate::time_data::MODERN_DELTA_T_POINTS;
 use crate::{MODERN_DELTA_T_END_MJD, MODERN_DELTA_T_START_MJD};
-use qtty::{Day, Second};
-use std::sync::OnceLock;
 
 const JD_EPOCH_948_UT: Day = Day::new(2_067_314.5);
 const JD_EPOCH_1850_UT: Day = Day::new(2_396_758.5);
 const JD_TABLE_START_1620: Day = Day::new(2_312_752.5);
-const BIENNIAL_STEP_D: Day = qtty::time::JULIAN_YEAR
+const BIENNIAL_STEP_D: Day = crate::qtty::time::JULIAN_YEAR
     .const_mul(2.0)
-    .to_const::<qtty::unit::Day>();
+    .to_const::<crate::qtty::unit::Day>();
 
 // C0 continuity offsets (see module doc).
 // MEDIEVAL_OFFSET = DELTA_T[0] − medieval(JD_TABLE_START_1620) = 124.0 − 119.020750
@@ -79,7 +78,7 @@ fn delta_t_ancient(jd_ut: Day) -> Second {
     const DT_A1: f64 = -405.0;
     const DT_A2: f64 = 46.5;
     let c = (jd_ut - JD_EPOCH_948_UT)
-        .to::<qtty::unit::JulianCentury>()
+        .to::<crate::qtty::unit::JulianCentury>()
         .value();
     Second::new(DT_A0 + ANCIENT_OFFSET + DT_A1 * c + DT_A2 * c * c)
 }
@@ -88,7 +87,7 @@ fn delta_t_ancient(jd_ut: Day) -> Second {
 fn delta_t_medieval(jd_ut: Day) -> Second {
     const DT_A2: f64 = 22.5;
     let c = (jd_ut - JD_EPOCH_1850_UT)
-        .to::<qtty::unit::JulianCentury>()
+        .to::<crate::qtty::unit::JulianCentury>()
         .value();
     Second::new(DT_A2 * c * c + MEDIEVAL_OFFSET)
 }
@@ -186,8 +185,9 @@ fn delta_t_modern_series(jd_ut: Day) -> Second {
 }
 
 const DELTA_T_EXTRAPOLATION_TAIL_POINTS: usize = 12;
-// Coefficients: (a: constant term in seconds, b: s/day, c: s/day², origin: MJD Day).
-static TAIL_FIT: OnceLock<(Second, f64, f64, Day)> = OnceLock::new();
+
+#[cfg(feature = "std")]
+static TAIL_FIT: std::sync::OnceLock<(Second, f64, f64, Day)> = std::sync::OnceLock::new();
 
 fn compute_tail_fit_coefficients() -> (Second, f64, f64, Day) {
     let tail_len = MODERN_DELTA_T_POINTS
@@ -246,7 +246,10 @@ fn compute_tail_fit_coefficients() -> (Second, f64, f64, Day) {
 }
 
 fn quadratic_tail_fit_delta_t_seconds(mjd: Day) -> Second {
+    #[cfg(feature = "std")]
     let &(a, b, c, origin) = TAIL_FIT.get_or_init(compute_tail_fit_coefficients);
+    #[cfg(not(feature = "std"))]
+    let (a, b, c, origin) = compute_tail_fit_coefficients();
     // x: number of days from origin (Day / Day = f64).
     let x = (mjd - origin) / Day::new(1.0);
     a + Second::new(b * x + c * x * x)
@@ -347,7 +350,7 @@ fn delta_t_seconds_unconstrained(jd_ut: Day) -> Second {
     }
 }
 
-/// MJD of the last compiled ΔT prediction point, on the UT1 axis (`qtty::Day`).
+/// MJD of the last compiled ΔT prediction point, on the UT1 axis (`crate::qtty::Day`).
 ///
 /// `delta_t_seconds` accepts a UT1 Julian Date and returns
 /// [`ConversionError::Ut1HorizonExceeded`] beyond this horizon. For a typed

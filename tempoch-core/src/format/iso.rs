@@ -38,6 +38,7 @@ use crate::earth::context::TimeContext;
 use crate::foundation::error::ConversionError;
 use crate::model::scale::UTC;
 use crate::model::time::Time;
+use alloc::string::{String, ToString};
 
 /// Subsecond rounding policy used by the formatter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

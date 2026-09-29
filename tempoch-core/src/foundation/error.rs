@@ -53,6 +53,7 @@ impl core::fmt::Display for ConversionError {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for ConversionError {}
 
 /// Error surface for runtime time-data operations.
@@ -60,18 +61,20 @@ impl std::error::Error for ConversionError {}
 /// Returned by `update_runtime_time_data` and `refresh_runtime_time_data`
 /// (available with the `runtime-data-fetch` feature) when the runtime data
 /// bundle cannot be loaded or refreshed.
+#[cfg(feature = "std")]
 #[derive(Debug)]
 pub enum TimeDataError {
     /// An I/O error occurred while reading or writing the data bundle.
     Io(std::io::Error),
     /// A network download failed.
-    Download(String),
+    Download(alloc::string::String),
     /// The data could not be parsed.
-    Parse(String),
+    Parse(alloc::string::String),
     /// The data bundle failed an integrity check.
-    Integrity(String),
+    Integrity(alloc::string::String),
 }
 
+#[cfg(feature = "std")]
 impl core::fmt::Display for TimeDataError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
@@ -83,6 +86,7 @@ impl core::fmt::Display for TimeDataError {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for TimeDataError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
@@ -92,12 +96,14 @@ impl std::error::Error for TimeDataError {
     }
 }
 
+#[cfg(feature = "std")]
 impl From<std::io::Error> for TimeDataError {
     fn from(err: std::io::Error) -> Self {
         Self::Io(err)
     }
 }
 
+#[cfg(feature = "std")]
 impl From<crate::archive::time::TimeDataError> for TimeDataError {
     fn from(err: crate::archive::time::TimeDataError) -> Self {
         match err {
@@ -109,9 +115,10 @@ impl From<crate::archive::time::TimeDataError> for TimeDataError {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod tests {
     use super::*;
+    use alloc::string::ToString;
     use std::error::Error;
 
     fn io_error(msg: &str) -> std::io::Error {

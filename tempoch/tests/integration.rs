@@ -1,7 +1,7 @@
 use chrono::{DateTime, NaiveDate};
-use qtty::{Day, Second};
 #[cfg(feature = "serde")]
 use serde_json::json;
+use tempoch::qtty::{Day, Second};
 use tempoch::{
     constats::{J2000_JD_TT_DAY, TT_MINUS_TAI},
     ConversionError, CoordinateScale, J2000Seconds, J2000s, JulianDate, ModifiedJulianDate, Period,

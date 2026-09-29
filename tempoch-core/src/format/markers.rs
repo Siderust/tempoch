@@ -4,7 +4,7 @@
 //! Built-in external time-format markers.
 
 use crate::foundation::sealed::Sealed;
-use qtty::unit::{Day as DayUnit, Second as SecondUnit};
+use crate::qtty::unit;
 
 use super::time_format::TimeFormat;
 
@@ -14,7 +14,7 @@ use super::time_format::TimeFormat;
 pub struct JD;
 impl Sealed for JD {}
 impl TimeFormat for JD {
-    type Unit = DayUnit;
+    type Unit = unit::Day;
     const NAME: &'static str = "JD";
 }
 
@@ -23,7 +23,7 @@ impl TimeFormat for JD {
 pub struct MJD;
 impl Sealed for MJD {}
 impl TimeFormat for MJD {
-    type Unit = DayUnit;
+    type Unit = unit::Day;
     const NAME: &'static str = "MJD";
 }
 
@@ -32,7 +32,7 @@ impl TimeFormat for MJD {
 pub struct J2000s;
 impl Sealed for J2000s {}
 impl TimeFormat for J2000s {
-    type Unit = SecondUnit;
+    type Unit = unit::Second;
     const NAME: &'static str = "J2000s";
 }
 
@@ -41,7 +41,7 @@ impl TimeFormat for J2000s {
 pub struct Unix;
 impl Sealed for Unix {}
 impl TimeFormat for Unix {
-    type Unit = SecondUnit;
+    type Unit = unit::Second;
     const NAME: &'static str = "Unix";
 }
 
@@ -50,6 +50,6 @@ impl TimeFormat for Unix {
 pub struct GPS;
 impl Sealed for GPS {}
 impl TimeFormat for GPS {
-    type Unit = SecondUnit;
+    type Unit = unit::Second;
     const NAME: &'static str = "GPS";
 }

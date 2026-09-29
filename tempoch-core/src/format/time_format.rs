@@ -8,7 +8,7 @@
 use core::fmt;
 
 use crate::foundation::sealed::Sealed;
-use qtty::Unit;
+use crate::qtty::Unit;
 
 /// Marker trait for an external time encoding such as JD or Unix time.
 #[allow(private_bounds)]

@@ -21,7 +21,7 @@
 //!   `as_seconds_f64`) so users see the lossy step in code review.
 //! * **qtty interop** — [`ExactDuration::from_quantity`] /
 //!   [`ExactDuration::as_quantity`] bridge to typed `Quantity<U>` for any
-//!   [`qtty::time::TimeUnit`]. The bridge through `f64` is intentional: `qtty`
+//!   [`crate::qtty::time::TimeUnit`]. The bridge through `f64` is intentional: `qtty`
 //!   itself is a floating-point quantity system; users wanting exact duration
 //!   math should keep values inside [`ExactDuration`].
 //! * **Overflow** — arithmetic uses checked operations and reports
@@ -42,9 +42,8 @@
 use core::cmp::Ordering;
 use core::ops::{Add, AddAssign, Neg, Sub, SubAssign};
 
-use qtty::time::TimeUnit;
-use qtty::unit::Second as SecondUnit;
-use qtty::{Quantity, Second};
+use crate::qtty::time::TimeUnit;
+use crate::qtty::{self, Quantity, Second};
 
 /// Nanoseconds per second; convenience constant for boundary code.
 pub const NANOS_PER_SECOND: i128 = 1_000_000_000;
@@ -74,6 +73,7 @@ impl core::fmt::Display for DurationError {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for DurationError {}
 
 /// Exact-precision signed duration.
@@ -179,12 +179,12 @@ impl ExactDuration {
         }
     }
 
-    /// Build from a `qtty::Quantity<U>` of any time unit. Returns
+    /// Build from a `crate::qtty::Quantity<U>` of any time unit. Returns
     /// [`DurationError::NonFinite`] for NaN/inf inputs and
     /// [`DurationError::Overflow`] if the value does not fit in i128 ns.
     #[inline]
     pub fn try_from_quantity<U: TimeUnit>(q: Quantity<U>) -> Result<Self, DurationError> {
-        let secs = q.to::<SecondUnit>().value();
+        let secs = q.to::<qtty::unit::Second>().value();
         if !secs.is_finite() {
             return Err(DurationError::NonFinite);
         }
@@ -295,40 +295,40 @@ impl ExactDuration {
         (self.nanos as f64) / (NANOS_PER_SECOND as f64)
     }
 
-    /// Build from a typed `qtty::i64::Nanosecond` integer quantity.
+    /// Build from a typed `crate::qtty::i64::Nanosecond` integer quantity.
     ///
     /// The `i64` value is widened to `i128` without loss; this conversion is
     /// always exact. For the low-level raw interface, see [`from_nanos`](Self::from_nanos).
     #[inline]
-    pub fn from_nanoseconds_i(nanos: qtty::i64::Nanosecond) -> Self {
+    pub fn from_nanoseconds_i(nanos: crate::qtty::i64::Nanosecond) -> Self {
         Self::from_nanos(nanos.value() as i128)
     }
 
-    /// Build from a typed `qtty::i64::Second` integer quantity (whole-second precision).
+    /// Build from a typed `crate::qtty::i64::Second` integer quantity (whole-second precision).
     ///
     /// The second value is multiplied by 1 × 10⁹ and widened to `i128` without
     /// loss for any `i64` input. For sub-second precision use
     /// [`from_canonical_seconds_nanos`](Self::from_canonical_seconds_nanos) or
     /// [`from_nanoseconds_i`](Self::from_nanoseconds_i).
     #[inline]
-    pub fn from_seconds_i(seconds: qtty::i64::Second) -> Self {
+    pub fn from_seconds_i(seconds: crate::qtty::i64::Second) -> Self {
         Self::from_nanos(seconds.value() as i128 * NANOS_PER_SECOND)
     }
 
-    /// Project to a typed `qtty::i64::Nanosecond` integer quantity.
+    /// Project to a typed `crate::qtty::i64::Nanosecond` integer quantity.
     ///
     /// Returns [`DurationError::Overflow`] when the stored nanosecond count does
     /// not fit in `i64` (durations outside ≈ ±292 billion years at 1 ns resolution).
     #[inline]
-    pub fn as_nanoseconds_i(self) -> Result<qtty::i64::Nanosecond, DurationError> {
+    pub fn as_nanoseconds_i(self) -> Result<crate::qtty::i64::Nanosecond, DurationError> {
         if self.nanos > i64::MAX as i128 || self.nanos < i64::MIN as i128 {
             Err(DurationError::Overflow)
         } else {
-            Ok(qtty::i64::Nanosecond::new(self.nanos as i64))
+            Ok(crate::qtty::i64::Nanosecond::new(self.nanos as i64))
         }
     }
 
-    /// Project back into a `qtty::Quantity<U>`. Lossy in general (f64).
+    /// Project back into a `crate::qtty::Quantity<U>`. Lossy in general (f64).
     #[inline]
     pub fn as_quantity<U: TimeUnit>(self) -> Quantity<U> {
         Second::new(self.as_seconds_f64()).to::<U>()
@@ -593,7 +593,6 @@ mod serde_impl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use qtty::unit::{Day as DayUnit, Millisecond as MsUnit};
 
     #[test]
     fn zero_and_constants() {
@@ -684,7 +683,7 @@ mod tests {
     fn quantity_round_trip_within_mantissa() {
         let q = Second::new(123.456_789_012_345);
         let d = ExactDuration::try_from_quantity(q).unwrap();
-        let back = d.as_quantity::<SecondUnit>();
+        let back = d.as_quantity::<qtty::unit::Second>();
         assert!((back.value() - q.value()).abs() < 1e-9);
     }
 
@@ -713,11 +712,11 @@ mod tests {
 
     #[test]
     fn quantity_unit_conversion() {
-        let ms = Quantity::<MsUnit>::new(1500.0);
+        let ms = Quantity::<qtty::unit::Millisecond>::new(1500.0);
         let d = ExactDuration::try_from_quantity(ms).unwrap();
         assert_eq!(d.as_nanos_i128(), 1_500_000_000);
 
-        let day = Quantity::<DayUnit>::new(1.0);
+        let day = Quantity::<qtty::unit::Day>::new(1.0);
         let d2 = ExactDuration::try_from_quantity(day).unwrap();
         assert_eq!(d2.as_nanos_i128(), 86_400 * NANOS_PER_SECOND);
     }

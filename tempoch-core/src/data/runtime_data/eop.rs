@@ -6,17 +6,18 @@ use crate::archive::time::{EopPoint, TimeDataBundle};
 use crate::earth::delta_t::delta_t_seconds_from_modern_points;
 use crate::earth::eop::EopValues;
 use crate::foundation::error::ConversionError;
-use qtty::Day as DayQuantity;
-use qtty::Second;
+#[cfg(not(feature = "std"))]
+use crate::qtty::Real;
+use crate::qtty::{Day, Second};
 
 pub(crate) fn time_data_delta_t(
     data: &TimeDataBundle,
-    jd_ut: DayQuantity,
+    jd_ut: Day,
 ) -> Result<Second, ConversionError> {
     delta_t_seconds_from_modern_points(jd_ut, data.modern_delta_t_points())
 }
 
-pub(crate) fn time_data_eop_at(data: &TimeDataBundle, mjd_utc: DayQuantity) -> Option<EopValues> {
+pub(crate) fn time_data_eop_at(data: &TimeDataBundle, mjd_utc: Day) -> Option<EopValues> {
     let points = data.eop_points();
     let first = points.first()?.mjd;
     let last = points.last()?.mjd;
@@ -49,10 +50,8 @@ pub(crate) fn time_data_eop_at(data: &TimeDataBundle, mjd_utc: DayQuantity) -> O
         // Allow extrapolation here: these calls are for internal ΔT bookkeeping
         // (correcting EOP-derived UT1-UTC to the actual UTC-TAI offset), not for
         // validating UTC representations. Pre-1961 EOP data is rare but valid.
-        let lo_offset =
-            time_data_tai_minus_utc_mjd_extrapolated(data, DayQuantity::new(lo_i as f64));
-        let hi_offset =
-            time_data_tai_minus_utc_mjd_extrapolated(data, DayQuantity::new(hi_i as f64));
+        let lo_offset = time_data_tai_minus_utc_mjd_extrapolated(data, Day::new(lo_i as f64));
+        let hi_offset = time_data_tai_minus_utc_mjd_extrapolated(data, Day::new(hi_i as f64));
         let query_offset = time_data_tai_minus_utc_mjd_extrapolated(data, mjd_utc);
         match (lo_offset, hi_offset, query_offset) {
             (Some(lo_tmu), Some(hi_tmu), Some(query_tmu)) => {
@@ -67,15 +66,15 @@ pub(crate) fn time_data_eop_at(data: &TimeDataBundle, mjd_utc: DayQuantity) -> O
     Some(EopValues {
         mjd_utc,
         pm_xp: lerp_opt(lo.pm_xp.map(|v| v.value()), hi.pm_xp.map(|v| v.value()))
-            .map(qtty::f64::Arcsecond::new),
+            .map(crate::qtty::f64::Arcsecond::new),
         pm_yp: lerp_opt(lo.pm_yp.map(|v| v.value()), hi.pm_yp.map(|v| v.value()))
-            .map(qtty::f64::Arcsecond::new),
+            .map(crate::qtty::f64::Arcsecond::new),
         ut1_minus_utc,
-        lod: lod_milliseconds.map(qtty::f64::Millisecond::new),
+        lod: lod_milliseconds.map(crate::qtty::f64::Millisecond::new),
         dx: lerp_opt(lo.dx.map(|v| v.value()), hi.dx.map(|v| v.value()))
-            .map(qtty::f64::MilliArcsecond::new),
+            .map(crate::qtty::f64::MilliArcsecond::new),
         dy: lerp_opt(lo.dy.map(|v| v.value()), hi.dy.map(|v| v.value()))
-            .map(qtty::f64::MilliArcsecond::new),
+            .map(crate::qtty::f64::MilliArcsecond::new),
         ut1_observed: lo.ut1_observed && hi.ut1_observed,
     })
 }

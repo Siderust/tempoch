@@ -12,7 +12,7 @@
 //! * `Time + d - d == Time` (modulo ExactDuration precision).
 
 use proptest::prelude::*;
-use qtty::Second;
+use tempoch_core::qtty::Second;
 use tempoch_core::{ExactDuration, Time, BDT, GPST, GST, QZSST, TAI, TCG, TT};
 
 const J2000_SECONDS_RANGE: i64 = 3_155_760_000; // ~100 yr around J2000

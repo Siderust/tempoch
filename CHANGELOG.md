@@ -3,6 +3,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-09-29
+
+### Added
+- `no_std` + `alloc` support for `tempoch` / `tempoch-core` with an explicit feature
+  matrix mirroring `affn`:
+  - `std` (default) enables the standard library and implies `alloc`
+  - `alloc` enables heap-backed period lists, shared time-data handles, and `serde`
+  - `runtime-data-fetch` continues to require `std`
+- CI checks for `--no-default-features --features alloc` / `std`, plus a
+  `thumbv7em-none-eabihf` bare-metal check
+
+### Changed
+- Bumped to `affn` 0.10 with `default-features = false` and features forwarded
+  via `std` / `alloc`
+- Bumped `siderust-archive` to 0.1.5 with `default-features = false`; `std`
+  forwards `siderust-archive/std` so bare-metal `alloc` builds no longer pull
+  in the archive `std` stack
+- Library code prefers `core` / `alloc`; `std::error::Error` impls and runtime
+  table swap (`RwLock` / `OnceLock` caches) are gated behind `std`
+- `TimeDataError` is available only with the `std` feature
+
+## [0.6.7] - 2026-09-29
+
+### Changed
+
+- Updated `affn` to 0.9 and consume quantities through the `affn::qtty` re-export,
+  dropping the direct `qtty` dependency from `tempoch-core`, `tempoch`, and
+  `tempoch-validation`. `tempoch::qtty` / `tempoch_core::qtty` are re-exported for
+  callers that need compatible quantity types.
+- Synchronized the reported `tempoch-ffi` ABI version with this release.
+
 ## [0.6.6] - 2026-06-21
 
 ### Changed
@@ -114,7 +145,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Roadmap
 
-- Still pending: `no_std` split for `tempoch-core`, CCSDS time-code parsers, formal-verification (Kani) harnesses, and FFI/WASM/Python ABI updates.
+- Still pending: CCSDS time-code parsers, formal-verification (Kani) harnesses, and FFI/WASM/Python ABI updates.
 
 
 ## [0.6.1] - 2026-05-25

@@ -1,4 +1,4 @@
-use qtty::Second;
+use tempoch::qtty::Second;
 use tempoch::{
     GpsTime, J2000s, Time, TimeContext, Unix, UnixTime, GPS, JD, MJD, TAI, TDB, TT, UT1,
 };

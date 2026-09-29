@@ -1,4 +1,4 @@
-use qtty::Second;
+use tempoch::qtty::Second;
 use tempoch::{JulianDate, Time, TimeContext, Unix, UnixTime, JD, TT, UT1, UTC};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
