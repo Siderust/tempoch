@@ -26,7 +26,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: thumbv7em-none-eabihf
       - run: cargo check --all-targets --all-features
+      - run: cargo check -p tempoch-core --no-default-features --features alloc
+      - run: cargo check -p tempoch-core --no-default-features --features std
+      - run: cargo check -p tempoch --no-default-features --features alloc
+      - run: cargo check -p tempoch --no-default-features --features std
+      - name: Check no_std target (thumbv7em-none-eabihf)
+        run: >
+          cargo check -p tempoch-core -p tempoch
+          --target thumbv7em-none-eabihf
+          --no-default-features --features alloc
 
   fmt:
     name: Format

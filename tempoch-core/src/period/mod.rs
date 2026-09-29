@@ -10,6 +10,8 @@
 
 use core::fmt;
 
+use alloc::vec::Vec;
+
 use crate::Time;
 
 mod error;

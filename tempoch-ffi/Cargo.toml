@@ -1,6 +1,6 @@
 [package]
 name = "tempoch-ffi"
-version = "0.6.7"
+version = "0.7.0"
 edition = "2021"
 authors = ["VPRamon <vallespuigramon@gmail.com>"]
 description = "C FFI bindings for tempoch — astronomical time primitives."
@@ -12,8 +12,8 @@ name = "tempoch_ffi"
 crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
-tempoch = { path = "../tempoch", version = "0.6.7" }
-tempoch-core = { path = "../tempoch-core", version = "0.6.7" }
+tempoch = { path = "../tempoch", version = "0.7.0" }
+tempoch-core = { path = "../tempoch-core", version = "0.7.0" }
 qtty = "0.8"
 qtty-ffi = "0.8"
 chrono = "0.4"

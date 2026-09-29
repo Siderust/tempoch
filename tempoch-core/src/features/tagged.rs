@@ -13,6 +13,8 @@ use crate::model::scale::{CoordinateScale, Scale};
 use crate::model::time::Time;
 use crate::period::Interval;
 use crate::qtty::Second;
+use alloc::format;
+use alloc::string::String;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 

@@ -183,22 +183,35 @@ the horizon. Use the exported `DELTA_T_PREDICTION_HORIZON_MJD` typed
 
 ```toml
 [dependencies]
-tempoch = "0.6.7"
+tempoch = "0.7"
 ```
 
 Enable `serde` if you want to serialize typed times and periods:
 
 ```toml
 [dependencies]
-tempoch = { version = "0.6.7", features = ["serde"] }
+tempoch = { version = "0.7", features = ["serde"] }
 ```
 
 The `serde` feature composes with the ordinary runtime refresh behavior:
 
 ```toml
 [dependencies]
-tempoch = { version = "0.6.7", features = ["serde", "runtime-data-fetch"] }
+tempoch = { version = "0.7", features = ["serde", "runtime-data-fetch"] }
 ```
+
+### `no_std`
+
+`tempoch` is written against `core` / `alloc`. Default builds enable `std`.
+
+```toml
+# no_std + alloc (including bare-metal targets)
+tempoch = { version = "0.7", default-features = false, features = ["alloc"] }
+```
+
+Bundled IERS tables come from `siderust-archive` 0.1.5+, which is itself
+`no_std` + `alloc` when its `std` feature is off. Runtime download
+(`runtime-data-fetch`) still requires `std`.
 
 ## Serde
 

@@ -32,7 +32,6 @@ use crate::foundation::error::ConversionError;
 use crate::qtty::{Day, Second};
 use crate::time_data::MODERN_DELTA_T_POINTS;
 use crate::{MODERN_DELTA_T_END_MJD, MODERN_DELTA_T_START_MJD};
-use std::sync::OnceLock;
 
 const JD_EPOCH_948_UT: Day = Day::new(2_067_314.5);
 const JD_EPOCH_1850_UT: Day = Day::new(2_396_758.5);
@@ -186,8 +185,9 @@ fn delta_t_modern_series(jd_ut: Day) -> Second {
 }
 
 const DELTA_T_EXTRAPOLATION_TAIL_POINTS: usize = 12;
-// Coefficients: (a: constant term in seconds, b: s/day, c: s/day², origin: MJD Day).
-static TAIL_FIT: OnceLock<(Second, f64, f64, Day)> = OnceLock::new();
+
+#[cfg(feature = "std")]
+static TAIL_FIT: std::sync::OnceLock<(Second, f64, f64, Day)> = std::sync::OnceLock::new();
 
 fn compute_tail_fit_coefficients() -> (Second, f64, f64, Day) {
     let tail_len = MODERN_DELTA_T_POINTS
@@ -246,7 +246,10 @@ fn compute_tail_fit_coefficients() -> (Second, f64, f64, Day) {
 }
 
 fn quadratic_tail_fit_delta_t_seconds(mjd: Day) -> Second {
+    #[cfg(feature = "std")]
     let &(a, b, c, origin) = TAIL_FIT.get_or_init(compute_tail_fit_coefficients);
+    #[cfg(not(feature = "std"))]
+    let (a, b, c, origin) = compute_tail_fit_coefficients();
     // x: number of days from origin (Day / Day = f64).
     let x = (mjd - origin) / Day::new(1.0);
     a + Second::new(b * x + c * x * x)

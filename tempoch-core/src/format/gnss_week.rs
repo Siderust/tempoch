@@ -43,6 +43,8 @@
 use crate::foundation::error::ConversionError;
 use crate::model::scale::{CoordinateScale, BDT, GPST, GST, QZSST};
 use crate::model::time::Time;
+#[cfg(not(feature = "std"))]
+use crate::qtty::Real;
 
 const SECONDS_PER_WEEK: crate::qtty::i128::Second = crate::qtty::i128::Second::new(7 * 86_400);
 

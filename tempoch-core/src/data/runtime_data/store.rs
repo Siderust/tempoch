@@ -7,16 +7,22 @@ use crate::archive::time::TimeDataError as InternalDataError;
 #[cfg(feature = "runtime-data-fetch")]
 use crate::archive::time::TimeDataManager;
 use crate::data::status::ActiveTimeDataSource;
+use alloc::sync::Arc;
+
 #[cfg(test)]
 use chrono::{DateTime, Utc};
+#[cfg(feature = "std")]
+use std::sync::{OnceLock, RwLock};
 #[cfg(test)]
 use std::sync::Mutex;
-use std::sync::{Arc, OnceLock, RwLock};
 
 #[cfg(test)]
 const RUNTIME_DATA_MAX_AGE_SECONDS: i64 = 24 * 60 * 60;
 
+#[cfg(feature = "std")]
 static COMPILED_TIME_DATA: OnceLock<Arc<TimeDataBundle>> = OnceLock::new();
+
+#[cfg(feature = "std")]
 static ACTIVE_TIME_DATA: OnceLock<RwLock<Arc<TimeDataBundle>>> = OnceLock::new();
 
 #[cfg(test)]
@@ -24,6 +30,7 @@ static TEST_TIME_DATA_GUARD: Mutex<()> = Mutex::new(());
 #[cfg(test)]
 static TEST_TIME_DATA: Mutex<Option<Arc<TimeDataBundle>>> = Mutex::new(None);
 
+#[cfg(feature = "std")]
 fn active_time_data_slot() -> &'static RwLock<Arc<TimeDataBundle>> {
     ACTIVE_TIME_DATA.get_or_init(|| RwLock::new(compiled_time_data()))
 }
@@ -46,10 +53,16 @@ pub(crate) fn active_time_data() -> Arc<TimeDataBundle> {
         return bundle;
     }
 
-    active_time_data_slot()
-        .read()
-        .unwrap_or_else(|err| err.into_inner())
-        .clone()
+    #[cfg(feature = "std")]
+    {
+        active_time_data_slot()
+            .read()
+            .unwrap_or_else(|err| err.into_inner())
+            .clone()
+    }
+
+    #[cfg(not(feature = "std"))]
+    compiled_time_data()
 }
 
 pub(crate) fn active_time_data_source() -> ActiveTimeDataSource {
@@ -165,7 +178,12 @@ pub(crate) fn with_runtime_data_lock<T>(f: impl FnOnce() -> T) -> T {
 }
 
 pub(crate) fn compiled_time_data() -> Arc<TimeDataBundle> {
-    COMPILED_TIME_DATA
-        .get_or_init(|| Arc::new(crate::archive::time::bundled_time_data()))
-        .clone()
+    #[cfg(feature = "std")]
+    {
+        COMPILED_TIME_DATA
+            .get_or_init(|| Arc::new(crate::archive::time::bundled_time_data()))
+            .clone()
+    }
+    #[cfg(not(feature = "std"))]
+    Arc::new(crate::archive::time::bundled_time_data())
 }

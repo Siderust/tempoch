@@ -73,6 +73,7 @@ impl core::fmt::Display for DurationError {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for DurationError {}
 
 /// Exact-precision signed duration.

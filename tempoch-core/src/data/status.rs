@@ -90,6 +90,7 @@ impl core::fmt::Display for FreshnessError {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for FreshnessError {}
 
 /// Capture status for the currently active time-data bundle.

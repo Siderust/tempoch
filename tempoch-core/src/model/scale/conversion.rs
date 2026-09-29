@@ -17,6 +17,8 @@ use crate::foundation::error::ConversionError;
 use crate::foundation::sealed::Sealed;
 use crate::model::scale::{Scale, BDT, ET, GPST, GST, QZSST, TAI, TCB, TCG, TDB, TT, UT1, UTC};
 use crate::qtty::{self, Day, Second};
+#[cfg(not(feature = "std"))]
+use crate::qtty::Transcendental;
 use affn::algebra::{AffineMap1, Space, SplitPoint1, SplitQuantity};
 
 #[derive(Debug, Copy, Clone)]

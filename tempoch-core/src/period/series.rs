@@ -53,6 +53,7 @@ impl core::fmt::Display for TimeSeriesError {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for TimeSeriesError {}
 
 impl From<DurationError> for TimeSeriesError {

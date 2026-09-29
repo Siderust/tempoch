@@ -1,29 +1,31 @@
 [package]
 name = "tempoch"
-version = "0.6.7"
+version = "0.7.0"
 edition = "2021"
 authors = ["VPRamon <vallespuigramon@gmail.com>"]
 description = "Astronomical time primitives: typed time scales, Julian dates, UTC conversion, and interval operations."
 license = "AGPL-3.0-only"
 readme = "../README.md"
 repository = "https://github.com/Siderust/tempoch"
-keywords = ["astronomy", "time", "julian-date", "ephemeris", "science"]
-categories = ["science", "date-and-time"]
+keywords = ["astronomy", "time", "julian-date", "ephemeris", "science", "no-std"]
+categories = ["science", "date-and-time", "no-std"]
 
 [lib]
 name = "tempoch"
 path = "src/lib.rs"
 
 [features]
-default = []
+default = ["std"]
+std = ["alloc", "tempoch-core/std"]
+alloc = ["tempoch-core/alloc"]
 serde = ["tempoch-core/serde"]
-runtime-data-fetch = ["tempoch-core/runtime-data-fetch"]
+runtime-data-fetch = ["std", "tempoch-core/runtime-data-fetch"]
 
 [dependencies]
-tempoch-core = { path = "../tempoch-core", version = "0.6.7" }
+tempoch-core = { path = "../tempoch-core", version = "0.7.0", default-features = false }
 
 [dev-dependencies]
-chrono = "0.4.44"
+chrono = { version = "0.4.44", default-features = false, features = ["clock", "std"] }
 serde_json = "1"
 
 [[example]]
@@ -34,3 +36,4 @@ required-features = ["serde"]
 [[example]]
 name = "06_runtime_tables"
 path = "examples/06_runtime_tables.rs"
+required-features = ["runtime-data-fetch"]

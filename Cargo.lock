@@ -10,9 +10,9 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "affn"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa371d0a9f265a671b35ff53788409b5939570af628eb44cc455cb1bcf37ec1b"
+checksum = "c25a6b73983cee27bbaa7d3f08d6d2d266984effbadc7ae7089b383615845539"
 dependencies = [
  "affn-derive",
  "qtty",
@@ -21,9 +21,9 @@ dependencies = [
 
 [[package]]
 name = "affn-derive"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba501c4a33f66b0b9876f4f160477c17c096f92cec0ee69580cb293e4c01c03f"
+checksum = "634a1cfa19b14594b9bcdd5d136d981abe2645b556322b8002c9ba5936d3c14e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -240,12 +240,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 
 [[package]]
-name = "const-oid"
-version = "0.10.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
-
-[[package]]
 name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -285,7 +279,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1dd6dbb5841937940781866fa1281a1ff7bd3bf827091440879f9994983d5c2"
 dependencies = [
  "block-buffer",
- "const-oid",
  "crypto-common",
 ]
 
@@ -896,9 +889,9 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "siderust-archive"
-version = "0.1.4"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a69d9be4436d5caf87361c0407b25eb40d2d9f464446862109e35748ac412817"
+checksum = "5baa7a0a852b8305df7dc0b259f67041e668cb7965be2848bd4dbe9dccbefcce"
 dependencies = [
  "anyhow",
  "chrono",
@@ -972,7 +965,7 @@ dependencies = [
 
 [[package]]
 name = "tempoch"
-version = "0.6.7"
+version = "0.7.0"
 dependencies = [
  "chrono",
  "serde_json",
@@ -981,7 +974,7 @@ dependencies = [
 
 [[package]]
 name = "tempoch-core"
-version = "0.6.7"
+version = "0.7.0"
 dependencies = [
  "affn",
  "chrono",
@@ -993,7 +986,7 @@ dependencies = [
 
 [[package]]
 name = "tempoch-ffi"
-version = "0.6.7"
+version = "0.7.0"
 dependencies = [
  "cbindgen",
  "chrono",

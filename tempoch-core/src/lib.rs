@@ -51,6 +51,36 @@
 //! - [`earth::delta_t`]: piecewise ΔT (`TT - UT1`) model and modern tabular segment.
 //! - [`earth::eop`]: public EOP sampling API over bundled IERS series.
 //! - [`earth::context`]: immutable time-data snapshot plus conversion policy.
+//!
+//! ## `no_std` support
+//!
+//! `tempoch-core` is written against `core` / `alloc`. Feature flags:
+//!
+//! - **`std`** (default): full API, including runtime table swap and
+//!   `std::error::Error`. Implies `alloc`. Forwards `siderust-archive/std`.
+//! - **`alloc`**: heap-backed period lists, shared time-data handles, and
+//!   `serde` helpers. Sufficient for bundled IERS tables on `no_std` targets
+//!   (including bare metal) via `siderust-archive` 0.1.5+.
+//!
+//! ```toml
+//! # Default (std)
+//! tempoch = "0.7"
+//!
+//! # no_std + alloc (including bare-metal targets)
+//! tempoch = { version = "0.7", default-features = false, features = ["alloc"] }
+//! ```
+
+#![cfg_attr(not(feature = "std"), no_std)]
+
+#[cfg(not(feature = "alloc"))]
+compile_error!(
+    "tempoch-core requires the `alloc` feature (time-data tables and period lists are heap-backed); \
+     enable `alloc` or the default `std` feature"
+);
+
+#[cfg(feature = "alloc")]
+#[macro_use]
+extern crate alloc;
 
 pub mod data;
 pub mod earth;
@@ -104,7 +134,9 @@ pub use foundation::constats::{
     UTC_DEFINED_FROM_MJD_DAY,
 };
 pub use foundation::duration::{DurationError, ExactDuration, NANOS_PER_SECOND};
-pub use foundation::error::{ConversionError, TimeDataError};
+pub use foundation::error::ConversionError;
+#[cfg(feature = "std")]
+pub use foundation::error::TimeDataError;
 pub use model::scale::{
     ContinuousScale, CoordinateScale, Scale, BDT, ET, GPST, GST, QZSST, TAI, TCB, TCG, TDB, TT,
     UT1, UTC,

@@ -7,6 +7,8 @@ use crate::earth::delta_t::delta_t_seconds_from_modern_points;
 use crate::earth::eop::EopValues;
 use crate::foundation::error::ConversionError;
 use crate::qtty::{Day, Second};
+#[cfg(not(feature = "std"))]
+use crate::qtty::Real;
 
 pub(crate) fn time_data_delta_t(
     data: &TimeDataBundle,
