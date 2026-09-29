@@ -7,7 +7,7 @@ description = "Astronomical time primitives: typed time scales, Julian dates, UT
 license = "AGPL-3.0-only"
 readme = "../README.md"
 repository = "https://github.com/Siderust/tempoch"
-keywords = ["astronomy", "time", "julian-date", "ephemeris", "science", "no-std"]
+keywords = ["astronomy", "time", "julian-date", "ephemeris", "no-std"]
 categories = ["science", "date-and-time", "no-std"]
 
 [lib]
