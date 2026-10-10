@@ -6,12 +6,9 @@
 use crate::qtty::Day;
 
 use crate::format::{JulianDate, ModifiedJulianDate};
-use crate::format::{JD, MJD};
-use crate::model::scale::CoordinateScale;
-use crate::model::scale::TT;
+use crate::model::scale::{CoordinateScale, TT};
 use crate::model::time::Time;
 use crate::qtty::Second;
-use crate::InfallibleFormatForScale;
 
 /// Provides arithmetic on [`Time<S>`] values via seconds duration.
 ///
@@ -46,12 +43,12 @@ impl<S: CoordinateScale> TimeInstant for ModifiedJulianDate<S> {
 
     #[inline]
     fn difference(&self, other: &Self) -> Day {
-        Day::new(self.raw().value() - other.raw().value())
+        *self - *other
     }
 
     #[inline]
     fn add_duration(&self, duration: Day) -> Self {
-        MJD::into_time(Day::new(self.raw().value() + duration.value()))
+        *self + duration
     }
 }
 
@@ -60,12 +57,12 @@ impl<S: CoordinateScale> TimeInstant for JulianDate<S> {
 
     #[inline]
     fn difference(&self, other: &Self) -> Day {
-        Day::new(self.raw().value() - other.raw().value())
+        *self - *other
     }
 
     #[inline]
     fn add_duration(&self, duration: Day) -> Self {
-        JD::into_time(Day::new(self.raw().value() + duration.value()))
+        *self + duration
     }
 }
 
@@ -73,7 +70,7 @@ impl<S: CoordinateScale> TimeInstant for JulianDate<S> {
 mod tests {
     use super::*;
     use crate::format::{J2000Seconds, JulianDate, ModifiedJulianDate};
-    use crate::model::scale::TT;
+    use crate::model::scale::{TT, UTC};
 
     #[test]
     fn time_instant_trait_supports_time_and_encoded_dates() {
@@ -88,5 +85,10 @@ mod tests {
         let jd = JulianDate::<TT>::new(2_460_000.0);
         let jd_later = jd.add_duration(Day::new(0.5));
         assert_eq!(jd_later.difference(&jd), Day::new(0.5));
+
+        let ctx = crate::TimeContext::new();
+        let utc = ModifiedJulianDate::<UTC>::try_new_with(Day::new(57_753.0), &ctx).unwrap();
+        let utc_later = utc.add_duration(Day::new(1.0));
+        assert_eq!(utc_later.difference(&utc), Day::new(1.0));
     }
 }

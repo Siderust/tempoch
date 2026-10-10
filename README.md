@@ -26,7 +26,7 @@ Typed astronomical time primitives for Rust.
 - Unified target-based conversions:
   - `.to::<TT>()`, `.to::<UTC>()`, `.to::<TDB>()` for infallible scale routes
   - `.to_with::<UT1>(&ctx)` for context-backed UT1 routes, or `.try_to::<UT1>()` shorthand (snapshots active data at call time)
-  - `.to::<JD>()`, `.to::<MJD>()`, `.to::<J2000s>()` for coordinate views
+  - `.to::<JD>()` / `.to::<MJD>()` for infallible coordinates on continuous scales; UTC uses `.to_with::<MJD>(&ctx)` (or `JD`) followed by `try_raw_with(&ctx)`
   - `.try_to::<Unix>()` and `.to::<GPS>()` for transport encodings
 - `JulianDate<S>`, `ModifiedJulianDate<S>`, `UnixTime`, and `GpsTime` implement `Into<Time<_>>` (same instant as `.to_j2000s()`), so `Period::<S>::new(...)` / `try_new(...)` accept encoded endpoints directly; `J2000Seconds<S>` is already `Time<S>`.
 - UTC conversion through `chrono`, leap-second aware over the official history
@@ -49,9 +49,14 @@ Typed astronomical time primitives for Rust.
   [`tdb_tt_model_high_accuracy_start_jd`] / [`tdb_tt_model_high_accuracy_end_jd`]
   in [`tempoch::constats`] (day literals also exposed as
   `TDB_TT_MODEL_HIGH_ACCURACY_*_JD_DAY`; roughly 1600-01-01 to 2200-01-01 TT).
-- Julian Day, Modified Julian Day, and SI-second views via `JD`, `MJD`, and
-  `J2000s` conversion targets on every built-in scale, including UTC's stored
-  instant axis.
+- Julian Day and Modified Julian Day coordinates via `JD` and `MJD` on each
+  scale's time axis. For UTC these are civil fractional-day coordinates using
+  86,400 nominal seconds per day (POSIX style); for TAI, TT, and other
+  continuous scales they remain coordinates on that scale's continuous axis.
+  UTC conversion requires `TimeContext` because it uses UTC-TAI data, and a
+  leap-second instant returns `ConversionError::InvalidLeapSecond` since it
+  cannot be uniquely represented by a POSIX-style day count. The internal
+  compensated J2000-second instant storage is unchanged.
 - Unix/POSIX timestamps via `UnixTime::try_new(sec).map(Into::into)` and `.try_to::<Unix>()`.
 - GPS transport values via `GpsTime::try_new(sec).map(Into::into)` and `.to::<GPS>()`.
 - Compiled time-data tables generated from official UTC-TAI and Delta T
@@ -172,6 +177,28 @@ UTC-TAI table. That separation lets the crate support both:
 
 - precise instant arithmetic and transport encodings
 - leap-second-aware civil conversions
+
+UTC JD/MJD values now follow that same civil mapping. Construct with
+`Time::<UTC, MJD>::try_new_with(day, &ctx)` and encode with
+`time.to_with::<MJD>(&ctx)?.try_raw_with(&ctx)?` (substitute `JD` as needed).
+The context controls time-data selection and the pre-1961 UTC policy. Previous
+code such as `Time::<UTC, MJD>::new(value)`, `time.to::<MJD>().raw()`, and
+`ModifiedJulianDate::<UTC>::new(value)` must migrate to these fallible APIs.
+UTC JD/MJD `.raw()` and `.new()` are intentionally unavailable; other
+continuous scales retain their infallible operations.
+
+Migration example for a numeric UTC MJD field:
+
+```rust,ignore
+// Before: interpreted the number on the continuous stored axis.
+let utc = ModifiedJulianDate::<UTC>::new(mjd);
+let mjd_back = utc.to::<MJD>().raw();
+
+// After: decode and encode the civil UTC day count with one context snapshot.
+let ctx = TimeContext::new();
+let utc = Time::<UTC, MJD>::try_new_with(Day::new(mjd), &ctx)?;
+let mjd_back = utc.to_with::<MJD>(&ctx)?.try_raw_with(&ctx)?;
+```
 
 The compiled modern ΔT series runs through MJD 63871 (`2033-10-01`). Beyond
 that date the built-in bundle stops and UT1 conversions fail with

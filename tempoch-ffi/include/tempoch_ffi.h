@@ -71,9 +71,9 @@ enum tempoch_format_tag_t
   : int32_t
 #endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
  {
-  // Julian Day.
+  // Julian Day; on UTC this is a civil UTC coordinate and conversion can fail.
   TEMPOCH_FORMAT_TAG_T_JD = 0,
-  // Modified Julian Day.
+  // Modified Julian Day; on UTC this is a civil UTC coordinate and conversion can fail.
   TEMPOCH_FORMAT_TAG_T_MJD = 1,
   // SI seconds since J2000 on the source scale axis.
   TEMPOCH_FORMAT_TAG_T_J2000_SECONDS = 2,
@@ -251,13 +251,13 @@ extern "C" {
 // First MJD covered by the built-in UTC-TAI segment table (1961-01-01).
  double tempoch_const_utc_defined_from_mjd(void);
 
-// GPS epoch as a Julian Day on the UTC axis (1980-01-06T00:00:00 UTC).
+// GPS epoch as a civil UTC Julian Day (1980-01-06T00:00:00 UTC).
  double tempoch_const_gps_epoch_jd_utc(void);
 
-// Unix epoch Julian Date on the UTC axis (`1970-01-01T00:00:00 UTC`).
+// Unix epoch civil UTC Julian Date (`1970-01-01T00:00:00 UTC`).
  double tempoch_const_unix_epoch_jd(void);
 
-// Unix epoch Modified Julian Day on the UTC axis.
+// Unix epoch civil UTC Modified Julian Day.
  double tempoch_const_unix_epoch_mjd(void);
 
 // GPS epoch expressed as a Julian Day on the TAI axis.
@@ -540,6 +540,10 @@ tempoch_status_t tempoch_time_scale_convert(struct tempoch_time_t value,
 
 // Encode a split instant in the requested public format.
 //
+// UTC JD/MJD use civil fractional days of 86,400 nominal seconds and require
+// the supplied context. A UTC leap-second instant cannot be encoded and
+// returns `TempochStatus::ConversionFailed`.
+//
 // # Safety
 // `out` must be a valid, writable pointer to `double`.
 
@@ -550,6 +554,9 @@ tempoch_status_t tempoch_time_to_format(struct tempoch_time_t value,
                                         double *out);
 
 // Decode a split instant from the requested public format.
+//
+// UTC JD/MJD inputs are civil UTC fractional days of 86,400 nominal seconds.
+// The supplied context controls UTC-TAI data and the pre-definition policy.
 //
 // # Safety
 // `out` must be a valid, writable pointer to `TempochTime`.

@@ -25,7 +25,7 @@ mod tests {
     #[cfg(any(test, feature = "runtime-data-fetch"))]
     use crate::archive::time::TimeDataError as InternalDataError;
     use crate::archive::time::{EopPoint, TimeDataBundle, TimeDataProvenance};
-    use crate::format::{JulianDate, Unix, JD};
+    use crate::format::{JulianDate, Unix, JD, MJD};
     use crate::qtty::{Arcsecond, Day, Millisecond, Second};
     use crate::{Time, TimeContext, TT, UT1, UTC};
     use chrono::DateTime;
@@ -302,9 +302,24 @@ mod tests {
                 before.raw_seconds_pair().0.value() + before.raw_seconds_pair().1.value();
             let after_value =
                 after.raw_seconds_pair().0.value() + after.raw_seconds_pair().1.value();
+            let civil_mjd = Day::new(60_000.0);
+            let before_civil = Time::<UTC, MJD>::try_new_with(civil_mjd, &ctx_before).unwrap();
+            let after_civil = Time::<UTC, MJD>::try_new_with(civil_mjd, &ctx_after).unwrap();
+            let before_encoded = before_civil
+                .to_with::<MJD>(&ctx_before)
+                .unwrap()
+                .try_raw_with(&ctx_before)
+                .unwrap();
+            let after_encoded = after_civil
+                .to_with::<MJD>(&ctx_after)
+                .unwrap()
+                .try_raw_with(&ctx_after)
+                .unwrap();
             set_active_time_data((*previous).clone());
 
             assert!((after_value - before_value).abs() > 0.1);
+            assert!((before_encoded - civil_mjd).abs() < Day::new(1e-9));
+            assert!((after_encoded - civil_mjd).abs() < Day::new(1e-9));
         });
     }
 

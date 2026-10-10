@@ -34,22 +34,22 @@ pub extern "C" fn tempoch_const_utc_defined_from_mjd() -> f64 {
     UTC_DEFINED_FROM_MJD_DAY.value()
 }
 
-/// GPS epoch as a Julian Day on the UTC axis (1980-01-06T00:00:00 UTC).
+/// GPS epoch as a civil UTC Julian Day (1980-01-06T00:00:00 UTC).
 #[no_mangle]
 pub extern "C" fn tempoch_const_gps_epoch_jd_utc() -> f64 {
     GPS_EPOCH_JD_UTC_DAY.value()
 }
 
-/// Unix epoch Julian Date on the UTC axis (`1970-01-01T00:00:00 UTC`).
+/// Unix epoch civil UTC Julian Date (`1970-01-01T00:00:00 UTC`).
 #[no_mangle]
 pub extern "C" fn tempoch_const_unix_epoch_jd() -> f64 {
     UNIX_EPOCH_JD_DAY.value()
 }
 
-/// Unix epoch Modified Julian Day on the UTC axis.
+/// Unix epoch civil UTC Modified Julian Day.
 #[no_mangle]
 pub extern "C" fn tempoch_const_unix_epoch_mjd() -> f64 {
-    tempoch::unix_epoch_mjd().raw().value()
+    UNIX_EPOCH_JD_DAY.value() - 2_400_000.5
 }
 
 /// GPS epoch expressed as a Julian Day on the TAI axis.

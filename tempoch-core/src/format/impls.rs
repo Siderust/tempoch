@@ -9,7 +9,7 @@ use crate::earth::context::TimeContext;
 use crate::encoding::{day_to_j2000_seconds, j2000_seconds_to_day};
 use crate::format::TimeFormat;
 use crate::foundation::error::ConversionError;
-use crate::model::scale::{CoordinateScale, TAI, UTC};
+use crate::model::scale::{ContinuousScale, CoordinateScale, TAI, UTC};
 use crate::model::time::Time;
 use crate::qtty::{Day, Second};
 
@@ -40,7 +40,7 @@ impl<S: CoordinateScale> InfallibleFormatForScale<S> for J2000s {
     }
 }
 
-impl<S: CoordinateScale> FormatForScale<S> for JD {
+impl<S: ContinuousScale> FormatForScale<S> for JD {
     #[inline]
     fn try_from_time<Fin: TimeFormat>(
         time: Time<S, Fin>,
@@ -55,7 +55,7 @@ impl<S: CoordinateScale> FormatForScale<S> for JD {
     }
 }
 
-impl<S: CoordinateScale> InfallibleFormatForScale<S> for JD {
+impl<S: ContinuousScale> InfallibleFormatForScale<S> for JD {
     #[inline]
     fn from_time<Fin: TimeFormat>(time: Time<S, Fin>) -> Day {
         j2000_seconds_to_day::<JD>(time.to_j2000s().raw_j2000_seconds())
@@ -69,7 +69,7 @@ impl<S: CoordinateScale> InfallibleFormatForScale<S> for JD {
     }
 }
 
-impl<S: CoordinateScale> FormatForScale<S> for MJD {
+impl<S: ContinuousScale> FormatForScale<S> for MJD {
     #[inline]
     fn try_from_time<Fin: TimeFormat>(
         time: Time<S, Fin>,
@@ -84,7 +84,7 @@ impl<S: CoordinateScale> FormatForScale<S> for MJD {
     }
 }
 
-impl<S: CoordinateScale> InfallibleFormatForScale<S> for MJD {
+impl<S: ContinuousScale> InfallibleFormatForScale<S> for MJD {
     #[inline]
     fn from_time<Fin: TimeFormat>(time: Time<S, Fin>) -> Day {
         j2000_seconds_to_day::<MJD>(time.to_j2000s().raw_j2000_seconds())
@@ -95,6 +95,52 @@ impl<S: CoordinateScale> InfallibleFormatForScale<S> for MJD {
         Time::<S, J2000s>::from_raw_j2000_seconds(day_to_j2000_seconds::<MJD>(raw))
             .expect("finite Modified Julian date must decode")
             .reinterpret()
+    }
+}
+
+impl FormatForScale<UTC> for MJD {
+    #[inline]
+    fn try_from_time<Fin: TimeFormat>(
+        time: Time<UTC, Fin>,
+        ctx: &TimeContext,
+    ) -> Result<Day, ConversionError> {
+        let unix = <Unix as FormatForScale<UTC>>::try_from_time(time, ctx)?;
+        Ok(crate::encoding::unix_seconds_to_mjd(unix))
+    }
+
+    #[inline]
+    fn try_into_time(raw: Day, ctx: &TimeContext) -> Result<Time<UTC, Self>, ConversionError> {
+        if !raw.value().is_finite() {
+            return Err(ConversionError::NonFinite);
+        }
+        let unix = crate::encoding::mjd_to_unix_seconds(raw);
+        if !unix.value().is_finite() {
+            return Err(ConversionError::NonFinite);
+        }
+        Time::<UTC, Unix>::try_new_with(unix, ctx).map(|t| t.reinterpret())
+    }
+}
+
+impl FormatForScale<UTC> for JD {
+    #[inline]
+    fn try_from_time<Fin: TimeFormat>(
+        time: Time<UTC, Fin>,
+        ctx: &TimeContext,
+    ) -> Result<Day, ConversionError> {
+        let mjd = <MJD as FormatForScale<UTC>>::try_from_time(time, ctx)?;
+        Ok(mjd + crate::foundation::constats::JD_MINUS_MJD)
+    }
+
+    #[inline]
+    fn try_into_time(raw: Day, ctx: &TimeContext) -> Result<Time<UTC, Self>, ConversionError> {
+        if !raw.value().is_finite() {
+            return Err(ConversionError::NonFinite);
+        }
+        <MJD as FormatForScale<UTC>>::try_into_time(
+            raw - crate::foundation::constats::JD_MINUS_MJD,
+            ctx,
+        )
+        .map(|t| t.reinterpret())
     }
 }
 

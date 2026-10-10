@@ -4,8 +4,8 @@ use serde_json::json;
 use tempoch::qtty::{Day, Second};
 use tempoch::{
     constats::{J2000_JD_TT_DAY, TT_MINUS_TAI},
-    ConversionError, CoordinateScale, J2000Seconds, J2000s, JulianDate, ModifiedJulianDate, Period,
-    Time, TimeContext, Unix, JD, MJD, TAI, TT, UT1, UTC,
+    ConversionError, J2000Seconds, J2000s, JulianDate, ModifiedJulianDate, Period, Time,
+    TimeContext, Unix, JD, MJD, TAI, TT, UT1, UTC,
 };
 
 #[test]
@@ -121,12 +121,14 @@ fn utc_leap_second_roundtrip_is_preserved() {
 
 #[test]
 fn utc_supports_coordinate_views_and_pre_1961_roundtrips() {
-    fn needs_coordinate_scale<S: CoordinateScale>(time: Time<S>) -> Day {
-        time.to::<MJD>().raw()
-    }
-
+    let ctx = TimeContext::new();
     let utc = J2000Seconds::<UTC>::new(0.0).to_j2000s();
-    assert_eq!(needs_coordinate_scale(utc), utc.to::<MJD>().raw());
+    let mjd_utc = utc
+        .to_with::<MJD>(&ctx)
+        .unwrap()
+        .try_raw_with(&ctx)
+        .unwrap();
+    assert!(mjd_utc.is_finite());
 
     let pre_1961 = DateTime::from_timestamp(-631_152_000, 500_000_000).unwrap();
 

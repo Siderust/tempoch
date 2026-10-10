@@ -483,7 +483,7 @@ impl<S: Scale, F: InfallibleFormatForScale<S>> Time<S, F> {
     }
 }
 
-impl<S: CoordinateScale, F: InfallibleFormatForScale<S>> Time<S, F> {
+impl<S: CoordinateScale, F: TimeFormat> Time<S, F> {
     #[inline]
     pub fn min(self, other: Self) -> Self {
         if self <= other {
@@ -535,7 +535,7 @@ impl<S: Scale> Time<S, crate::format::JD> {
     #[inline]
     pub fn value(self) -> f64
     where
-        S: CoordinateScale,
+        S: crate::model::scale::ContinuousScale,
     {
         self.raw().value()
     }
@@ -543,7 +543,7 @@ impl<S: Scale> Time<S, crate::format::JD> {
     #[inline]
     pub fn julian_centuries(self) -> f64
     where
-        S: CoordinateScale,
+        S: crate::model::scale::ContinuousScale,
     {
         jd_to_julian_centuries(self.raw())
     }
@@ -553,7 +553,7 @@ impl<S: Scale> Time<S, crate::format::MJD> {
     #[inline]
     pub fn value(self) -> f64
     where
-        S: CoordinateScale,
+        S: crate::model::scale::ContinuousScale,
     {
         self.raw().value()
     }
@@ -561,7 +561,7 @@ impl<S: Scale> Time<S, crate::format::MJD> {
 
 impl<S: CoordinateScale, F, U> Add<Quantity<U>> for Time<S, F>
 where
-    F: InfallibleFormatForScale<S>,
+    F: TimeFormat,
     U: TimeUnit,
 {
     type Output = Self;
@@ -577,7 +577,7 @@ where
 
 impl<S: CoordinateScale, F, U> Sub<Quantity<U>> for Time<S, F>
 where
-    F: InfallibleFormatForScale<S>,
+    F: TimeFormat,
     U: TimeUnit,
 {
     type Output = Self;
@@ -593,7 +593,7 @@ where
 
 impl<S: CoordinateScale, F> Sub for Time<S, F>
 where
-    F: InfallibleFormatForScale<S>,
+    F: TimeFormat,
     F::Unit: TimeUnit,
 {
     type Output = Quantity<F::Unit>;
@@ -607,7 +607,7 @@ where
 
 impl<S: CoordinateScale, F, U> AddAssign<Quantity<U>> for Time<S, F>
 where
-    F: InfallibleFormatForScale<S>,
+    F: TimeFormat,
     U: TimeUnit,
 {
     #[inline]
@@ -618,7 +618,7 @@ where
 
 impl<S: CoordinateScale, F, U> SubAssign<Quantity<U>> for Time<S, F>
 where
-    F: InfallibleFormatForScale<S>,
+    F: TimeFormat,
     U: TimeUnit,
 {
     #[inline]

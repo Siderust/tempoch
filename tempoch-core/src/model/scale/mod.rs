@@ -57,10 +57,13 @@ define_scale!(
     /// the same physical event. Scale conversion between them is therefore a
     /// numeric no-op at the storage layer.
     ///
-    /// UTC participates in [`CoordinateScale`], so `Time<UTC>` exposes the
-    /// same raw J2000/JD/MJD instant-axis helpers and second-based arithmetic
-    /// as the other built-in scales. Those operations act on the stored
-    /// continuous instant, not on a leap-second-labelled civil clock.
+    /// UTC participates in [`CoordinateScale`] for second-based instant
+    /// arithmetic. JD/MJD on UTC are civil fractional-day coordinates using
+    /// 86,400 nominal seconds per day; they require fallible, context-aware
+    /// conversion through UTC/Unix mapping. A leap-second instant cannot be
+    /// represented by these POSIX-style coordinates and returns
+    /// [`crate::ConversionError::InvalidLeapSecond`]. JD/MJD on continuous scales such
+    /// as TAI and TT remain direct scale-axis coordinates.
     ///
     /// UTC still does **not** implement [`ContinuousScale`]. Generic code that
     /// wants a scale with no civil semantics should keep using that stricter
@@ -74,6 +77,21 @@ define_scale!(
     ///
     /// * [`crate::Time::<UTC>::from_chrono`] / [`crate::Time::try_from_chrono`] / [`crate::Time::try_to_chrono`]
     /// * Unix time: `time.try_to::<`[`crate::Unix`]`>()` returns a [`crate::UnixTime`]
+    /// * Civil UTC MJD: `Time::<UTC, crate::MJD>::try_new_with(day, &ctx)` and
+    ///   `time.to_with::<crate::MJD>(&ctx)?.try_raw_with(&ctx)?`
+    ///
+    /// Infallible UTC JD/MJD operations do not compile. For example:
+    ///
+    /// ```compile_fail
+    /// use tempoch_core::{Time, UTC, MJD};
+    /// let _ = Time::<UTC, MJD>::new(51_544.0);
+    /// ```
+    ///
+    /// ```compile_fail
+    /// use tempoch_core::{Time, UTC, MJD};
+    /// let utc = Time::<UTC>::new(0.0);
+    /// let _ = utc.to::<MJD>().raw();
+    /// ```
     UTC = "UTC"
 );
 

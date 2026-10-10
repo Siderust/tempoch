@@ -9,7 +9,8 @@ use crate::qtty::unit;
 use super::time_format::TimeFormat;
 
 /// Julian Day (days since noon 1 January 4713 BC on the proleptic Julian
-/// calendar, TT axis by convention).
+/// calendar). On UTC, JD is the civil UTC coordinate with 86,400 nominal
+/// seconds per day and therefore requires fallible, context-aware conversion.
 #[derive(Debug, Copy, Clone)]
 pub struct JD;
 impl Sealed for JD {}
@@ -18,7 +19,9 @@ impl TimeFormat for JD {
     const NAME: &'static str = "JD";
 }
 
-/// Modified Julian Day (`JD − 2 400 000.5`).
+/// Modified Julian Day (`JD − 2 400 000.5`). On UTC, MJD is the civil UTC
+/// coordinate with 86,400 nominal seconds per day and requires fallible,
+/// context-aware conversion. A leap-second instant cannot be encoded.
 #[derive(Debug, Copy, Clone)]
 pub struct MJD;
 impl Sealed for MJD {}

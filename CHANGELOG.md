@@ -3,6 +3,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **BREAKING API/SEMANTIC CHANGE:** `Time<UTC, JD>` and `Time<UTC, MJD>` now
+  represent civil UTC JD/MJD using 86,400 nominal seconds per day. Construction
+  and extraction require fallible, context-aware APIs; leap-second instants
+  fail with `InvalidLeapSecond`. UTC no longer implements
+  `InfallibleFormatForScale<JD/MJD>`. Migrate `new()` to `try_new_with(value,
+  &ctx)` and `to::<JD/MJD>().raw()` to `to_with::<JD/MJD>(&ctx)?` followed by
+  `try_raw_with(&ctx)?`. JD/MJD semantics on TAI, TT, and other continuous
+  scales are unchanged. Consumers such as `nsb-service-ctao` can remove their
+  manual civil MJD-UTC/Unix adapters and use these native APIs.
+
 ## [0.7.0] - 2026-09-29
 
 ### Added
