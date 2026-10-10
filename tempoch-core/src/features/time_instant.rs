@@ -12,7 +12,10 @@ use crate::qtty::Second;
 
 /// Provides arithmetic on [`Time<S>`] values via seconds duration.
 ///
-/// Used by root-finding algorithms that bisect over a time interval.
+/// Used by root-finding algorithms that bisect over a time interval. For
+/// encoded JD/MJD values, arithmetic follows the underlying physical instant:
+/// adding one `Day` adds 86,400 SI seconds, not one civil calendar day. Across
+/// a UTC leap second those are different operations.
 pub trait TimeInstant: Copy + PartialOrd {
     /// Duration type produced by subtracting two instants.
     type Duration;
@@ -90,5 +93,16 @@ mod tests {
         let utc = ModifiedJulianDate::<UTC>::try_new_with(Day::new(57_753.0), &ctx).unwrap();
         let utc_later = utc.add_duration(Day::new(1.0));
         assert_eq!(utc_later.difference(&utc), Day::new(1.0));
+        let elapsed = utc_later.to_j2000s();
+        assert!(elapsed.is_leap_second_with(&ctx));
+
+        let next_midnight =
+            ModifiedJulianDate::<UTC>::try_new_with(Day::new(57_754.0), &ctx).unwrap();
+        let civil_day_elapsed = next_midnight.to_j2000s() - utc.to_j2000s();
+        assert_eq!(civil_day_elapsed, Second::new(86_401.0));
+        assert_eq!(
+            next_midnight.difference(&utc),
+            Day::new(86_401.0 / 86_400.0)
+        );
     }
 }

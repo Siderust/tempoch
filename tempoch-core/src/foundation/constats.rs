@@ -5,6 +5,11 @@
 //!
 //! Epoch **instants** are exposed as [`Time<S, F>`] via small `…_jd()`, `…_mjd()`,
 //! or `…_tai()` helpers so construction matches the normal [`crate::Time`] pathways.
+//! UTC epoch helpers decode their fixed civil labels using a fresh
+//! [`crate::TimeContext`] snapshot of the currently active time data. Their
+//! physical instant therefore follows the active UTC-TAI table; callers that
+//! need reproducibility against a previously captured context should decode
+//! the corresponding public `*_DAY` value with that context directly.
 //!
 //! `tempoch` owns astronomical epoch facts, time-scale offsets, and model
 //! horizons. Generic time units such as Julian years and Julian centuries
@@ -101,14 +106,14 @@ pub fn j2000_jd_tt() -> Time<TT, JD> {
     <JD as InfallibleFormatForScale<TT>>::into_time(J2000_JD_TT_DAY)
 }
 
-/// Unix epoch as [`Time<UTC, JD>`].
+/// Unix epoch as [`Time<UTC, JD>`], decoded using a fresh active-data snapshot.
 #[inline]
 pub fn unix_epoch_jd() -> Time<UTC, JD> {
     <JD as crate::FormatForScale<UTC>>::try_into_time(UNIX_EPOCH_JD_DAY, &crate::TimeContext::new())
         .expect("Unix epoch is a valid civil UTC JD")
 }
 
-/// Unix epoch as [`Time<UTC, MJD>`].
+/// Unix epoch as [`Time<UTC, MJD>`], decoded using a fresh active-data snapshot.
 #[inline]
 pub fn unix_epoch_mjd() -> Time<UTC, MJD> {
     <MJD as crate::FormatForScale<UTC>>::try_into_time(
@@ -118,7 +123,7 @@ pub fn unix_epoch_mjd() -> Time<UTC, MJD> {
     .expect("Unix epoch is a valid civil UTC MJD")
 }
 
-/// GPS epoch as [`Time<UTC, JD>`].
+/// GPS epoch as [`Time<UTC, JD>`], decoded using a fresh active-data snapshot.
 #[inline]
 pub fn gps_epoch_jd_utc() -> Time<UTC, JD> {
     <JD as crate::FormatForScale<UTC>>::try_into_time(
@@ -158,7 +163,7 @@ pub fn gps_epoch_tai() -> Time<TAI, J2000s> {
     <J2000s as InfallibleFormatForScale<TAI>>::into_time(gps_epoch_tai_seconds())
 }
 
-/// UTC definition boundary as [`Time<UTC, MJD>`].
+/// UTC definition boundary as [`Time<UTC, MJD>`], decoded using a fresh active-data snapshot.
 #[inline]
 pub fn utc_defined_from_mjd() -> Time<UTC, MJD> {
     <MJD as crate::FormatForScale<UTC>>::try_into_time(
