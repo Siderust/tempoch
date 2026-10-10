@@ -22,7 +22,7 @@ use affn::algebra::{Space, SplitPoint1, SplitQuantity};
 /// Split-axis scalars must not be NaN; ±∞ may be stored but many conversions still reject them.
 #[inline]
 fn coordinate_pair_ok(hi: f64, lo: f64) -> bool {
-    !hi.is_nan() && !lo.is_nan()
+    !hi.is_nan() && !lo.is_nan() && !(hi + lo).is_nan()
 }
 
 #[derive(Copy, Clone)]
@@ -145,7 +145,16 @@ impl<S: Scale, F: TimeFormat> Time<S, F> {
             coordinate_pair_ok(hi.value(), lo.value()),
             "time split pair must not contain NaN"
         );
-        let instant = SplitPoint1::new(hi, lo);
+        // Compensated normalization assumes finite inputs: its error term
+        // would subtract infinity from itself. Store sentinels canonically.
+        let instant = if hi.is_infinite() || lo.is_infinite() {
+            SplitPoint1::from_split(SplitQuantity::from_normalized_parts(
+                hi + lo,
+                Second::new(0.0),
+            ))
+        } else {
+            SplitPoint1::new(hi, lo)
+        };
         let (hi, lo) = instant.coordinate().pair();
         debug_assert!(
             coordinate_pair_ok(hi.value(), lo.value()),
@@ -521,11 +530,21 @@ impl Time<TT, crate::format::JD> {
 }
 
 impl<S: Scale> Time<S, crate::format::JD> {
-    /// TT J2000.0 as a Julian Date on scale `S` (JD 2 451 545.0).
+    /// The coordinate `JD 2 451 545.0` on continuous scale `S`.
+    ///
+    /// On TT this is the J2000.0 epoch and equals [`Time::JD_EPOCH_J2000_0`].
+    /// On other continuous scales it is that scale's coordinate origin, which
+    /// need not denote the same physical instant as J2000.0 TT.
+    /// Civil UTC requires a fallible, context-backed construction instead.
+    ///
+    /// ```compile_fail
+    /// use tempoch_core::{JulianDate, UTC};
+    /// let _ = JulianDate::<UTC>::jd_epoch_tt();
+    /// ```
     #[inline]
     pub fn jd_epoch_tt() -> Self
     where
-        S: CoordinateScale,
+        S: crate::model::scale::ContinuousScale,
     {
         Time::<S, J2000s>::from_raw_j2000_seconds(Second::new(0.0))
             .expect("J2000 origin")
@@ -635,6 +654,47 @@ mod tests {
     use crate::model::scale::TAI;
 
     type TaiJ2000 = Time<TAI, J2000s>;
+
+    #[test]
+    fn split_storage_preserves_infinity_and_rejects_indeterminate_pairs() {
+        for infinite in [f64::INFINITY, f64::NEG_INFINITY] {
+            for (hi, lo) in [(infinite, 0.0), (0.0, infinite), (infinite, infinite)] {
+                let time =
+                    TaiJ2000::try_from_raw_j2000_seconds_split(Second::new(hi), Second::new(lo))
+                        .unwrap();
+                assert_eq!(
+                    time.raw_seconds_pair(),
+                    (Second::new(infinite), Second::new(0.0))
+                );
+                assert_eq!(time.raw().value(), infinite);
+            }
+        }
+        for (hi, lo) in [
+            (f64::INFINITY, f64::NEG_INFINITY),
+            (f64::NEG_INFINITY, f64::INFINITY),
+            (f64::NAN, 0.0),
+            (0.0, f64::NAN),
+        ] {
+            assert_eq!(
+                TaiJ2000::try_from_raw_j2000_seconds_split(Second::new(hi), Second::new(lo)),
+                Err(ConversionError::NonFinite)
+            );
+        }
+    }
+
+    #[test]
+    fn jd_epoch_tt_is_the_continuous_scales_coordinate_origin() {
+        let tt = Time::<TT, crate::JD>::jd_epoch_tt();
+        let tai = Time::<TAI, crate::JD>::jd_epoch_tt();
+        assert_eq!(tt, Time::<TT, crate::JD>::JD_EPOCH_J2000_0);
+        assert_eq!(tt.raw(), crate::constats::J2000_JD_TT_DAY);
+        assert_eq!(tai.raw(), crate::constats::J2000_JD_TT_DAY);
+        // Equal scale coordinates are not equal physical instants.
+        assert_eq!(
+            (tai.to::<TT>().to_j2000s() - tt.to_j2000s()).value(),
+            32.184
+        );
+    }
 
     fn j2000_tai() -> TaiJ2000 {
         TaiJ2000::from_raw_j2000_seconds(Second::new(0.0)).unwrap()

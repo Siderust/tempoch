@@ -557,6 +557,8 @@ tempoch_status_t tempoch_time_to_format(struct tempoch_time_t value,
 //
 // UTC JD/MJD inputs are civil UTC fractional days of 86,400 nominal seconds.
 // The supplied context controls UTC-TAI data and the pre-definition policy.
+// JD/MJD on continuous scales accept ±infinity as sentinels; civil UTC
+// requires finite values. NaN is rejected for every scale.
 //
 // # Safety
 // `out` must be a valid, writable pointer to `TempochTime`.

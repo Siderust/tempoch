@@ -61,10 +61,15 @@ Typed astronomical time primitives for Rust.
 - GPS transport values via `GpsTime::try_new(sec).map(Into::into)` and `.to::<GPS>()`.
 - Compiled time-data tables generated from official UTC-TAI and Delta T
   sources.
-- Optional `serde` support for `Time<S>` as `{"hi","lo"}` and
+- Optional `serde` support for `Time<S, F>` as the format's scalar quantity and
   `Period<S>` / `Interval<T>` as `{start, end}` objects, plus explicit
   `tempoch::tagged::{TaggedTime, TaggedPeriod}` wrappers when the payload must
-  carry the scale name.
+  carry the scale name and compensated split seconds. UTC JD/MJD scalars use
+  civil coordinates and report conversion failures as Serde errors. Each
+  Serde operation captures a fresh default `TimeContext`; the time-data
+  snapshot is not stored in the payload. For reproducible conversion with a
+  fixed context, serialize `time.try_raw_with(&ctx)?` and decode the quantity
+  with `Time::try_new_with(raw, &ctx)`.
 - Automatic runtime freshness backed by a cached time-data bundle, while
   keeping the same public API.
 - Public typed epochs under `tempoch::constats`: [`Time`] helpers such as
@@ -128,9 +133,9 @@ small correction is combined with a value on the order of `1e9` seconds.
 `(hi, lo)` whose sum is the represented instant. The high part carries the
 epoch-sized component; the low part preserves the small remainder.
 
-This is why `Time<S>` serializes as `{"hi","lo"}` with `serde`, and why the
-crate reuses `affn::SplitQuantity` / `SplitPoint1` instead of a plain scalar
-field.
+The crate reuses `affn::SplitQuantity` / `SplitPoint1` to preserve this pair.
+Scalar Serde encodings project it into the selected format's `f64` coordinate;
+`tagged::TaggedTime<S>` preserves both components in its payload.
 
 ### Why J2000 seconds are canonical
 
@@ -244,11 +249,16 @@ Bundled IERS tables come from `siderust-archive` 0.1.5+, which is itself
 
 With the `serde` feature enabled:
 
-- `Time<S>` serializes as `{"hi": ..., "lo": ...}`.
+- `Time<S, F>` serializes as the format's scalar quantity; `Time<S>` uses
+  J2000 seconds.
 - `Period<S>` serializes as `{"start": ..., "end": ...}`.
 - The scale remains type-level and is not embedded in the payload.
 - `tagged::TaggedTime<S>` and `tagged::TaggedPeriod<S>` serialize with an
-  explicit `"scale"` field for interchange payloads.
+  explicit `"scale"` field and compensated split seconds for interchange payloads.
+- UTC JD/MJD Serde captures fresh default time data per operation and returns
+  Serde errors for leap-second encoding, pre-definition UTC, and unusable
+  coordinates. Serialize an explicitly converted quantity when a fixed
+  `TimeContext` is required.
 
 ```rust
 use qtty::Second;
@@ -263,10 +273,10 @@ let period = Period::<TT>::new(
     J2000Seconds::<TT>::try_new(Second::new(43.5)).unwrap(),
 );
 
-assert_eq!(serde_json::to_string(&tt).unwrap(), r#"{"hi":42.5,"lo":0.0}"#);
+assert_eq!(serde_json::to_string(&tt).unwrap(), "42.5");
 assert_eq!(
     serde_json::to_string(&period).unwrap(),
-    r#"{"start":{"hi":42.5,"lo":0.0},"end":{"hi":43.5,"lo":0.0}}"#
+    r#"{"start":42.5,"end":43.5}"#
 );
 assert_eq!(
     serde_json::to_string(&TaggedTime(tt)).unwrap(),

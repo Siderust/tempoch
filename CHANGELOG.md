@@ -15,6 +15,17 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   `try_raw_with(&ctx)?`. JD/MJD semantics on TAI, TT, and other continuous
   scales are unchanged. Consumers such as `nsb-service-ctao` can remove their
   manual civil MJD-UTC/Unix adapters and use these native APIs.
+- `jd_epoch_tt()` now requires a continuous scale: it denotes that scale's
+  `JD 2_451_545.0` coordinate, matching the TT J2000 epoch only on TT.
+- UTC JD/MJD Serde uses civil scalars and a fresh default context for each
+  operation. Conversion failures, including leap-second encoding, become
+  Serde errors; reproducible data snapshots require explicit scalar conversion
+  with a caller-supplied context.
+
+### Fixed
+- Preserve infinite JD/MJD sentinels on continuous scales in the FFI and
+  normalize infinite instant storage without producing a NaN error component.
+- Keep `ExactDuration` Serde error handling available in `no_std + alloc` builds.
 
 ## [0.7.0] - 2026-09-29
 

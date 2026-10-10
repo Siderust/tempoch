@@ -250,8 +250,12 @@ macro_rules! convert_infallible_to_target {
 macro_rules! encode_coordinate_format {
     ($time:expr, $format:expr, $ctx:expr) => {
         match $format {
-            TempochFormatTag::JD => Ok($time.to_with::<JD>($ctx)?.try_raw_with($ctx)?.value()),
-            TempochFormatTag::MJD => Ok($time.to_with::<MJD>($ctx)?.try_raw_with($ctx)?.value()),
+            TempochFormatTag::JD => {
+                Ok(<JD as FormatForScale<_>>::try_from_time($time, $ctx)?.value())
+            }
+            TempochFormatTag::MJD => {
+                Ok(<MJD as FormatForScale<_>>::try_from_time($time, $ctx)?.value())
+            }
             TempochFormatTag::J2000Seconds => Ok($time.to::<tempoch::J2000s>().raw().value()),
             TempochFormatTag::Unix => encode_unix_from_utc_time($time.to::<UTC>(), $ctx),
             TempochFormatTag::GPS => encode_gps_from_tai_time($time.to::<TAI>()),
@@ -264,30 +268,11 @@ where
     S: tempoch::Scale,
     F: tempoch::TimeFormat<Unit = qtty::unit::Day> + FormatForScale<S>,
 {
-    if !raw.is_finite() {
+    if raw.is_nan() {
         return Err(ConversionError::NonFinite);
     }
     <F as FormatForScale<S>>::try_into_time(Day::new(raw), ctx)
         .map(|time| TempochTime::from_time(time.to_j2000s()))
-}
-
-macro_rules! decode_day_for_scale {
-    ($tag:expr, $F:ty, $raw:expr, $ctx:expr) => {{
-        match $tag {
-            TempochScaleTag::TT => decode_day::<TT, $F>($raw, $ctx),
-            TempochScaleTag::TAI => decode_day::<TAI, $F>($raw, $ctx),
-            TempochScaleTag::UTC => decode_day::<UTC, $F>($raw, $ctx),
-            TempochScaleTag::UT1 => decode_day::<UT1, $F>($raw, $ctx),
-            TempochScaleTag::TDB => decode_day::<TDB, $F>($raw, $ctx),
-            TempochScaleTag::TCG => decode_day::<TCG, $F>($raw, $ctx),
-            TempochScaleTag::TCB => decode_day::<TCB, $F>($raw, $ctx),
-            TempochScaleTag::ET => decode_day::<ET, $F>($raw, $ctx),
-            TempochScaleTag::GPST => decode_day::<GPST, $F>($raw, $ctx),
-            TempochScaleTag::GST => decode_day::<GST, $F>($raw, $ctx),
-            TempochScaleTag::BDT => decode_day::<BDT, $F>($raw, $ctx),
-            TempochScaleTag::QZSST => decode_day::<QZSST, $F>($raw, $ctx),
-        }
-    }};
 }
 
 fn decode_unix_to_target(
@@ -387,8 +372,8 @@ fn encode_time_ut1(
 ) -> Result<f64, ConversionError> {
     let time = split_time::<UT1>(raw)?;
     match format {
-        TempochFormatTag::JD => Ok(time.to_with::<JD>(ctx)?.try_raw_with(ctx)?.value()),
-        TempochFormatTag::MJD => Ok(time.to_with::<MJD>(ctx)?.try_raw_with(ctx)?.value()),
+        TempochFormatTag::JD => Ok(<JD as FormatForScale<_>>::try_from_time(time, ctx)?.value()),
+        TempochFormatTag::MJD => Ok(<MJD as FormatForScale<_>>::try_from_time(time, ctx)?.value()),
         TempochFormatTag::J2000Seconds => Ok(time.to::<tempoch::J2000s>().raw().value()),
         TempochFormatTag::Unix => encode_unix_from_utc_time(time.to_with::<UTC>(ctx)?, ctx),
         TempochFormatTag::GPS => encode_gps_from_tai_time(time.to_with::<TAI>(ctx)?),
@@ -532,6 +517,8 @@ pub unsafe extern "C" fn tempoch_time_to_format(
 ///
 /// UTC JD/MJD inputs are civil UTC fractional days of 86,400 nominal seconds.
 /// The supplied context controls UTC-TAI data and the pre-definition policy.
+/// JD/MJD on continuous scales accept ±infinity as sentinels; civil UTC
+/// requires finite values. NaN is rejected for every scale.
 ///
 /// # Safety
 /// `out` must be a valid, writable pointer to `TempochTime`.
@@ -555,8 +542,12 @@ pub unsafe extern "C" fn tempoch_time_from_format(
         };
         let ctx = unsafe { context_or_default(context) };
         let decoded = match format {
-            TempochFormatTag::JD => decode_day_for_scale!(scale, JD, raw, ctx.as_ref()),
-            TempochFormatTag::MJD => decode_day_for_scale!(scale, MJD, raw, ctx.as_ref()),
+            TempochFormatTag::JD => {
+                with_scale!(scale, Scale, { decode_day::<Scale, JD>(raw, ctx.as_ref()) })
+            }
+            TempochFormatTag::MJD => with_scale!(scale, Scale, {
+                decode_day::<Scale, MJD>(raw, ctx.as_ref())
+            }),
             TempochFormatTag::J2000Seconds => with_scale!(scale, Scale, {
                 if raw.is_nan() {
                     Err(ConversionError::NonFinite)
@@ -960,6 +951,131 @@ mod tests {
             unsafe { tempoch_time_to_format(value, 2, 1, ptr::null(), &mut mjd) },
             TempochStatus::ConversionFailed
         );
+    }
+
+    #[test]
+    fn jd_mjd_decoding_preserves_scale_validation_and_infinite_sentinels() {
+        for scale in 0..=TempochScaleTag::QZSST as i32 {
+            for (format, finite) in [
+                (TempochFormatTag::JD, 2_457_754.5),
+                (TempochFormatTag::MJD, 57_754.0),
+            ] {
+                for raw in [finite, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+                    let mut output = TempochTime {
+                        hi_seconds: 123.0,
+                        lo_seconds: 0.0,
+                    };
+                    let status = unsafe {
+                        tempoch_time_from_format(
+                            raw,
+                            scale,
+                            format as i32,
+                            ptr::null(),
+                            &mut output,
+                        )
+                    };
+                    if raw.is_nan() || (scale == TempochScaleTag::UTC as i32 && raw.is_infinite()) {
+                        assert_eq!(
+                            status,
+                            TempochStatus::ConversionFailed,
+                            "scale {scale}, format {format:?}, {raw}"
+                        );
+                        assert_eq!(output.hi_seconds, 123.0);
+                        assert_eq!(output.lo_seconds, 0.0);
+                    } else {
+                        assert_eq!(
+                            status,
+                            TempochStatus::Ok,
+                            "scale {scale}, format {format:?}, {raw}"
+                        );
+                        let mut encoded = 0.0;
+                        assert_eq!(
+                            unsafe {
+                                tempoch_time_to_format(
+                                    output,
+                                    scale,
+                                    format as i32,
+                                    ptr::null(),
+                                    &mut encoded,
+                                )
+                            },
+                            TempochStatus::Ok
+                        );
+                        if raw.is_infinite() {
+                            assert_eq!(encoded, raw);
+                        } else {
+                            assert!((encoded - raw).abs() < 1e-9);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn utc_day_ffi_uses_the_supplied_context_policy_in_both_directions() {
+        let context = TempochContext {
+            inner: TimeContext::new().allow_pre_definition_utc(),
+        };
+        for (format, raw) in [
+            (TempochFormatTag::JD, 2_437_299.5),
+            (TempochFormatTag::MJD, 37_299.0),
+        ] {
+            let mut output = TempochTime {
+                hi_seconds: 0.0,
+                lo_seconds: 0.0,
+            };
+            assert_eq!(
+                unsafe {
+                    tempoch_time_from_format(
+                        raw,
+                        TempochScaleTag::UTC as i32,
+                        format as i32,
+                        ptr::null(),
+                        &mut output,
+                    )
+                },
+                TempochStatus::ConversionFailed
+            );
+            assert_eq!(
+                unsafe {
+                    tempoch_time_from_format(
+                        raw,
+                        TempochScaleTag::UTC as i32,
+                        format as i32,
+                        &context,
+                        &mut output,
+                    )
+                },
+                TempochStatus::Ok
+            );
+            let mut encoded = 0.0;
+            assert_eq!(
+                unsafe {
+                    tempoch_time_to_format(
+                        output,
+                        TempochScaleTag::UTC as i32,
+                        format as i32,
+                        ptr::null(),
+                        &mut encoded,
+                    )
+                },
+                TempochStatus::ConversionFailed
+            );
+            assert_eq!(
+                unsafe {
+                    tempoch_time_to_format(
+                        output,
+                        TempochScaleTag::UTC as i32,
+                        format as i32,
+                        &context,
+                        &mut encoded,
+                    )
+                },
+                TempochStatus::Ok
+            );
+            assert!((encoded - raw).abs() < 1e-9);
+        }
     }
 
     #[test]

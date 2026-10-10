@@ -92,6 +92,20 @@ define_scale!(
     /// let utc = Time::<UTC>::new(0.0);
     /// let _ = utc.to::<MJD>().raw();
     /// ```
+    ///
+    /// Changing the phantom format cannot bypass fallible scalar extraction:
+    ///
+    /// ```compile_fail
+    /// use tempoch_core::{Time, UTC, JD};
+    /// let utc = Time::<UTC>::new(0.0);
+    /// let _ = utc.reinterpret::<JD>().raw();
+    /// ```
+    ///
+    /// ```compile_fail
+    /// use tempoch_core::{Time, UTC, MJD};
+    /// let utc = Time::<UTC>::new(0.0);
+    /// let _ = utc.reinterpret::<MJD>().value();
+    /// ```
     UTC = "UTC"
 );
 

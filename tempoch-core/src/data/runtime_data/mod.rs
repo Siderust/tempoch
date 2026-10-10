@@ -315,6 +315,18 @@ mod tests {
                 .unwrap()
                 .try_raw_with(&ctx_after)
                 .unwrap();
+            #[cfg(feature = "serde")]
+            {
+                // Scalar Serde captures fresh data rather than ctx_before.
+                let encoded = serde_json::to_value(before_civil)
+                    .unwrap()
+                    .as_f64()
+                    .unwrap();
+                assert!((encoded - civil_mjd.value() + 1.0 / 86_400.0).abs() < 1e-9);
+                let decoded: Time<UTC, MJD> =
+                    serde_json::from_value(serde_json::json!(civil_mjd.value())).unwrap();
+                assert_eq!(decoded.to_j2000s(), after_civil.to_j2000s());
+            }
             set_active_time_data((*previous).clone());
 
             assert!((after_value - before_value).abs() > 0.1);
