@@ -3,6 +3,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.8.0] - 2026-10-10
+
+### Changed
+- **BREAKING API/SEMANTIC CHANGE:** `Time<UTC, JD>` and `Time<UTC, MJD>` now
+  represent civil UTC JD/MJD using 86,400 nominal seconds per day. Construction
+  and extraction require fallible, context-aware APIs; leap-second instants
+  fail with `InvalidLeapSecond`. JD/MJD no longer implement
+  `InfallibleFormatForScale<UTC>`. Migrate `new()` to `try_new_with(value,
+  &ctx)` and `to::<JD/MJD>().raw()` to `to_with::<JD/MJD>(&ctx)?` followed by
+  `try_raw_with(&ctx)?`. JD/MJD semantics on TAI, TT, and other continuous
+  scales are unchanged. Consumers such as `nsb-service-ctao` can remove their
+  manual civil MJD-UTC/Unix adapters and use these native APIs.
+- `jd_epoch_tt()` now requires a continuous scale: it denotes that scale's
+  `JD 2_451_545.0` coordinate, matching the TT J2000 epoch only on TT.
+- UTC JD/MJD Serde uses civil scalars and a fresh default context for each
+  operation. Conversion failures, including leap-second encoding, become
+  Serde errors; reproducible data snapshots require explicit scalar conversion
+  with a caller-supplied context.
+
+- Bumped `tempoch`, `tempoch-core`, and `tempoch-ffi` to `0.8.0`, synchronized
+  internal dependency constraints, and advanced the FFI ABI version to `800`.
+
+### Fixed
+- Preserve infinite JD/MJD sentinels on continuous scales in the FFI and
+  normalize infinite instant storage without producing a NaN error component.
+- Keep `ExactDuration` Serde error handling available in `no_std + alloc` builds.
+
 ## [0.7.0] - 2026-09-29
 
 ### Added

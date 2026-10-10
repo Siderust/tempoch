@@ -120,7 +120,10 @@ mod tests {
     #[test]
     fn encoded_time_clone_matches_original() {
         let jd = JulianDate::<TT>::new(2_451_545.0);
-        let cloned = <JulianDate<TT> as Clone>::clone(&jd);
+        fn clone_via_trait<T: Clone>(value: &T) -> T {
+            T::clone(value)
+        }
+        let cloned = clone_via_trait(&jd);
         assert_eq!(jd.raw(), cloned.raw());
     }
 
@@ -172,7 +175,7 @@ mod tests {
     #[test]
     fn encoded_time_to_with_for_unix() {
         let ctx = TimeContext::new();
-        let jd = JulianDate::<UTC>::new(2_451_545.0);
+        let jd = JulianDate::<UTC>::try_new_with(Day::new(2_451_545.0), &ctx).unwrap();
         let unix: UnixTime = jd.to_with::<Unix>(&ctx).unwrap();
         let unix_sec = unix.try_raw_with(&ctx).unwrap();
         assert!(unix_sec.value().is_finite());
@@ -275,7 +278,7 @@ mod tests {
     #[test]
     fn unix_context_conversion_target() {
         let ctx = TimeContext::new();
-        let jd = JulianDate::<UTC>::new(2_451_545.0);
+        let jd = JulianDate::<UTC>::try_new_with(Day::new(2_451_545.0), &ctx).unwrap();
         let utc_time = jd.to_j2000s();
         let unix: crate::model::time::Time<UTC, Unix> =
             <Unix as crate::model::target::ContextConversionTarget<
@@ -301,15 +304,16 @@ mod tests {
         fn accept_tt(x: JulianDate<TT>) -> Day {
             x.raw()
         }
-        fn accept_utc(x: JulianDate<UTC>) -> Day {
-            x.raw()
+        fn accept_utc(x: JulianDate<UTC>) -> Result<Day, crate::ConversionError> {
+            x.try_raw_with(&TimeContext::new())
         }
 
         let tt_jd = JulianDate::<TT>::new(2_451_545.0);
-        let utc_jd = JulianDate::<UTC>::new(2_451_545.0);
+        let utc_jd =
+            JulianDate::<UTC>::try_new_with(Day::new(2_451_545.0), &TimeContext::new()).unwrap();
 
         let _ = accept_tt(tt_jd);
-        let _ = accept_utc(utc_jd);
+        assert!(accept_utc(utc_jd).is_ok());
     }
 
     #[test]
@@ -319,6 +323,141 @@ mod tests {
         assert_eq!(J2000s::NAME, "J2000s");
         assert_eq!(Unix::NAME, "Unix");
         assert_eq!(GPS::NAME, "GPS");
+    }
+
+    #[test]
+    fn utc_jd_mjd_use_civil_days_and_roundtrip() {
+        let ctx = TimeContext::new();
+        let cases = [
+            (51_544.0, 946_684_800_i64),
+            (57_753.0, 1_483_142_400_i64),
+            (57_754.0, 1_483_228_800_i64),
+            (61_771.25, 1_830_319_200_i64),
+        ];
+        for (mjd, unix) in cases {
+            let utc = crate::Time::<UTC, MJD>::try_new_with(Day::new(mjd), &ctx).unwrap();
+            let label = utc.try_to_chrono_with(&ctx).unwrap();
+            assert_eq!(label.timestamp(), unix, "MJD {mjd}");
+            let expected = ::chrono::DateTime::from_timestamp(unix, 0).unwrap();
+            assert!(
+                label
+                    .signed_duration_since(expected)
+                    .num_nanoseconds()
+                    .unwrap()
+                    .abs()
+                    <= 50_000,
+                "MJD {mjd}: {label}"
+            );
+
+            let back = utc
+                .to_with::<MJD>(&ctx)
+                .unwrap()
+                .try_raw_with(&ctx)
+                .unwrap();
+            assert!((back.value() - mjd).abs() < 1e-9, "MJD {mjd}: {back}");
+
+            let jd =
+                crate::Time::<UTC, JD>::try_new_with(Day::new(mjd + 2_400_000.5), &ctx).unwrap();
+            let jd_back = jd.to_with::<JD>(&ctx).unwrap().try_raw_with(&ctx).unwrap();
+            assert!((jd_back.value() - (mjd + 2_400_000.5)).abs() < 1e-9);
+            assert_eq!(utc.to_j2000s(), jd.to_j2000s());
+            assert!((jd_back.value() - back.value() - 2_400_000.5).abs() < 1e-9);
+        }
+
+        // JD near 2.4 million has an ULP of about 40 microseconds; MJD near
+        // 60,000 has an ULP below one microsecond. Unix-second conversion and
+        // the compensated J2000 representation add rounding, so civil labels
+        // are checked within 50 microseconds, not at impossible nanosecond
+        // precision. The exact fractional-day cases below remain far tighter
+        // than the old one-second tolerance.
+        let fractional_cases = [
+            (57_753.5, 1_483_185_600_i64, 0_u32),
+            (57_753.999_999, 1_483_228_799_i64, 913_600_000_u32),
+            (57_754.000_000_001, 1_483_228_800_i64, 86_400_u32),
+            (61_771.25, 1_830_319_200_i64, 0_u32),
+        ];
+        for (mjd, seconds, nanos) in fractional_cases {
+            let time = crate::Time::<UTC, MJD>::try_new_with(Day::new(mjd), &ctx).unwrap();
+            let actual = time.try_to_chrono_with(&ctx).unwrap();
+            let expected = ::chrono::DateTime::from_timestamp(seconds, nanos).unwrap();
+            let delta = actual
+                .signed_duration_since(expected)
+                .num_nanoseconds()
+                .unwrap();
+            assert!(
+                delta.abs() <= 50_000,
+                "MJD {mjd}: {actual} vs {expected} ({delta}ns)"
+            );
+        }
+
+        let mjd = crate::Time::<UTC, MJD>::try_new_with(Day::new(57_753.5), &ctx).unwrap();
+        let jd = crate::Time::<UTC, JD>::try_new_with(Day::new(2_457_754.0), &ctx).unwrap();
+        let jd_from_mjd = mjd.to_with::<JD>(&ctx).unwrap().try_raw_with(&ctx).unwrap();
+        let mjd_from_jd = jd.to_with::<MJD>(&ctx).unwrap().try_raw_with(&ctx).unwrap();
+        // The JD coordinate's ~40 µs ULP dominates this cross-format path.
+        assert!((jd_from_mjd.value() - 2_457_754.0).abs() < 2e-9);
+        assert!((mjd_from_jd.value() - 57_753.5).abs() < 1e-9);
+        let utc_2017 = crate::Time::<UTC, MJD>::try_new_with(Day::new(57_754.0), &ctx).unwrap();
+        let tai = utc_2017.to::<TAI>();
+        assert_eq!(
+            tai.to_j2000s().raw_seconds_pair(),
+            utc_2017.to_j2000s().raw_seconds_pair()
+        );
+        let tai_mjd = tai.to::<MJD>().raw();
+        assert!((tai_mjd.value() - (57_754.0 + 37.0 / 86_400.0)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn utc_jd_mjd_handle_leap_boundary_without_aliasing() {
+        let ctx = TimeContext::new();
+        let before =
+            crate::Time::<UTC, MJD>::try_new_with(Day::new(57_753.0 + 86_399.5 / 86_400.0), &ctx)
+                .unwrap();
+        assert_eq!(
+            before.try_to_chrono_with(&ctx).unwrap().timestamp(),
+            1_483_228_799
+        );
+        let midnight = crate::Time::<UTC, MJD>::try_new_with(Day::new(57_754.0), &ctx).unwrap();
+        let midnight_label = midnight.try_to_chrono_with(&ctx).unwrap();
+        assert_eq!(midnight_label.timestamp(), 1_483_228_800);
+        assert!(midnight_label.timestamp_subsec_nanos() <= 50_000);
+
+        let leap_label = ::chrono::DateTime::parse_from_rfc3339("2016-12-31T23:59:60Z")
+            .unwrap()
+            .with_timezone(&::chrono::Utc);
+        let leap = crate::Time::<UTC>::try_from_chrono(leap_label).unwrap();
+        assert!(matches!(
+            leap.to_with::<MJD>(&ctx),
+            Err(crate::ConversionError::InvalidLeapSecond)
+        ));
+        assert!(matches!(
+            leap.to_with::<JD>(&ctx),
+            Err(crate::ConversionError::InvalidLeapSecond)
+        ));
+    }
+
+    #[test]
+    fn utc_jd_mjd_reject_nonfinite_and_obey_predefinition_policy() {
+        let ctx = TimeContext::new();
+        assert!(matches!(
+            crate::Time::<UTC, MJD>::try_new_with(Day::new(f64::NAN), &ctx),
+            Err(crate::ConversionError::NonFinite)
+        ));
+        assert!(matches!(
+            crate::Time::<UTC, JD>::try_new_with(Day::new(f64::INFINITY), &ctx),
+            Err(crate::ConversionError::NonFinite)
+        ));
+        assert!(matches!(
+            crate::Time::<UTC, MJD>::try_new_with(Day::new(f64::MAX), &ctx),
+            Err(crate::ConversionError::NonFinite)
+        ));
+        assert!(matches!(
+            crate::Time::<UTC, MJD>::try_new_with(Day::new(37_299.0), &ctx),
+            Err(crate::ConversionError::UtcBeforeDefinition)
+        ));
+        let permissive = ctx.allow_pre_definition_utc();
+        let old = crate::Time::<UTC, MJD>::try_new_with(Day::new(37_299.0), &permissive).unwrap();
+        assert!((old.try_raw_with(&permissive).unwrap().value() - 37_299.0).abs() < 1e-9);
     }
 
     #[test]

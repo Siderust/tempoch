@@ -576,7 +576,7 @@ mod serde_impl {
         fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
             let (sec, ns) = self
                 .as_seconds_i64_nanos_checked()
-                .map_err(|e| serde::ser::Error::custom(e.to_string()))?;
+                .map_err(serde::ser::Error::custom)?;
             Boundary { sec, ns }.serialize(serializer)
         }
     }
@@ -585,7 +585,7 @@ mod serde_impl {
         fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
             let b = Boundary::deserialize(deserializer)?;
             ExactDuration::from_canonical_seconds_nanos(b.sec, b.ns)
-                .map_err(|e| serde::de::Error::custom(e.to_string()))
+                .map_err(serde::de::Error::custom)
         }
     }
 }

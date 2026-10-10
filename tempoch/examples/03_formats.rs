@@ -27,7 +27,12 @@ fn main() {
     println!("J2000 from JD     : {:.9}", j2000_from_jd.to::<J2000s>());
     println!("Unix epoch JD(TT) : {:.9}", unix_epoch_jd.to::<JD>());
     println!("Half-day JD(TT)   : {:.9}", half_day_jd.to::<JD>());
-    println!("Unix epoch MJD(UTC): {:.9}", unix_epoch_mjd.to::<MJD>());
+    println!(
+        "Unix epoch MJD(UTC): {:.9}",
+        unix_epoch_mjd
+            .try_raw_with(&tempoch::TimeContext::new())
+            .unwrap()
+    );
     println!("UTC POSIX         : {:.3}", utc.try_to::<Unix>().unwrap());
 
     // suppress unused warnings

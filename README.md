@@ -26,7 +26,7 @@ Typed astronomical time primitives for Rust.
 - Unified target-based conversions:
   - `.to::<TT>()`, `.to::<UTC>()`, `.to::<TDB>()` for infallible scale routes
   - `.to_with::<UT1>(&ctx)` for context-backed UT1 routes, or `.try_to::<UT1>()` shorthand (snapshots active data at call time)
-  - `.to::<JD>()`, `.to::<MJD>()`, `.to::<J2000s>()` for coordinate views
+  - `.to::<JD>()` / `.to::<MJD>()` for infallible coordinates on continuous scales; UTC uses `.to_with::<MJD>(&ctx)` (or `JD`) followed by `try_raw_with(&ctx)`
   - `.try_to::<Unix>()` and `.to::<GPS>()` for transport encodings
 - `JulianDate<S>`, `ModifiedJulianDate<S>`, `UnixTime`, and `GpsTime` implement `Into<Time<_>>` (same instant as `.to_j2000s()`), so `Period::<S>::new(...)` / `try_new(...)` accept encoded endpoints directly; `J2000Seconds<S>` is already `Time<S>`.
 - UTC conversion through `chrono`, leap-second aware over the official history
@@ -49,17 +49,27 @@ Typed astronomical time primitives for Rust.
   [`tdb_tt_model_high_accuracy_start_jd`] / [`tdb_tt_model_high_accuracy_end_jd`]
   in [`tempoch::constats`] (day literals also exposed as
   `TDB_TT_MODEL_HIGH_ACCURACY_*_JD_DAY`; roughly 1600-01-01 to 2200-01-01 TT).
-- Julian Day, Modified Julian Day, and SI-second views via `JD`, `MJD`, and
-  `J2000s` conversion targets on every built-in scale, including UTC's stored
-  instant axis.
+- Julian Day and Modified Julian Day coordinates via `JD` and `MJD` on each
+  scale's time axis. For UTC these are civil fractional-day coordinates using
+  86,400 nominal seconds per day (POSIX style); for TAI, TT, and other
+  continuous scales they remain coordinates on that scale's continuous axis.
+  UTC conversion requires `TimeContext` because it uses UTC-TAI data, and a
+  leap-second instant returns `ConversionError::InvalidLeapSecond` since it
+  cannot be uniquely represented by a POSIX-style day count. The internal
+  compensated J2000-second instant storage is unchanged.
 - Unix/POSIX timestamps via `UnixTime::try_new(sec).map(Into::into)` and `.try_to::<Unix>()`.
 - GPS transport values via `GpsTime::try_new(sec).map(Into::into)` and `.to::<GPS>()`.
 - Compiled time-data tables generated from official UTC-TAI and Delta T
   sources.
-- Optional `serde` support for `Time<S>` as `{"hi","lo"}` and
+- Optional `serde` support for `Time<S, F>` as the format's scalar quantity and
   `Period<S>` / `Interval<T>` as `{start, end}` objects, plus explicit
   `tempoch::tagged::{TaggedTime, TaggedPeriod}` wrappers when the payload must
-  carry the scale name.
+  carry the scale name and compensated split seconds. UTC JD/MJD scalars use
+  civil coordinates and report conversion failures as Serde errors. Each
+  Serde operation captures a fresh default `TimeContext`; the time-data
+  snapshot is not stored in the payload. For reproducible conversion with a
+  fixed context, serialize `time.try_raw_with(&ctx)?` and decode the quantity
+  with `Time::try_new_with(raw, &ctx)`.
 - Automatic runtime freshness backed by a cached time-data bundle, while
   keeping the same public API.
 - Public typed epochs under `tempoch::constats`: [`Time`] helpers such as
@@ -123,9 +133,9 @@ small correction is combined with a value on the order of `1e9` seconds.
 `(hi, lo)` whose sum is the represented instant. The high part carries the
 epoch-sized component; the low part preserves the small remainder.
 
-This is why `Time<S>` serializes as `{"hi","lo"}` with `serde`, and why the
-crate reuses `affn::SplitQuantity` / `SplitPoint1` instead of a plain scalar
-field.
+The crate reuses `affn::SplitQuantity` / `SplitPoint1` to preserve this pair.
+Scalar Serde encodings project it into the selected format's `f64` coordinate;
+`tagged::TaggedTime<S>` preserves both components in its payload.
 
 ### Why J2000 seconds are canonical
 
@@ -173,6 +183,28 @@ UTC-TAI table. That separation lets the crate support both:
 - precise instant arithmetic and transport encodings
 - leap-second-aware civil conversions
 
+UTC JD/MJD values now follow that same civil mapping. Construct with
+`Time::<UTC, MJD>::try_new_with(day, &ctx)` and encode with
+`time.to_with::<MJD>(&ctx)?.try_raw_with(&ctx)?` (substitute `JD` as needed).
+The context controls time-data selection and the pre-1961 UTC policy. Previous
+code such as `Time::<UTC, MJD>::new(value)`, `time.to::<MJD>().raw()`, and
+`ModifiedJulianDate::<UTC>::new(value)` must migrate to these fallible APIs.
+UTC JD/MJD `.raw()` and `.new()` are intentionally unavailable; other
+continuous scales retain their infallible operations.
+
+Migration example for a numeric UTC MJD field:
+
+```rust,ignore
+// Before: interpreted the number on the continuous stored axis.
+let utc = ModifiedJulianDate::<UTC>::new(mjd);
+let mjd_back = utc.to::<MJD>().raw();
+
+// After: decode and encode the civil UTC day count with one context snapshot.
+let ctx = TimeContext::new();
+let utc = Time::<UTC, MJD>::try_new_with(Day::new(mjd), &ctx)?;
+let mjd_back = utc.to_with::<MJD>(&ctx)?.try_raw_with(&ctx)?;
+```
+
 The compiled modern ΔT series runs through MJD 63871 (`2033-10-01`). Beyond
 that date the built-in bundle stops and UT1 conversions fail with
 `ConversionError::Ut1HorizonExceeded` unless an active runtime bundle extends
@@ -183,21 +215,21 @@ the horizon. Use the exported `DELTA_T_PREDICTION_HORIZON_MJD` typed
 
 ```toml
 [dependencies]
-tempoch = "0.7"
+tempoch = "0.8"
 ```
 
 Enable `serde` if you want to serialize typed times and periods:
 
 ```toml
 [dependencies]
-tempoch = { version = "0.7", features = ["serde"] }
+tempoch = { version = "0.8", features = ["serde"] }
 ```
 
 The `serde` feature composes with the ordinary runtime refresh behavior:
 
 ```toml
 [dependencies]
-tempoch = { version = "0.7", features = ["serde", "runtime-data-fetch"] }
+tempoch = { version = "0.8", features = ["serde", "runtime-data-fetch"] }
 ```
 
 ### `no_std`
@@ -206,7 +238,7 @@ tempoch = { version = "0.7", features = ["serde", "runtime-data-fetch"] }
 
 ```toml
 # no_std + alloc (including bare-metal targets)
-tempoch = { version = "0.7", default-features = false, features = ["alloc"] }
+tempoch = { version = "0.8", default-features = false, features = ["alloc"] }
 ```
 
 Bundled IERS tables come from `siderust-archive` 0.1.5+, which is itself
@@ -217,11 +249,16 @@ Bundled IERS tables come from `siderust-archive` 0.1.5+, which is itself
 
 With the `serde` feature enabled:
 
-- `Time<S>` serializes as `{"hi": ..., "lo": ...}`.
+- `Time<S, F>` serializes as the format's scalar quantity; `Time<S>` uses
+  J2000 seconds.
 - `Period<S>` serializes as `{"start": ..., "end": ...}`.
 - The scale remains type-level and is not embedded in the payload.
 - `tagged::TaggedTime<S>` and `tagged::TaggedPeriod<S>` serialize with an
-  explicit `"scale"` field for interchange payloads.
+  explicit `"scale"` field and compensated split seconds for interchange payloads.
+- UTC JD/MJD Serde captures fresh default time data per operation and returns
+  Serde errors for leap-second encoding, pre-definition UTC, and unusable
+  coordinates. Serialize an explicitly converted quantity when a fixed
+  `TimeContext` is required.
 
 ```rust
 use qtty::Second;
@@ -236,10 +273,10 @@ let period = Period::<TT>::new(
     J2000Seconds::<TT>::try_new(Second::new(43.5)).unwrap(),
 );
 
-assert_eq!(serde_json::to_string(&tt).unwrap(), r#"{"hi":42.5,"lo":0.0}"#);
+assert_eq!(serde_json::to_string(&tt).unwrap(), "42.5");
 assert_eq!(
     serde_json::to_string(&period).unwrap(),
-    r#"{"start":{"hi":42.5,"lo":0.0},"end":{"hi":43.5,"lo":0.0}}"#
+    r#"{"start":42.5,"end":43.5}"#
 );
 assert_eq!(
     serde_json::to_string(&TaggedTime(tt)).unwrap(),

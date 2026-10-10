@@ -14,7 +14,8 @@ use crate::foundation::error::ConversionError;
 use crate::foundation::sealed::Sealed;
 use crate::model::scale::conversion::{ContextScaleConvert, InfallibleScaleConvert};
 use crate::model::scale::{
-    CoordinateScale, Scale, BDT, ET, GPST, GST, QZSST, TAI, TCB, TCG, TDB, TT, UT1, UTC,
+    ContinuousScale, CoordinateScale, Scale, BDT, ET, GPST, GST, QZSST, TAI, TCB, TCG, TDB, TT,
+    UT1, UTC,
 };
 use crate::model::time::Time;
 
@@ -59,7 +60,7 @@ impl<S: CoordinateScale, SrcF: TimeFormat> InfallibleConversionTarget<S, SrcF> f
     }
 }
 
-impl<S: CoordinateScale, SrcF: TimeFormat> ConversionTarget<S, SrcF> for JD {
+impl<S: ContinuousScale, SrcF: TimeFormat> ConversionTarget<S, SrcF> for JD {
     type Output = Time<S, JD>;
 
     #[inline]
@@ -68,14 +69,24 @@ impl<S: CoordinateScale, SrcF: TimeFormat> ConversionTarget<S, SrcF> for JD {
     }
 }
 
-impl<S: CoordinateScale, SrcF: TimeFormat> InfallibleConversionTarget<S, SrcF> for JD {
+impl<S: ContinuousScale, SrcF: TimeFormat> InfallibleConversionTarget<S, SrcF> for JD {
     #[inline]
     fn convert(src: Time<S, SrcF>) -> Self::Output {
         src.reinterpret()
     }
 }
 
-impl<S: CoordinateScale, SrcF: TimeFormat> ConversionTarget<S, SrcF> for MJD {
+impl<S: ContinuousScale, SrcF: TimeFormat> ContextConversionTarget<S, SrcF> for JD {
+    type Output = Time<S, JD>;
+    fn convert_with(
+        src: Time<S, SrcF>,
+        _ctx: &TimeContext,
+    ) -> Result<Self::Output, ConversionError> {
+        Ok(src.reinterpret())
+    }
+}
+
+impl<S: ContinuousScale, SrcF: TimeFormat> ConversionTarget<S, SrcF> for MJD {
     type Output = Time<S, MJD>;
 
     #[inline]
@@ -84,10 +95,58 @@ impl<S: CoordinateScale, SrcF: TimeFormat> ConversionTarget<S, SrcF> for MJD {
     }
 }
 
-impl<S: CoordinateScale, SrcF: TimeFormat> InfallibleConversionTarget<S, SrcF> for MJD {
+impl<S: ContinuousScale, SrcF: TimeFormat> InfallibleConversionTarget<S, SrcF> for MJD {
     #[inline]
     fn convert(src: Time<S, SrcF>) -> Self::Output {
         src.reinterpret()
+    }
+}
+
+impl<S: ContinuousScale, SrcF: TimeFormat> ContextConversionTarget<S, SrcF> for MJD {
+    type Output = Time<S, MJD>;
+    fn convert_with(
+        src: Time<S, SrcF>,
+        _ctx: &TimeContext,
+    ) -> Result<Self::Output, ConversionError> {
+        Ok(src.reinterpret())
+    }
+}
+
+impl<SrcF: TimeFormat> ConversionTarget<UTC, SrcF> for JD {
+    type Output = Time<UTC, JD>;
+    fn try_convert(src: Time<UTC, SrcF>) -> Result<Self::Output, ConversionError> {
+        <JD as crate::FormatForScale<UTC>>::try_from_time(src, &TimeContext::new())?;
+        Ok(src.reinterpret())
+    }
+}
+
+impl<SrcF: TimeFormat> ContextConversionTarget<UTC, SrcF> for JD {
+    type Output = Time<UTC, JD>;
+    fn convert_with(
+        src: Time<UTC, SrcF>,
+        ctx: &TimeContext,
+    ) -> Result<Self::Output, ConversionError> {
+        <JD as crate::FormatForScale<UTC>>::try_from_time(src, ctx)?;
+        Ok(src.reinterpret())
+    }
+}
+
+impl<SrcF: TimeFormat> ConversionTarget<UTC, SrcF> for MJD {
+    type Output = Time<UTC, MJD>;
+    fn try_convert(src: Time<UTC, SrcF>) -> Result<Self::Output, ConversionError> {
+        <MJD as crate::FormatForScale<UTC>>::try_from_time(src, &TimeContext::new())?;
+        Ok(src.reinterpret())
+    }
+}
+
+impl<SrcF: TimeFormat> ContextConversionTarget<UTC, SrcF> for MJD {
+    type Output = Time<UTC, MJD>;
+    fn convert_with(
+        src: Time<UTC, SrcF>,
+        ctx: &TimeContext,
+    ) -> Result<Self::Output, ConversionError> {
+        <MJD as crate::FormatForScale<UTC>>::try_from_time(src, ctx)?;
+        Ok(src.reinterpret())
     }
 }
 

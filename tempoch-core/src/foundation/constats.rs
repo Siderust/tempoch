@@ -5,6 +5,11 @@
 //!
 //! Epoch **instants** are exposed as [`Time<S, F>`] via small `…_jd()`, `…_mjd()`,
 //! or `…_tai()` helpers so construction matches the normal [`crate::Time`] pathways.
+//! UTC epoch helpers decode their fixed civil labels using a fresh
+//! [`crate::TimeContext`] snapshot of the currently active time data. Their
+//! physical instant therefore follows the active UTC-TAI table; callers that
+//! need reproducibility against a previously captured context should decode
+//! the corresponding public `*_DAY` value with that context directly.
 //!
 //! `tempoch` owns astronomical epoch facts, time-scale offsets, and model
 //! horizons. Generic time units such as Julian years and Julian centuries
@@ -37,10 +42,10 @@ pub(crate) const JD_MINUS_MJD: Day = Day::new(2_400_000.5);
 /// use in scale conversions.
 pub const TT_MINUS_TAI: Second = Second::new(32.184);
 
-/// Unix epoch JD value on the UTC axis: `1970-01-01T00:00:00 UTC`.
+/// Civil UTC Unix epoch JD value: `1970-01-01T00:00:00 UTC`.
 pub const UNIX_EPOCH_JD_DAY: Day = Day::new(2_440_587.5);
 
-/// GPS epoch JD value on the UTC axis: `1980-01-06T00:00:00 UTC`.
+/// Civil UTC GPS epoch JD value: `1980-01-06T00:00:00 UTC`.
 pub const GPS_EPOCH_JD_UTC_DAY: Day = Day::new(2_444_244.5);
 
 /// Exact `TAI - UTC` offset at the GPS epoch.
@@ -63,7 +68,7 @@ pub const TDB_TT_MODEL_HIGH_ACCURACY_START_JD_DAY: Day = Day::new(2_305_447.5);
 /// end-to-end budget relative to numerical integration.
 pub const TDB_TT_MODEL_HIGH_ACCURACY_END_JD_DAY: Day = Day::new(2_524_598.5);
 
-/// First MJD covered by the compiled UTC-TAI segment table, on the UTC axis.
+/// First civil UTC MJD covered by the compiled UTC-TAI segment table.
 ///
 /// This corresponds to 1961-01-01. UTC was defined starting from this date.
 /// For queries before this boundary, `Time<UTC>` conversions return
@@ -101,22 +106,31 @@ pub fn j2000_jd_tt() -> Time<TT, JD> {
     <JD as InfallibleFormatForScale<TT>>::into_time(J2000_JD_TT_DAY)
 }
 
-/// Unix epoch as [`Time<UTC, JD>`].
+/// Unix epoch as [`Time<UTC, JD>`], decoded using a fresh active-data snapshot.
 #[inline]
 pub fn unix_epoch_jd() -> Time<UTC, JD> {
-    <JD as InfallibleFormatForScale<UTC>>::into_time(UNIX_EPOCH_JD_DAY)
+    <JD as crate::FormatForScale<UTC>>::try_into_time(UNIX_EPOCH_JD_DAY, &crate::TimeContext::new())
+        .expect("Unix epoch is a valid civil UTC JD")
 }
 
-/// Unix epoch as [`Time<UTC, MJD>`].
+/// Unix epoch as [`Time<UTC, MJD>`], decoded using a fresh active-data snapshot.
 #[inline]
 pub fn unix_epoch_mjd() -> Time<UTC, MJD> {
-    <MJD as InfallibleFormatForScale<UTC>>::into_time(unix_epoch_mjd_day())
+    <MJD as crate::FormatForScale<UTC>>::try_into_time(
+        unix_epoch_mjd_day(),
+        &crate::TimeContext::new(),
+    )
+    .expect("Unix epoch is a valid civil UTC MJD")
 }
 
-/// GPS epoch as [`Time<UTC, JD>`].
+/// GPS epoch as [`Time<UTC, JD>`], decoded using a fresh active-data snapshot.
 #[inline]
 pub fn gps_epoch_jd_utc() -> Time<UTC, JD> {
-    <JD as InfallibleFormatForScale<UTC>>::into_time(GPS_EPOCH_JD_UTC_DAY)
+    <JD as crate::FormatForScale<UTC>>::try_into_time(
+        GPS_EPOCH_JD_UTC_DAY,
+        &crate::TimeContext::new(),
+    )
+    .expect("GPS epoch is a valid civil UTC JD")
 }
 
 /// GPS epoch as [`Time<TAI, JD>`].
@@ -149,10 +163,14 @@ pub fn gps_epoch_tai() -> Time<TAI, J2000s> {
     <J2000s as InfallibleFormatForScale<TAI>>::into_time(gps_epoch_tai_seconds())
 }
 
-/// UTC definition boundary as [`Time<UTC, MJD>`].
+/// UTC definition boundary as [`Time<UTC, MJD>`], decoded using a fresh active-data snapshot.
 #[inline]
 pub fn utc_defined_from_mjd() -> Time<UTC, MJD> {
-    <MJD as InfallibleFormatForScale<UTC>>::into_time(UTC_DEFINED_FROM_MJD_DAY)
+    <MJD as crate::FormatForScale<UTC>>::try_into_time(
+        UTC_DEFINED_FROM_MJD_DAY,
+        &crate::TimeContext::new(),
+    )
+    .expect("UTC definition boundary is a valid civil MJD")
 }
 
 #[cfg(test)]
@@ -192,9 +210,19 @@ mod tests {
     #[test]
     fn helper_constructors_match_exported_scalar_constants() {
         assert_eq!(j2000_jd_tt().raw(), J2000_JD_TT_DAY);
-        assert_eq!(unix_epoch_jd().raw(), UNIX_EPOCH_JD_DAY);
-        assert_eq!(unix_epoch_mjd().raw(), unix_epoch_mjd_day());
-        assert_eq!(gps_epoch_jd_utc().raw(), GPS_EPOCH_JD_UTC_DAY);
+        let ctx = crate::TimeContext::new();
+        assert!(
+            (unix_epoch_jd().try_raw_with(&ctx).unwrap() - UNIX_EPOCH_JD_DAY).abs()
+                < Day::new(1e-9)
+        );
+        assert!(
+            (unix_epoch_mjd().try_raw_with(&ctx).unwrap() - unix_epoch_mjd_day()).abs()
+                < Day::new(1e-9)
+        );
+        assert!(
+            (gps_epoch_jd_utc().try_raw_with(&ctx).unwrap() - GPS_EPOCH_JD_UTC_DAY).abs()
+                < Day::new(1e-9)
+        );
         assert_eq!(gps_epoch_jd_tai().raw(), gps_epoch_jd_tai_day());
         assert_eq!(iau_time_epoch_t0_jd().raw(), IAU_TIME_EPOCH_T0_JD_DAY);
         assert_eq!(
@@ -206,6 +234,13 @@ mod tests {
             TDB_TT_MODEL_HIGH_ACCURACY_END_JD_DAY
         );
         assert_eq!(gps_epoch_tai().raw(), gps_epoch_tai_seconds());
-        assert_eq!(utc_defined_from_mjd().raw(), UTC_DEFINED_FROM_MJD_DAY);
+        assert!(
+            (utc_defined_from_mjd()
+                .try_raw_with(&crate::TimeContext::new())
+                .unwrap()
+                - UTC_DEFINED_FROM_MJD_DAY)
+                .abs()
+                < Day::new(1e-9)
+        );
     }
 }
