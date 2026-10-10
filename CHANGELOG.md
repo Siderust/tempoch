@@ -5,12 +5,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-10
+
 ### Changed
 - **BREAKING API/SEMANTIC CHANGE:** `Time<UTC, JD>` and `Time<UTC, MJD>` now
   represent civil UTC JD/MJD using 86,400 nominal seconds per day. Construction
   and extraction require fallible, context-aware APIs; leap-second instants
-  fail with `InvalidLeapSecond`. UTC no longer implements
-  `InfallibleFormatForScale<JD/MJD>`. Migrate `new()` to `try_new_with(value,
+  fail with `InvalidLeapSecond`. JD/MJD no longer implement
+  `InfallibleFormatForScale<UTC>`. Migrate `new()` to `try_new_with(value,
   &ctx)` and `to::<JD/MJD>().raw()` to `to_with::<JD/MJD>(&ctx)?` followed by
   `try_raw_with(&ctx)?`. JD/MJD semantics on TAI, TT, and other continuous
   scales are unchanged. Consumers such as `nsb-service-ctao` can remove their
@@ -21,6 +23,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   operation. Conversion failures, including leap-second encoding, become
   Serde errors; reproducible data snapshots require explicit scalar conversion
   with a caller-supplied context.
+
+- Bumped `tempoch`, `tempoch-core`, and `tempoch-ffi` to `0.8.0`, synchronized
+  internal dependency constraints, and advanced the FFI ABI version to `800`.
 
 ### Fixed
 - Preserve infinite JD/MJD sentinels on continuous scales in the FFI and
