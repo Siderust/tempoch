@@ -193,10 +193,7 @@ fn parse_rfc3339_manual(s: &str, ctx: &TimeContext) -> Result<Time<UTC>, Convers
         let shifted =
             utc_almost.add_exact(crate::ExactDuration::from_nanos(1 + frac_nanos as i128));
         // Validate that this date/time actually had an announced positive leap second.
-        if !time_data_tai_seconds_is_in_leap_window(
-            ctx.time_data(),
-            shifted.to_j2000s().total_seconds(),
-        ) {
+        if !time_data_tai_seconds_is_in_leap_window(ctx.time_data(), shifted.raw_seconds_pair()) {
             return Err(ConversionError::InvalidLeapSecond);
         }
         return Ok(shifted);

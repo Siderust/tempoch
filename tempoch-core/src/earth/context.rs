@@ -141,7 +141,7 @@ impl TimeContext {
     ) -> Result<Second, crate::ConversionError> {
         crate::data::runtime_data::time_data_tai_minus_utc_at(
             self.time_data(),
-            epoch.to_j2000s().total_seconds(),
+            epoch.raw_seconds_pair(),
             self.allows_pre_definition_utc(),
         )
     }
@@ -202,5 +202,31 @@ mod tests {
         assert!(permissive.tai_minus_utc(epoch).is_ok());
         let invalid = Time::<UTC>::from_raw_j2000_seconds(Second::new(f64::INFINITY)).unwrap();
         assert_eq!(ctx.tai_minus_utc(invalid), Err(ConversionError::NonFinite));
+    }
+    #[test]
+    fn native_civil_roundtrips_preserve_nanoseconds_at_day_and_leap_boundaries() {
+        let ctx = TimeContext::new();
+        for label in [
+            "2016-12-31T23:59:59.999999999Z",
+            "2016-12-31T23:59:60.000000001Z",
+            "2016-12-31T23:59:60.999999999Z",
+            "2017-01-01T00:00:00Z",
+            "2017-01-01T23:59:59.999999999Z",
+            "2017-01-02T00:00:00.000000001Z",
+        ] {
+            let civil: chrono::DateTime<chrono::Utc> = label.parse().unwrap();
+            let epoch = Time::<UTC>::try_from_chrono_with(civil, &ctx).unwrap();
+            assert_eq!(epoch.try_to_chrono_with(&ctx).unwrap(), civil, "{label}");
+            let expected_offset = if civil.timestamp() < 1_483_228_800 {
+                36.0
+            } else {
+                37.0
+            };
+            assert_eq!(
+                ctx.tai_minus_utc(epoch).unwrap(),
+                Second::new(expected_offset),
+                "{label}"
+            );
+        }
     }
 }

@@ -27,12 +27,9 @@ impl<F: TimeFormat> Time<UTC, F> {
         dt: DateTime<Utc>,
         ctx: &TimeContext,
     ) -> Result<Time<UTC, crate::format::J2000s>, ConversionError> {
-        let tai_secs =
+        let (tai_hi, tai_lo) =
             time_data_tai_seconds_from_utc(ctx.time_data(), dt, ctx.allows_pre_definition_utc())?;
-        Time::<UTC, crate::format::J2000s>::try_from_raw_j2000_seconds_split(
-            tai_secs,
-            Second::new(0.0),
-        )
+        Time::<UTC, crate::format::J2000s>::try_from_raw_j2000_seconds_split(tai_hi, tai_lo)
     }
 
     /// Build a UTC instant from a `chrono::DateTime<Utc>`.
@@ -77,7 +74,7 @@ impl<F: TimeFormat> Time<UTC, F> {
     pub fn try_to_chrono_with(self, ctx: &TimeContext) -> Result<DateTime<Utc>, ConversionError> {
         time_data_utc_from_tai_seconds(
             ctx.time_data(),
-            self.to_j2000s().total_seconds(),
+            self.raw_seconds_pair(),
             ctx.allows_pre_definition_utc(),
         )
     }
@@ -126,11 +123,12 @@ impl<F: TimeFormat> Time<UTC, F> {
             mjd_utc,
             ctx.allows_pre_definition_utc(),
         )?;
-        let tai_secs = day_to_j2000_seconds::<MJD>(mjd_utc) + tai_minus_utc;
-        Time::<UTC, crate::format::J2000s>::try_from_raw_j2000_seconds_split(
-            tai_secs,
-            Second::new(0.0),
-        )
+        let origin = day_to_j2000_seconds::<MJD>(crate::foundation::constats::unix_epoch_mjd_day());
+        let (hi, lo) =
+            affn::algebra::SplitQuantity::<crate::qtty::unit::Second>::new(seconds, origin)
+                .add_quantity(tai_minus_utc)
+                .pair();
+        Time::<UTC, crate::format::J2000s>::try_from_raw_j2000_seconds_split(hi, lo)
     }
 
     /// Return the POSIX timestamp in seconds for this UTC instant using the
@@ -152,7 +150,7 @@ impl<F: TimeFormat> Time<UTC, F> {
     /// UTC (e.g. 23:59:60) using the context's captured time-data bundle.
     #[inline]
     pub fn is_leap_second_with(self, ctx: &TimeContext) -> bool {
-        time_data_tai_seconds_is_in_leap_window(ctx.time_data(), self.to_j2000s().total_seconds())
+        time_data_tai_seconds_is_in_leap_window(ctx.time_data(), self.raw_seconds_pair())
     }
 
     /// Returns `true` if this instant falls inside a positive leap second
