@@ -22,15 +22,25 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   Historical positive gaps return `UtcHistoryUnsupported`; at negative steps,
   the later segment supplies the canonical label and superseded earlier labels
   are rejected with the same error instead of silently changing timestamps.
+- Apply the same historical UTC validation to chrono, Unix, JD and MJD;
+  scalar formats now reject superseded historical labels consistently.
+- Reject malformed UTF-8 RFC 3339 inputs safely instead of panicking, and
+  enforce the nine-digit fraction limit for lowercase timezone suffixes.
 - Reject invalid RFC 3339 leap-second labels and preserve fractional nanoseconds
   on valid labels. Rounding into a positive leap second now emits `23:59:60`
   before advancing to midnight.
-- Replace weak ISO precision assertions with exact round-trip checks; add
-  historical and leap-boundary regressions, deterministic property tests, and
-  a daily precision and monotonicity sweep across 1961–2030.
 - Isolate context offset tests from concurrent runtime-data fixtures.
 
 ### Changed
+- Consolidated UTC conversion rules in the split-second engine; removed the
+  parallel scalar UTC/TAI implementation and redundant manual RFC 3339 parser.
+  Unix output no longer passes through chrono, preserving its wider scalar
+  date range and avoiding integer-nanosecond quantization.
+- Replaced weak ISO precision assertions with exact round-trip checks; added
+  historical and leap-boundary regressions, scalar-format ULP-based checks,
+  deterministic UTF-8 and time properties, and a daily precision and
+  monotonicity sweep across 1961–2030. Exact nanosecond guarantees apply to
+  supported chrono/RFC 3339 labels, not arbitrary scalar Unix or JD/MJD inputs.
 - Bumped `tempoch`, `tempoch-core`, and `tempoch-ffi` to `0.8.1`, synchronized
   internal dependency constraints, and advanced the reported FFI version to `801`.
 
