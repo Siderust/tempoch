@@ -1,6 +1,6 @@
 [package]
 name = "tempoch-core"
-version = "0.8.1"
+version = "0.9.0"
 edition = "2021"
 authors = ["VPRamon <vallespuigramon@gmail.com>"]
 description = "Core astronomical time primitives for tempoch."
@@ -22,7 +22,7 @@ path = "src/lib.rs"
 
 [dependencies]
 # `astro` forwards `qtty/astro` (incl. `julian-time`); quantities come via `affn::qtty`.
-affn = { version = "0.10", default-features = false, features = ["astro"] }
+affn = { version = "0.11", default-features = false, features = ["astro"] }
 chrono = { version = "0.4", default-features = false }
 serde = { version = "1.0", default-features = false, features = ["derive", "alloc"], optional = true }
 siderust-archive = { version = "0.1.5", default-features = false, features = ["time"] }

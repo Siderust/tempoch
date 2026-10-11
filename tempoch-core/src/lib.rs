@@ -64,10 +64,10 @@
 //!
 //! ```toml
 //! # Default (std)
-//! tempoch = "0.8"
+//! tempoch = "0.9"
 //!
 //! # no_std + alloc (including bare-metal targets)
-//! tempoch = { version = "0.8", default-features = false, features = ["alloc"] }
+//! tempoch = { version = "0.9", default-features = false, features = ["alloc"] }
 //! ```
 
 #![cfg_attr(not(feature = "std"), no_std)]
