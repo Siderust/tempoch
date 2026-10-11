@@ -15,8 +15,9 @@ pub(crate) use store::{
 #[cfg(feature = "runtime-data-fetch")]
 pub use store::{fetch_latest_time_data, refresh_runtime_time_data, update_runtime_time_data};
 pub(crate) use utc_tai::{
-    time_data_tai_seconds_from_utc, time_data_tai_seconds_is_in_leap_window,
-    time_data_try_tai_minus_utc_mjd, time_data_utc_from_tai_seconds,
+    time_data_tai_minus_utc_at, time_data_tai_seconds_from_utc,
+    time_data_tai_seconds_is_in_leap_window, time_data_try_tai_minus_utc_mjd,
+    time_data_utc_from_tai_seconds,
 };
 
 #[cfg(test)]

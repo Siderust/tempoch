@@ -58,6 +58,29 @@ pub(super) fn time_data_tai_minus_utc_mjd_extrapolated(
     time_data_try_tai_minus_utc_mjd(data, mjd_utc, true).ok()
 }
 
+/// Context-owned TAI-UTC at an atomic instant, including a leap-second label.
+pub(crate) fn time_data_tai_minus_utc_at(
+    data: &TimeDataBundle,
+    tai_secs: Second,
+    allow_extrapolation: bool,
+) -> Result<Second, ConversionError> {
+    if !tai_secs.is_finite() {
+        return Err(ConversionError::NonFinite);
+    }
+    let mjd_tt = jd_to_mjd(j2000_seconds_to_day::<JD>(tai_secs + TT_MINUS_TAI));
+    match locate_utc_region_from_tt_mjd(data.utc_tai_segments(), mjd_tt, allow_extrapolation)? {
+        UtcTaiRegion::Segment(segment) => Ok(utc_offset_seconds_in_segment(
+            tt_mjd_to_utc_mjd_in_segment(mjd_tt, segment),
+            segment,
+        )),
+        UtcTaiRegion::Leap { end_mjd, .. } => time_data_try_tai_minus_utc_mjd(
+            data,
+            end_mjd - Second::one().to::<qtty::unit::Day>(),
+            allow_extrapolation,
+        ),
+    }
+}
+
 pub(crate) fn time_data_utc_from_tai_seconds(
     data: &TimeDataBundle,
     tai_secs: Second,
