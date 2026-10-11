@@ -125,23 +125,31 @@ pub(crate) fn time_data_tai_seconds_from_utc(
         return Err(ConversionError::UtcBeforeDefinition);
     }
     let segment = segments[idx.saturating_sub(1)];
-    let offset = utc_offset_seconds_in_segment(base_mjd, segment);
     let nanos = dt.timestamp_subsec_nanos();
     if nanos >= 1_000_000_000 {
-        let next_mjd = crate::encoding::unix_seconds_to_mjd(unix_whole + Second::one());
-        let next = time_data_try_tai_minus_utc_mjd(data, next_mjd, allow_extrapolation)
-            .map_err(|_| ConversionError::InvalidLeapSecond)?;
-        if next - offset < Second::new(0.5) {
+        let boundary = unix_whole + unix_origin() + Second::one();
+        if !segments.get(idx).is_some_and(|next| {
+            is_positive_leap(segment, *next)
+                && boundary == day_to_j2000_seconds::<MJD>(Day::new(next.start_mjd as f64))
+        }) {
             return Err(ConversionError::InvalidLeapSecond);
         }
     }
     let fraction = Nanosecond::new(nanos as f64).to::<qtty::unit::Second>();
-    let drift = Second::new(segment.slope_seconds_per_day)
-        * (fraction.to::<qtty::unit::Day>() / Day::one());
-    Ok(SecondsSplit::new(unix_whole + unix_origin(), offset)
-        .add_quantity(fraction)
-        .add_quantity(drift)
-        .pair())
+    let utc = SecondsSplit::new(unix_whole + unix_origin(), fraction);
+    let tai = utc.add_quantity(utc_offset_at_seconds(utc, segment));
+    // A negative historical step gives two civil labels for the same TAI
+    // instant. Keep the later segment authoritative in both directions;
+    // reject labels in the superseded tail instead of silently changing them.
+    if nanos < 1_000_000_000
+        && segments.get(idx).is_some_and(|next| {
+            tai.difference(tai_at_midnight(Day::new(next.start_mjd as f64), *next))
+                >= Second::new(0.0)
+        })
+    {
+        return Err(ConversionError::UtcHistoryUnsupported);
+    }
+    Ok(tai.pair())
 }
 
 pub(crate) fn time_data_tai_seconds_is_in_leap_window(
@@ -173,25 +181,32 @@ fn utc_offset_seconds_in_segment(mjd_utc: Day, segment: UtcTaiSegment) -> Second
             * ((mjd_utc - Day::new(segment.reference_mjd)) / Day::one())
 }
 
+fn utc_offset_at_seconds(utc: SecondsSplit, segment: UtcTaiSegment) -> Second {
+    let reference = day_to_j2000_seconds::<MJD>(Day::new(segment.reference_mjd));
+    let days = utc.difference(SecondsSplit::from_quantity(reference))
+        / Day::one().to::<qtty::unit::Second>();
+    segment.base + Second::new(segment.slope_seconds_per_day) * days
+}
+
 fn tai_at_midnight(mjd: Day, segment: UtcTaiSegment) -> SecondsSplit {
-    SecondsSplit::new(
-        day_to_j2000_seconds::<MJD>(mjd),
-        utc_offset_seconds_in_segment(mjd, segment),
-    )
+    let utc = SecondsSplit::from_quantity(day_to_j2000_seconds::<MJD>(mjd));
+    utc.add_quantity(utc_offset_at_seconds(utc, segment))
 }
 
 fn utc_seconds_in_segment(tai: SecondsSplit, segment: UtcTaiSegment) -> SecondsSplit {
     let reference = day_to_j2000_seconds::<MJD>(Day::new(segment.reference_mjd));
-    let rate = 1.0
-        + Second::new(segment.slope_seconds_per_day)
-            .to::<qtty::unit::Day>()
-            .value();
-    shift(
-        shift(tai, -reference)
-            .sub_quantity(segment.base)
-            .scale(1.0 / rate),
-        reference,
-    )
+    let drift_rate = Second::new(segment.slope_seconds_per_day)
+        .to::<qtty::unit::Day>()
+        .value();
+    let uncorrected = tai.sub_quantity(segment.base);
+    // t = u + base + k (u - reference), hence
+    // u = (t - base) - k/(1+k) * (t - base - reference).
+    // Only the small drift correction is multiplied, not the large coordinate.
+    // Collapsing the displacement here costs < 1e-6 ns after multiplication
+    // by |k| <= 3e-8 over the defined historical segments.
+    let correction = uncorrected.difference(SecondsSplit::from_quantity(reference))
+        * (drift_rate / (1.0 + drift_rate));
+    uncorrected.sub_quantity(correction)
 }
 
 // Combine the large origins with the high word first. Adding an epoch-sized
@@ -199,6 +214,18 @@ fn utc_seconds_in_segment(tai: SecondsSplit, segment: UtcTaiSegment) -> SecondsS
 fn shift(value: SecondsSplit, displacement: Second) -> SecondsSplit {
     let shifted = SecondsSplit::new(value.hi(), displacement);
     SecondsSplit::new(shifted.hi(), shifted.lo() + value.lo())
+}
+
+// UTC switched to integral offsets and SI seconds on 1972-01-01 (MJD
+// 41317). Only subsequent +1 s steps between zero-drift segments are
+// positive leap seconds in the context's UTC history (IERS UTC-TAI.history).
+fn is_positive_leap(segment: UtcTaiSegment, next: UtcTaiSegment) -> bool {
+    next.start_mjd > 41_317
+        && segment.end_mjd == Some(next.start_mjd)
+        && segment.slope_seconds_per_day == 0.0
+        && next.slope_seconds_per_day == 0.0
+        && segment.base == segment.base.floor()
+        && next.base - segment.base == Second::one()
 }
 
 fn locate_utc_region(
@@ -221,6 +248,11 @@ fn locate_utc_region(
         if tai.difference(leap_start) >= Second::new(0.0)
             && tai.difference(leap_end) < Second::new(0.0)
         {
+            if !is_positive_leap(segment, next) {
+                // Historical positive steps leave TAI intervals with no civil
+                // UTC label. Do not extend the preceding segment into the gap.
+                return Err(ConversionError::UtcHistoryUnsupported);
+            }
             return Ok(UtcTaiRegion::Leap {
                 end_mjd,
                 start: leap_start,
@@ -247,4 +279,113 @@ fn datetime_from_seconds_since_epoch(seconds: SecondsSplit) -> Option<DateTime<U
         (whole / Second::one()) as i64,
         (nanos / Nanosecond::one()) as u32,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::data::runtime_data::compiled_time_data;
+
+    #[test]
+    fn negative_step_cannot_preserve_both_historical_labels() {
+        let data = compiled_time_data();
+        let old = *data
+            .utc_tai_segments()
+            .iter()
+            .find(|s| s.end_mjd == Some(39_887))
+            .unwrap();
+        let earlier = "1968-01-31T23:59:59.950000000Z"
+            .parse::<DateTime<Utc>>()
+            .unwrap();
+        // Construct the earlier branch explicitly, bypassing the ambiguity
+        // rejection. Its canonical inverse is on the later branch.
+        let utc = SecondsSplit::new(
+            Second::new(earlier.timestamp() as f64) + unix_origin(),
+            Second::new(0.95),
+        );
+        let tai = utc.add_quantity(utc_offset_at_seconds(utc, old));
+        let canonical = time_data_utc_from_tai_seconds(&data, tai.pair(), false).unwrap();
+        assert_eq!(
+            canonical,
+            "1968-02-01T00:00:00.049999997Z"
+                .parse::<DateTime<Utc>>()
+                .unwrap()
+        );
+        assert_eq!(
+            time_data_tai_seconds_from_utc(&data, earlier, false),
+            Err(ConversionError::UtcHistoryUnsupported)
+        );
+    }
+
+    #[test]
+    fn every_segment_boundary_and_adjacent_nanoseconds() {
+        let data = compiled_time_data();
+        let segments = data.utc_tai_segments();
+        for (idx, segment) in segments.iter().copied().enumerate() {
+            let unix = mjd_to_unix_seconds(Day::new(segment.start_mjd as f64)).value() as i64;
+            for delta in [
+                -1_000_000_001_i64,
+                -1_000_000_000,
+                -999_999_999,
+                -1,
+                0,
+                1,
+                999_999_999,
+                1_000_000_000,
+            ] {
+                let dt = DateTime::<Utc>::from_timestamp(unix, 0).unwrap()
+                    + chrono::TimeDelta::nanoseconds(delta);
+                let result = time_data_tai_seconds_from_utc(&data, dt, false);
+                if idx == 0 && delta < 0 {
+                    assert_eq!(result, Err(ConversionError::UtcBeforeDefinition));
+                    continue;
+                }
+                let negative_step = idx > 0
+                    && tai_at_midnight(Day::new(segment.start_mjd as f64), segments[idx - 1])
+                        .difference(tai_at_midnight(Day::new(segment.start_mjd as f64), segment))
+                        > Second::new(0.01);
+                if delta == -1 && negative_step {
+                    assert_eq!(result, Err(ConversionError::UtcHistoryUnsupported), "{dt}");
+                    continue;
+                }
+                let pair = result.unwrap_or_else(|e| panic!("{dt}: {e:?}"));
+                assert_eq!(
+                    time_data_utc_from_tai_seconds(&data, pair, false).unwrap(),
+                    dt,
+                    "{dt}"
+                );
+                assert!(!time_data_tai_seconds_is_in_leap_window(&data, pair));
+            }
+            if idx == 0 {
+                continue;
+            }
+            let previous = segments[idx - 1];
+            let start = tai_at_midnight(Day::new(segment.start_mjd as f64), previous);
+            let end = tai_at_midnight(Day::new(segment.start_mjd as f64), segment);
+            if end.difference(start) > Second::new(0.01) {
+                let middle = start.add_quantity(end.difference(start) / 2.0);
+                if is_positive_leap(previous, segment) {
+                    for nanos in [0, 1, 123_456_789, 999_999_999] {
+                        let dt = DateTime::<Utc>::from_timestamp(unix - 1, 1_000_000_000 + nanos)
+                            .unwrap();
+                        let pair = time_data_tai_seconds_from_utc(&data, dt, false).unwrap();
+                        assert!(time_data_tai_seconds_is_in_leap_window(&data, pair));
+                        assert_eq!(
+                            time_data_utc_from_tai_seconds(&data, pair, false).unwrap(),
+                            dt
+                        );
+                    }
+                } else {
+                    assert!(!time_data_tai_seconds_is_in_leap_window(
+                        &data,
+                        middle.pair()
+                    ));
+                    assert_eq!(
+                        time_data_utc_from_tai_seconds(&data, middle.pair(), false),
+                        Err(ConversionError::UtcHistoryUnsupported)
+                    );
+                }
+            }
+        }
+    }
 }

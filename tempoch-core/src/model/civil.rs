@@ -22,6 +22,11 @@ use chrono::{DateTime, Utc};
 impl<F: TimeFormat> Time<UTC, F> {
     /// Build a UTC instant from a `chrono::DateTime<Utc>` using the context's
     /// captured time-data bundle.
+    ///
+    /// Nanosecond civil labels round-trip exactly over the bundled 1961–2030
+    /// history, except for superseded labels at negative historical steps.
+    /// Those ambiguous tails return [`ConversionError::UtcHistoryUnsupported`];
+    /// the later segment supplies the canonical label for the shared instant.
     #[inline]
     pub fn try_from_chrono_with(
         dt: DateTime<Utc>,
@@ -70,6 +75,11 @@ impl<F: TimeFormat> Time<UTC, F> {
 
     /// Convert to a `chrono::DateTime<Utc>`, preserving leap-second labels,
     /// using the context's captured time-data bundle.
+    ///
+    /// Positive historical steps before the leap-second system leave atomic
+    /// intervals without civil labels. These return
+    /// [`ConversionError::UtcHistoryUnsupported`], rather than fabricated
+    /// `23:59:60` labels. At negative steps the later segment is authoritative.
     #[inline]
     pub fn try_to_chrono_with(self, ctx: &TimeContext) -> Result<DateTime<Utc>, ConversionError> {
         time_data_utc_from_tai_seconds(

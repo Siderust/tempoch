@@ -175,9 +175,18 @@ mod tests {
     use super::*;
     use crate::{ConversionError, Time, UTC};
 
+    // Other unit tests replace the active runtime bundle concurrently. These
+    // regressions require the official compiled history, not a global fixture.
+    fn compiled_context() -> TimeContext {
+        TimeContext {
+            data: crate::data::runtime_data::compiled_time_data(),
+            ..TimeContext::new()
+        }
+    }
+
     #[test]
     fn utc_offsets_follow_the_captured_history_across_a_leap() {
-        let ctx = TimeContext::new();
+        let ctx = compiled_context();
         for (label, offset) in [
             ("2016-12-31T23:59:59Z", 36.0),
             ("2016-12-31T23:59:60.5Z", 36.0),
@@ -190,7 +199,7 @@ mod tests {
 
     #[test]
     fn utc_offset_errors_follow_context_policy() {
-        let ctx = TimeContext::new();
+        let ctx = compiled_context();
         let permissive = ctx.clone().allow_pre_definition_utc();
         let epoch =
             Time::<UTC>::try_from_chrono_with("1960-01-01T00:00:00Z".parse().unwrap(), &permissive)
@@ -205,7 +214,7 @@ mod tests {
     }
     #[test]
     fn native_civil_roundtrips_preserve_nanoseconds_at_day_and_leap_boundaries() {
-        let ctx = TimeContext::new();
+        let ctx = compiled_context();
         for label in [
             "2016-12-31T23:59:59.999999999Z",
             "2016-12-31T23:59:60.000000001Z",

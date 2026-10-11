@@ -33,7 +33,6 @@
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 
-use crate::data::runtime_data::time_data_tai_seconds_is_in_leap_window;
 use crate::earth::context::TimeContext;
 use crate::foundation::error::ConversionError;
 use crate::model::scale::UTC;
@@ -53,7 +52,7 @@ pub enum FormatPrecision {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FormatOptions {
     /// Number of subsecond digits to emit (0..=9). Values above 9 are
-    /// clamped to 9 because tempoch's exact storage is 1 ns.
+    /// clamped to 9 because the civil bridge resolves nanosecond labels.
     pub subsecond_digits: u8,
     /// Rounding policy when truncating below the requested precision.
     pub precision: FormatPrecision,
@@ -181,22 +180,14 @@ fn parse_rfc3339_manual(s: &str, ctx: &TimeContext) -> Result<Time<UTC>, Convers
     // Handle leap-second labelling: second == 60 must occur during an
     // announced positive leap second on this UTC date.
     if second == 60 {
-        // Construct the instant at HH:59:59.999999999 and add 1s−frac.
-        let base = NaiveDateTime::parse_from_str(
-            &format!("{year:04}-{month:02}-{day:02}T{hour:02}:59:59.999999999"),
-            "%Y-%m-%dT%H:%M:%S%.9f",
-        )
-        .map_err(|_| ConversionError::OutOfRange)?
-        .and_utc();
-        let utc_almost = Time::<UTC>::try_from_chrono_with(base, ctx)?;
-        // 1ns nudge → instant equivalent to HH:60:00, leap-second second; then add `frac_nanos` ns.
-        let shifted =
-            utc_almost.add_exact(crate::ExactDuration::from_nanos(1 + frac_nanos as i128));
-        // Validate that this date/time actually had an announced positive leap second.
-        if !time_data_tai_seconds_is_in_leap_window(ctx.time_data(), shifted.raw_seconds_pair()) {
-            return Err(ConversionError::InvalidLeapSecond);
+        if minute >= 60 || hour >= 24 {
+            return Err(ConversionError::OutOfRange);
         }
-        return Ok(shifted);
+        let base = chrono::NaiveDate::from_ymd_opt(year, month, day)
+            .and_then(|date| date.and_hms_nano_opt(hour, minute, 59, 1_000_000_000 + frac_nanos))
+            .ok_or(ConversionError::OutOfRange)?
+            .and_utc();
+        return Time::<UTC>::try_from_chrono_with(base, ctx);
     }
 
     if second >= 60 || minute >= 60 || hour >= 24 {
@@ -301,12 +292,32 @@ impl Time<UTC> {
         opts: FormatOptions,
         ctx: &TimeContext,
     ) -> Result<String, ConversionError> {
-        // Use the explicit table/context-driven check as the authoritative source
-        // for leap-second detection. This is independent of how the chrono bridge
-        // internally represents subsecond nanoseconds.
-        let is_leap = self.is_leap_second_with(ctx);
         let dt = self.try_to_chrono_with(ctx)?;
-        format_utc_datetime_rfc3339(dt, is_leap, opts)
+        let is_leap = self.is_leap_second_with(ctx);
+        let digits = opts.subsecond_digits.min(9) as usize;
+        let raw_nanos = dt.timestamp_subsec_nanos();
+        if is_leap != (raw_nanos >= 1_000_000_000) {
+            return Err(ConversionError::InvalidLeapSecond);
+        }
+        let (frac, carry) = round_subsecond(raw_nanos % 1_000_000_000, digits, opts.precision);
+        if carry {
+            // Advance the civil second through the context, since chrono's
+            // ordinary arithmetic skips a leap second unless already inside it.
+            let next = DateTime::<Utc>::from_timestamp(dt.timestamp() + 1, 0)
+                .ok_or(ConversionError::OutOfRange)?;
+            let next_utc = Self::try_from_chrono_with(next, ctx)?;
+            let before = next_utc.sub_exact(crate::ExactDuration::from_nanos(1_000_000_000));
+            if !is_leap && before.is_leap_second_with(ctx) {
+                return Ok(format_normal_dt(
+                    before.try_to_chrono_with(ctx)?,
+                    0,
+                    digits,
+                    opts,
+                ));
+            }
+            return Ok(format_normal_dt(next, 0, digits, opts));
+        }
+        Ok(format_normal_dt(dt, frac, digits, opts))
     }
 }
 
@@ -333,63 +344,6 @@ fn round_subsecond(nanos: u32, digits: usize, precision: FormatPrecision) -> (u3
         result -= threshold;
     }
     (result, carry)
-}
-
-/// Format a `DateTime<Utc>` as RFC 3339, applying uniform rounding and
-/// emitting `23:59:60` for leap-second instants.
-///
-/// The `is_leap` flag is the authoritative signal: it must be supplied by the
-/// caller via `Time<UTC>::is_leap_second_with(ctx)`, which consults the compiled
-/// UTC–TAI table. Chrono must represent the leap-second instant with
-/// `timestamp_subsec_nanos() >= 1_000_000_000`; if it does not, the function
-/// returns `Err(ConversionError::InvalidLeapSecond)` to avoid silently producing
-/// an incorrect fractional value.
-fn format_utc_datetime_rfc3339(
-    dt: DateTime<Utc>,
-    is_leap: bool,
-    opts: FormatOptions,
-) -> Result<String, crate::foundation::error::ConversionError> {
-    use crate::foundation::error::ConversionError;
-    let digits = opts.subsecond_digits.min(9) as usize;
-    let raw_nanos = dt.timestamp_subsec_nanos();
-
-    if is_leap {
-        // chrono encodes leap-second instants with timestamp_subsec_nanos() ≥ 1_000_000_000.
-        // If that invariant is violated, the fractional position within the leap second
-        // cannot be reliably derived; return an error rather than silently producing
-        // a wrong value.
-        if raw_nanos < 1_000_000_000 {
-            return Err(ConversionError::InvalidLeapSecond);
-        }
-        let leap_nanos = raw_nanos - 1_000_000_000;
-        let (frac, carry) = round_subsecond(leap_nanos, digits, opts.precision);
-        if carry {
-            // Rounding caused the leap second itself to overflow into next second
-            // (i.e. 23:59:60.999999500 rounded up to 23:59:61 → 2017-01-01T00:00:00).
-            let next = dt + chrono::TimeDelta::try_seconds(1).unwrap_or_default();
-            return Ok(format_normal_dt(next, 0, digits, opts));
-        }
-        let date = dt.format("%Y-%m-%d");
-        if digits == 0 {
-            let zulu = if opts.include_zulu { "Z" } else { "" };
-            Ok(format!("{date}T23:59:60{zulu}"))
-        } else {
-            let zulu = if opts.include_zulu { "Z" } else { "" };
-            Ok(format!(
-                "{date}T23:59:60.{:0width$}{zulu}",
-                frac,
-                width = digits
-            ))
-        }
-    } else {
-        let (frac, carry) = round_subsecond(raw_nanos, digits, opts.precision);
-        let effective_dt = if carry {
-            dt + chrono::TimeDelta::try_seconds(1).unwrap_or_default()
-        } else {
-            dt
-        };
-        Ok(format_normal_dt(effective_dt, frac, digits, opts))
-    }
 }
 
 fn format_normal_dt(dt: DateTime<Utc>, frac: u32, digits: usize, opts: FormatOptions) -> String {
@@ -422,22 +376,17 @@ mod tests {
     }
 
     #[test]
-    fn parse_with_microseconds_within_chrono_bridge_precision() {
-        // The chrono bridge collapses split storage to f64 J2000 seconds (~150 ns
-        // precision near 2024). Test that microsecond round-trip is within
-        // single-digit microseconds, which is the documented bridge tolerance.
+    fn parse_with_microseconds_exact() {
         let t = Time::<UTC>::parse_rfc3339("2024-06-15T12:34:56.123456Z").unwrap();
         let s = t.format_rfc3339(FormatOptions::microseconds());
-        assert!(s.starts_with("2024-06-15T12:34:56.1234"), "got {s}");
+        assert_eq!(s, "2024-06-15T12:34:56.123456Z");
     }
 
     #[test]
-    fn parse_with_nanoseconds_within_chrono_bridge_precision() {
-        // Same bridge precision caveat as above; nanosecond digits will drift by
-        // ~150 ns near 2024. The format itself supports 9 digits.
+    fn parse_with_nanoseconds_exact() {
         let t = Time::<UTC>::parse_rfc3339("2024-06-15T12:34:56.123456789Z").unwrap();
         let s = t.format_rfc3339(FormatOptions::nanoseconds());
-        assert!(s.starts_with("2024-06-15T12:34:56.1234"), "got {s}");
+        assert_eq!(s, "2024-06-15T12:34:56.123456789Z");
         assert_eq!(s.len(), "2024-06-15T12:34:56.123456789Z".len());
     }
 
@@ -458,7 +407,6 @@ mod tests {
 
     #[test]
     fn format_leap_second_with_fraction() {
-        // The chrono bridge has ~150 ns precision near 2016; test at millisecond level.
         let t = Time::<UTC>::parse_rfc3339("2016-12-31T23:59:60.500Z").unwrap();
         let s = t.format_rfc3339(FormatOptions::milliseconds());
         assert_eq!(s, "2016-12-31T23:59:60.500Z");
@@ -511,13 +459,11 @@ mod tests {
             include_zulu: true,
         };
         let s = t.format_rfc3339(opts);
-        // 4-digit subsecond resolution survives the chrono-bridge drift (~150 ns).
-        assert!(s.starts_with("2024-06-15T12:34:56.1234"), "got {s}");
+        assert_eq!(s, "2024-06-15T12:34:56.1234Z");
     }
 
     #[test]
     fn truncate_vs_round_differs_on_5() {
-        // Use a year-2000 epoch where chrono-bridge precision is sub-ms.
         let t = Time::<UTC>::parse_rfc3339("2000-06-15T12:34:56.55Z").unwrap();
         let trunc = FormatOptions {
             subsecond_digits: 1,
@@ -565,7 +511,6 @@ mod tests {
 
     #[test]
     fn rounding_truncate_standard_digits() {
-        // Use a simple value well within chrono-bridge precision (J2000 era).
         // .123Z at 0 digits truncate → no subsecond part (no carry since .123 < .5)
         let t = Time::<UTC>::parse_rfc3339("2000-01-01T12:34:56.123Z").unwrap();
         let opts = FormatOptions {
@@ -595,8 +540,6 @@ mod tests {
     fn rounding_half_even_milliseconds() {
         // 500.000000 ms at 3 digits, RoundHalfToEven:
         // truncated = 500, remainder = 0 (no tie) → stays .500.
-        // Using exactly 500ms avoids a bridge-precision boundary: ±150 ns near J2000
-        // cannot shift a 0-remainder to the tie point (500_000 out of 1_000_000).
         let t = Time::<UTC>::parse_rfc3339("2000-01-01T12:00:00.500000000Z").unwrap();
         let opts = FormatOptions {
             subsecond_digits: 3,

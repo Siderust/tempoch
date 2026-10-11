@@ -143,3 +143,68 @@ proptest! {
             "TT↔TCG round trip drift > 1 µs: {} ns", d.as_nanos_i128());
     }
 }
+
+proptest! {
+    #![proptest_config(ProptestConfig {
+        cases: 512,
+        rng_seed: proptest::test_runner::RngSeed::Fixed(0x0055_5443_5f54_4149),
+        ..ProptestConfig::default()
+    })]
+
+    #[test]
+    fn utc_nanosecond_roundtrip_and_monotonicity(
+        seconds in prop_oneof![
+            -283_996_800_i64..63_072_000_i64, // 1961–1971: frequency offsets
+            63_072_000_i64..946_684_800_i64, // 1972–1999
+            946_684_800_i64..1_924_992_000_i64, // 2000–2030
+        ],
+        nanos in prop_oneof![Just(0_u32), Just(1), Just(999_999_998), Just(999_999_999), 0_u32..1_000_000_000],
+    ) {
+        use tempoch_core::{TimeContext, UTC};
+        let ctx = TimeContext::new();
+        let dt = chrono::DateTime::<chrono::Utc>::from_timestamp(seconds, nanos).unwrap();
+        let utc = Time::<UTC>::try_from_chrono_with(dt, &ctx).unwrap();
+        let tai = utc.to::<TAI>();
+        prop_assert_eq!(tai.to::<UTC>().try_to_chrono_with(&ctx).unwrap(), dt);
+        prop_assert!(!utc.is_leap_second_with(&ctx));
+        let next_dt = dt + chrono::TimeDelta::nanoseconds(1);
+        let next = Time::<UTC>::try_from_chrono_with(next_dt, &ctx).unwrap();
+        prop_assert!(next > utc);
+        prop_assert_eq!(next.try_to_chrono_with(&ctx).unwrap(), next_dt);
+        let label = dt.to_rfc3339_opts(chrono::SecondsFormat::Nanos, true);
+        let parsed = Time::<UTC>::parse_rfc3339_with(&label, &ctx).unwrap();
+        prop_assert_eq!(parsed.try_format_rfc3339_with(tempoch_core::format::iso::FormatOptions::nanoseconds(), &ctx).unwrap(), label);
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig {
+        cases: 256,
+        rng_seed: proptest::test_runner::RngSeed::Fixed(0x4c45_4150),
+        ..ProptestConfig::default()
+    })]
+
+    #[test]
+    fn leap_boundaries_preserve_generated_nanoseconds(
+        date in prop::sample::select(vec!["1972-06-30", "1998-12-31", "2016-12-31"]),
+        nanos in 0_u32..1_000_000_000,
+    ) {
+        use tempoch_core::{TimeContext, UTC};
+        let ctx = TimeContext::new();
+        let last = format!("{date}T23:59:59Z").parse::<chrono::DateTime<chrono::Utc>>().unwrap().timestamp();
+        let mut prior = None;
+        for dt in [
+            chrono::DateTime::from_timestamp(last, nanos).unwrap(),
+            chrono::DateTime::from_timestamp(last, 1_000_000_000 + nanos).unwrap(),
+            chrono::DateTime::from_timestamp(last + 1, nanos).unwrap(),
+        ] {
+            let utc = Time::<UTC>::try_from_chrono_with(dt, &ctx).unwrap();
+            prop_assert_eq!(utc.try_to_chrono_with(&ctx).unwrap(), dt);
+            prop_assert_eq!(utc.is_leap_second_with(&ctx), dt.timestamp_subsec_nanos() >= 1_000_000_000);
+            let label = dt.to_rfc3339_opts(chrono::SecondsFormat::Nanos, true);
+            prop_assert_eq!(utc.try_format_rfc3339_with(tempoch_core::format::iso::FormatOptions::nanoseconds(), &ctx).unwrap(), label);
+            if let Some(previous) = prior { prop_assert!(utc > previous); }
+            prior = Some(utc);
+        }
+    }
+}
