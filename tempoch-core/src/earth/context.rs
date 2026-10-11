@@ -128,6 +128,24 @@ impl TimeContext {
     pub(crate) fn allows_pre_definition_utc(&self) -> bool {
         self.utc_pre_definition
     }
+    /// TAI − UTC at a native UTC instant, using this context's captured history.
+    ///
+    /// Positive leap-second labels use the offset before the midnight step.
+    /// Historical UTC frequency offsets and pre-definition policy are handled
+    /// by the same conversion engine as civil UTC decoding. No scalar UTC
+    /// JD/MJD encoding is needed, so leap-second instants are supported.
+    #[inline]
+    pub fn tai_minus_utc<F: crate::TimeFormat>(
+        &self,
+        epoch: crate::Time<crate::UTC, F>,
+    ) -> Result<Second, crate::ConversionError> {
+        crate::data::runtime_data::time_data_tai_minus_utc_at(
+            self.time_data(),
+            epoch.raw_seconds_pair(),
+            self.allows_pre_definition_utc(),
+        )
+    }
+
     /// Interpolated EOP at `mjd_utc`, if this context has an EOP source and
     /// the MJD is in range.
     ///
@@ -149,5 +167,75 @@ impl TimeContext {
     #[inline]
     pub fn ut1_minus_utc(&self, mjd_utc: Day) -> Option<Second> {
         self.eop_at(mjd_utc).map(|v| v.ut1_minus_utc)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{ConversionError, Time, UTC};
+
+    // Other unit tests replace the active runtime bundle concurrently. These
+    // regressions require the official compiled history, not a global fixture.
+    fn compiled_context() -> TimeContext {
+        TimeContext {
+            data: crate::data::runtime_data::compiled_time_data(),
+            ..TimeContext::new()
+        }
+    }
+
+    #[test]
+    fn utc_offsets_follow_the_captured_history_across_a_leap() {
+        let ctx = compiled_context();
+        for (label, offset) in [
+            ("2016-12-31T23:59:59Z", 36.0),
+            ("2016-12-31T23:59:60.5Z", 36.0),
+            ("2017-01-01T00:00:00Z", 37.0),
+        ] {
+            let epoch = Time::<UTC>::try_from_chrono_with(label.parse().unwrap(), &ctx).unwrap();
+            assert_eq!(ctx.tai_minus_utc(epoch).unwrap(), Second::new(offset));
+        }
+    }
+
+    #[test]
+    fn utc_offset_errors_follow_context_policy() {
+        let ctx = compiled_context();
+        let permissive = ctx.clone().allow_pre_definition_utc();
+        let epoch =
+            Time::<UTC>::try_from_chrono_with("1960-01-01T00:00:00Z".parse().unwrap(), &permissive)
+                .unwrap();
+        assert_eq!(
+            ctx.tai_minus_utc(epoch),
+            Err(ConversionError::UtcBeforeDefinition)
+        );
+        assert!(permissive.tai_minus_utc(epoch).is_ok());
+        let invalid = Time::<UTC>::from_raw_j2000_seconds(Second::new(f64::INFINITY)).unwrap();
+        assert_eq!(ctx.tai_minus_utc(invalid), Err(ConversionError::NonFinite));
+    }
+    #[test]
+    fn native_civil_roundtrips_preserve_nanoseconds_at_day_and_leap_boundaries() {
+        let ctx = compiled_context();
+        for label in [
+            "2016-12-31T23:59:59.999999999Z",
+            "2016-12-31T23:59:60.000000001Z",
+            "2016-12-31T23:59:60.999999999Z",
+            "2017-01-01T00:00:00Z",
+            "2017-01-01T23:59:59.999999999Z",
+            "2017-01-02T00:00:00.000000001Z",
+        ] {
+            let civil: chrono::DateTime<chrono::Utc> = label.parse().unwrap();
+            let epoch = Time::<UTC>::try_from_chrono_with(civil, &ctx).unwrap();
+            assert_eq!(epoch.try_to_chrono_with(&ctx).unwrap(), civil, "{label}");
+            let expected_offset = if civil.timestamp() < 1_483_228_800 {
+                36.0
+            } else {
+                37.0
+            };
+            assert_eq!(
+                ctx.tai_minus_utc(epoch).unwrap(),
+                Second::new(expected_offset),
+                "{label}"
+            );
+        }
     }
 }

@@ -79,7 +79,6 @@ pub const TDB_TT_MODEL_HIGH_ACCURACY_END_JD_DAY: Day = Day::new(2_524_598.5);
 /// UTC-TAI value; no standard UTC existed before 1961.
 pub const UTC_DEFINED_FROM_MJD_DAY: Day = Day::new(37_300.0);
 
-pub(crate) const UTC_INTERVAL_EPS: Day = Day::new(1e-15);
 pub(crate) const L_G: f64 = 6.969_290_134e-10;
 pub(crate) const L_B: f64 = 1.550_519_768e-8;
 pub(crate) const TDB0: Second = Second::new(-6.55e-5);

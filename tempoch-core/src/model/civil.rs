@@ -5,13 +5,12 @@
 //! representations.
 
 use crate::data::runtime_data::{
-    time_data_tai_seconds_from_utc, time_data_tai_seconds_is_in_leap_window,
-    time_data_try_tai_minus_utc_mjd, time_data_utc_from_tai_seconds,
+    time_data_tai_seconds_from_unix, time_data_tai_seconds_from_utc,
+    time_data_tai_seconds_is_in_leap_window, time_data_unix_seconds_from_tai,
+    time_data_utc_from_tai_seconds,
 };
 use crate::earth::context::TimeContext;
-use crate::encoding::{day_to_j2000_seconds, unix_seconds_to_mjd};
 use crate::format::TimeFormat;
-use crate::format::MJD;
 use crate::foundation::constats::gps_epoch_tai_seconds;
 use crate::foundation::error::ConversionError;
 use crate::model::scale::{TAI, UTC};
@@ -22,17 +21,19 @@ use chrono::{DateTime, Utc};
 impl<F: TimeFormat> Time<UTC, F> {
     /// Build a UTC instant from a `chrono::DateTime<Utc>` using the context's
     /// captured time-data bundle.
+    ///
+    /// Nanosecond civil labels round-trip exactly over the bundled 1961–2030
+    /// history, except for superseded labels at negative historical steps.
+    /// Those ambiguous tails return [`ConversionError::UtcHistoryUnsupported`];
+    /// the later segment supplies the canonical label for the shared instant.
     #[inline]
     pub fn try_from_chrono_with(
         dt: DateTime<Utc>,
         ctx: &TimeContext,
     ) -> Result<Time<UTC, crate::format::J2000s>, ConversionError> {
-        let tai_secs =
+        let (tai_hi, tai_lo) =
             time_data_tai_seconds_from_utc(ctx.time_data(), dt, ctx.allows_pre_definition_utc())?;
-        Time::<UTC, crate::format::J2000s>::try_from_raw_j2000_seconds_split(
-            tai_secs,
-            Second::new(0.0),
-        )
+        Time::<UTC, crate::format::J2000s>::try_from_raw_j2000_seconds_split(tai_hi, tai_lo)
     }
 
     /// Build a UTC instant from a `chrono::DateTime<Utc>`.
@@ -73,11 +74,16 @@ impl<F: TimeFormat> Time<UTC, F> {
 
     /// Convert to a `chrono::DateTime<Utc>`, preserving leap-second labels,
     /// using the context's captured time-data bundle.
+    ///
+    /// Positive historical steps before the leap-second system leave atomic
+    /// intervals without civil labels. These return
+    /// [`ConversionError::UtcHistoryUnsupported`], rather than fabricated
+    /// `23:59:60` labels. At negative steps the later segment is authoritative.
     #[inline]
     pub fn try_to_chrono_with(self, ctx: &TimeContext) -> Result<DateTime<Utc>, ConversionError> {
         time_data_utc_from_tai_seconds(
             ctx.time_data(),
-            self.to_j2000s().total_seconds(),
+            self.raw_seconds_pair(),
             ctx.allows_pre_definition_utc(),
         )
     }
@@ -111,26 +117,19 @@ impl<F: TimeFormat> Time<UTC, F> {
     }
 
     /// Build a UTC instant from a POSIX timestamp in seconds using the
-    /// context's captured time-data bundle.
+    /// context's captured time-data bundle. The shared history engine rejects
+    /// superseded historical labels, just as the chrono bridge does.
     #[inline]
     pub(crate) fn from_raw_unix_seconds_with(
         seconds: Second,
         ctx: &TimeContext,
     ) -> Result<Time<UTC, crate::format::J2000s>, ConversionError> {
-        if seconds.value().is_nan() {
-            return Err(ConversionError::NonFinite);
-        }
-        let mjd_utc = unix_seconds_to_mjd(seconds);
-        let tai_minus_utc = time_data_try_tai_minus_utc_mjd(
+        let (hi, lo) = time_data_tai_seconds_from_unix(
             ctx.time_data(),
-            mjd_utc,
+            seconds,
             ctx.allows_pre_definition_utc(),
         )?;
-        let tai_secs = day_to_j2000_seconds::<MJD>(mjd_utc) + tai_minus_utc;
-        Time::<UTC, crate::format::J2000s>::try_from_raw_j2000_seconds_split(
-            tai_secs,
-            Second::new(0.0),
-        )
+        Time::<UTC, crate::format::J2000s>::try_from_raw_j2000_seconds_split(hi, lo)
     }
 
     /// Return the POSIX timestamp in seconds for this UTC instant using the
@@ -140,19 +139,18 @@ impl<F: TimeFormat> Time<UTC, F> {
         self,
         ctx: &TimeContext,
     ) -> Result<Second, ConversionError> {
-        if self.to_j2000s().is_leap_second_with(ctx) {
-            return Err(ConversionError::InvalidLeapSecond);
-        }
-        let dt = self.try_to_chrono_with(ctx)?;
-        let nanos = dt.timestamp_subsec_nanos();
-        Ok(Second::new(dt.timestamp() as f64 + nanos as f64 / 1e9))
+        time_data_unix_seconds_from_tai(
+            ctx.time_data(),
+            self.raw_seconds_pair(),
+            ctx.allows_pre_definition_utc(),
+        )
     }
 
     /// Returns `true` if this instant falls inside a positive leap second in
     /// UTC (e.g. 23:59:60) using the context's captured time-data bundle.
     #[inline]
     pub fn is_leap_second_with(self, ctx: &TimeContext) -> bool {
-        time_data_tai_seconds_is_in_leap_window(ctx.time_data(), self.to_j2000s().total_seconds())
+        time_data_tai_seconds_is_in_leap_window(ctx.time_data(), self.raw_seconds_pair())
     }
 
     /// Returns `true` if this instant falls inside a positive leap second
@@ -207,13 +205,8 @@ mod tests {
 
             let back_with_ctx = with_ctx.to_chrono_with(&ctx).unwrap();
             let back_default = with_ctx.to_chrono().unwrap();
-            let with_ctx_delta_ns =
-                back_with_ctx.timestamp_nanos_opt().unwrap() - dt.timestamp_nanos_opt().unwrap();
-            let default_delta_ns =
-                back_default.timestamp_nanos_opt().unwrap() - dt.timestamp_nanos_opt().unwrap();
-
-            assert!(with_ctx_delta_ns.abs() < 50_000);
-            assert!(default_delta_ns.abs() < 50_000);
+            assert_eq!(back_with_ctx, dt);
+            assert_eq!(back_default, dt);
         });
     }
 
