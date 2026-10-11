@@ -5,6 +5,35 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-10-11
+
+### Added
+- `TimeContext::tai_minus_utc()` queries context-owned TAI−UTC offsets for
+  native UTC instants, including historical frequency offsets and positive
+  leap-second labels, while honoring the pre-definition UTC policy.
+
+### Fixed
+- Preserve nanosecond timestamps through UTC/civil and chrono conversions
+  using compensated split-second coordinates, including historical drift
+  segments and day and leap-second boundaries.
+- Invert historical UTC drift by subtracting a small correction instead of
+  scaling a large coordinate by a factor near one.
+- Distinguish genuine positive leap seconds from historical offset adjustments.
+  Historical positive gaps return `UtcHistoryUnsupported`; at negative steps,
+  the later segment supplies the canonical label and superseded earlier labels
+  are rejected with the same error instead of silently changing timestamps.
+- Reject invalid RFC 3339 leap-second labels and preserve fractional nanoseconds
+  on valid labels. Rounding into a positive leap second now emits `23:59:60`
+  before advancing to midnight.
+- Replace weak ISO precision assertions with exact round-trip checks; add
+  historical and leap-boundary regressions, deterministic property tests, and
+  a daily precision and monotonicity sweep across 1961–2030.
+- Isolate context offset tests from concurrent runtime-data fixtures.
+
+### Changed
+- Bumped `tempoch`, `tempoch-core`, and `tempoch-ffi` to `0.8.1`, synchronized
+  internal dependency constraints, and advanced the reported FFI version to `801`.
+
 ## [0.8.0] - 2026-10-10
 
 ### Changed
