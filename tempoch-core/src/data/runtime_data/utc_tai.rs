@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Vallés Puig, Ramon
 
 use crate::archive::time::{TimeDataBundle, UtcTaiSegment};
-use crate::encoding::{day_to_j2000_seconds, jd_to_mjd, mjd_to_unix_seconds, unix_seconds_to_jd};
+use crate::encoding::{day_to_j2000_seconds, mjd_to_unix_seconds};
 use crate::format::MJD;
 use crate::foundation::constats::unix_epoch_mjd_day;
 use crate::foundation::error::ConversionError;
@@ -16,46 +16,18 @@ const NANOS_PER_SECOND: Nanosecond = Nanosecond::new(1_000_000_000.0);
 #[derive(Clone, Copy)]
 enum UtcTaiRegion {
     Segment(UtcTaiSegment),
-    Leap {
-        end_mjd: Day,
-        start: SecondsSplit,
-        end: SecondsSplit,
-    },
+    Leap { end_mjd: Day, start: SecondsSplit },
 }
 
-/// Return TAI − UTC in seconds at the given UTC MJD.
-///
-/// Returns `Err(ConversionError::UtcBeforeDefinition)` for dates before
-/// MJD 37 300 (1961-01-01) when `allow_extrapolation` is `false`. When
-/// `true`, extrapolates the first official UTC-TAI segment backwards; the
-/// result is internally consistent (round-trips close) but is not
-/// historically defined UTC.
-pub(crate) fn time_data_try_tai_minus_utc_mjd(
-    data: &TimeDataBundle,
-    mjd_utc: Day,
-    allow_extrapolation: bool,
-) -> Result<Second, ConversionError> {
-    let segments = data.utc_tai_segments();
-    let first = segments[0];
-    if mjd_utc < Day::new(first.start_mjd as f64) {
-        if !allow_extrapolation {
-            return Err(ConversionError::UtcBeforeDefinition);
-        }
-        return Ok(utc_offset_seconds_in_segment(mjd_utc, first));
-    }
-    let idx = segments.partition_point(|segment| Day::new(segment.start_mjd as f64) <= mjd_utc);
-    let segment = segments[idx - 1];
-    Ok(utc_offset_seconds_in_segment(mjd_utc, segment))
-}
-
-/// Like [`time_data_try_tai_minus_utc_mjd`] but always extrapolates; used
-/// for internal ΔT / EOP bookkeeping that must not surface the pre-definition
-/// policy to callers.
-pub(super) fn time_data_tai_minus_utc_mjd_extrapolated(
+/// Scalar MJD adapter for internal ΔT / EOP bookkeeping. It deliberately
+/// extrapolates before UTC's definition, but shares civil history validation.
+pub(crate) fn time_data_tai_minus_utc_mjd_extrapolated(
     data: &TimeDataBundle,
     mjd_utc: Day,
 ) -> Option<Second> {
-    time_data_try_tai_minus_utc_mjd(data, mjd_utc, true).ok()
+    let utc = SecondsSplit::from_quantity(day_to_j2000_seconds::<MJD>(mjd_utc));
+    let tai = tai_from_utc_coordinate(data, utc, false, true).ok()?;
+    Some(tai.difference(utc))
 }
 
 /// Context-owned TAI-UTC at an atomic instant, including a leap-second label.
@@ -67,9 +39,9 @@ pub(crate) fn time_data_tai_minus_utc_at(
     let tai = checked_seconds(tai_pair)?;
     match locate_utc_region(data.utc_tai_segments(), tai, allow_extrapolation)? {
         UtcTaiRegion::Segment(segment) => Ok(tai.difference(utc_seconds_in_segment(tai, segment))),
-        UtcTaiRegion::Leap { end_mjd, start, .. } => Ok(start.difference(
-            SecondsSplit::from_quantity(day_to_j2000_seconds::<MJD>(end_mjd)),
-        )),
+        UtcTaiRegion::Leap { end_mjd, start } => Ok(start.difference(SecondsSplit::from_quantity(
+            day_to_j2000_seconds::<MJD>(end_mjd),
+        ))),
     }
 }
 
@@ -84,23 +56,14 @@ pub(crate) fn time_data_utc_from_tai_seconds(
             let unix = shift(utc_seconds_in_segment(tai, segment), -unix_origin());
             datetime_from_seconds_since_epoch(unix).ok_or(ConversionError::OutOfRange)
         }
-        UtcTaiRegion::Leap {
-            end_mjd,
-            start,
-            end,
-        } => {
+        UtcTaiRegion::Leap { end_mjd, start } => {
             let boundary = mjd_to_unix_seconds(end_mjd);
             let leap_nanos =
                 NANOS_PER_SECOND + tai.difference(start).to::<qtty::unit::Nanosecond>();
-            let window_nanos = end
-                .difference(start)
-                .to::<qtty::unit::Nanosecond>()
+            // Genuine positive leaps are exactly one SI second long.
+            let nanos = leap_nanos
                 .round()
-                .max(Nanosecond::one());
-            let nanos = leap_nanos.round().clamp(
-                NANOS_PER_SECOND,
-                NANOS_PER_SECOND + window_nanos - Nanosecond::one(),
-            );
+                .clamp(NANOS_PER_SECOND, NANOS_PER_SECOND * 2.0 - Nanosecond::one());
             DateTime::<Utc>::from_timestamp(
                 (boundary / Second::one()) as i64 - 1,
                 (nanos / Nanosecond::one()) as u32,
@@ -115,33 +78,85 @@ pub(crate) fn time_data_tai_seconds_from_utc(
     dt: DateTime<Utc>,
     allow_extrapolation: bool,
 ) -> Result<(Second, Second), ConversionError> {
-    let unix_whole = Second::new(dt.timestamp() as f64);
-    // Scalar days are only used to select the UTC history segment. The
-    // instant itself is assembled from integer seconds and fractional seconds.
-    let base_mjd = jd_to_mjd(unix_seconds_to_jd(unix_whole));
+    let utc = SecondsSplit::new(
+        Second::new(dt.timestamp() as f64) + unix_origin(),
+        Nanosecond::new(dt.timestamp_subsec_nanos() as f64).to::<qtty::unit::Second>(),
+    );
+    tai_from_utc_coordinate(
+        data,
+        utc,
+        dt.timestamp_subsec_nanos() >= 1_000_000_000,
+        allow_extrapolation,
+    )
+    .map(SecondsSplit::pair)
+}
+
+/// Decode a scalar POSIX coordinate without imposing chrono's date range or
+/// rounding it to integer nanoseconds. JD/MJD construction also uses this path.
+pub(crate) fn time_data_tai_seconds_from_unix(
+    data: &TimeDataBundle,
+    seconds: Second,
+    allow_extrapolation: bool,
+) -> Result<(Second, Second), ConversionError> {
+    let unix = checked_seconds((seconds, Second::new(0.0)))?;
+    tai_from_utc_coordinate(data, shift(unix, unix_origin()), false, allow_extrapolation)
+        .map(SecondsSplit::pair)
+}
+
+/// Encode POSIX seconds directly from the compensated civil coordinate.
+pub(crate) fn time_data_unix_seconds_from_tai(
+    data: &TimeDataBundle,
+    tai_pair: (Second, Second),
+    allow_extrapolation: bool,
+) -> Result<Second, ConversionError> {
+    let tai = checked_seconds(tai_pair)?;
+    match locate_utc_region(data.utc_tai_segments(), tai, allow_extrapolation)? {
+        UtcTaiRegion::Segment(segment) => {
+            Ok(shift(utc_seconds_in_segment(tai, segment), -unix_origin()).total())
+        }
+        UtcTaiRegion::Leap { .. } => Err(ConversionError::InvalidLeapSecond),
+    }
+}
+
+// The single civil-to-atomic history engine. Coordinates are nominal UTC
+// seconds since J2000; a leap label occupies [midnight, midnight + 1 s) but
+// belongs to the preceding segment, unlike an ordinary midnight coordinate.
+fn tai_from_utc_coordinate(
+    data: &TimeDataBundle,
+    utc: SecondsSplit,
+    is_leap: bool,
+    allow_extrapolation: bool,
+) -> Result<SecondsSplit, ConversionError> {
+    let utc = checked_seconds(utc.pair())?;
+    let lookup = if is_leap {
+        utc.sub_quantity(Second::one())
+    } else {
+        utc
+    };
     let segments = data.utc_tai_segments();
-    let idx = segments.partition_point(|segment| Day::new(segment.start_mjd as f64) <= base_mjd);
+    let idx = segments.partition_point(|segment| {
+        lookup.difference(SecondsSplit::from_quantity(day_to_j2000_seconds::<MJD>(
+            Day::new(segment.start_mjd as f64),
+        ))) >= Second::new(0.0)
+    });
     if idx == 0 && !allow_extrapolation {
         return Err(ConversionError::UtcBeforeDefinition);
     }
     let segment = segments[idx.saturating_sub(1)];
-    let nanos = dt.timestamp_subsec_nanos();
-    if nanos >= 1_000_000_000 {
-        let boundary = unix_whole + unix_origin() + Second::one();
-        if !segments.get(idx).is_some_and(|next| {
+    if is_leap
+        && !segments.get(idx).is_some_and(|next| {
+            let boundary = day_to_j2000_seconds::<MJD>(Day::new(next.start_mjd as f64));
+            let fraction = utc.difference(SecondsSplit::from_quantity(boundary));
             is_positive_leap(segment, *next)
-                && boundary == day_to_j2000_seconds::<MJD>(Day::new(next.start_mjd as f64))
-        }) {
-            return Err(ConversionError::InvalidLeapSecond);
-        }
+                && fraction >= Second::new(0.0)
+                && fraction < Second::one()
+        })
+    {
+        return Err(ConversionError::InvalidLeapSecond);
     }
-    let fraction = Nanosecond::new(nanos as f64).to::<qtty::unit::Second>();
-    let utc = SecondsSplit::new(unix_whole + unix_origin(), fraction);
-    let tai = utc.add_quantity(utc_offset_at_seconds(utc, segment));
-    // A negative historical step gives two civil labels for the same TAI
-    // instant. Keep the later segment authoritative in both directions;
-    // reject labels in the superseded tail instead of silently changing them.
-    if nanos < 1_000_000_000
+    let tai = shift(utc, utc_offset_at_seconds(utc, segment));
+    // At a negative step, the later segment supplies the canonical label.
+    if !is_leap
         && segments.get(idx).is_some_and(|next| {
             tai.difference(tai_at_midnight(Day::new(next.start_mjd as f64), *next))
                 >= Second::new(0.0)
@@ -149,7 +164,10 @@ pub(crate) fn time_data_tai_seconds_from_utc(
     {
         return Err(ConversionError::UtcHistoryUnsupported);
     }
-    Ok(tai.pair())
+    if !tai.hi().is_finite() || !tai.lo().is_finite() {
+        return Err(ConversionError::OutOfRange);
+    }
+    Ok(tai)
 }
 
 pub(crate) fn time_data_tai_seconds_is_in_leap_window(
@@ -175,12 +193,6 @@ fn unix_origin() -> Second {
     day_to_j2000_seconds::<MJD>(unix_epoch_mjd_day())
 }
 
-fn utc_offset_seconds_in_segment(mjd_utc: Day, segment: UtcTaiSegment) -> Second {
-    segment.base
-        + Second::new(segment.slope_seconds_per_day)
-            * ((mjd_utc - Day::new(segment.reference_mjd)) / Day::one())
-}
-
 fn utc_offset_at_seconds(utc: SecondsSplit, segment: UtcTaiSegment) -> Second {
     let reference = day_to_j2000_seconds::<MJD>(Day::new(segment.reference_mjd));
     let days = utc.difference(SecondsSplit::from_quantity(reference))
@@ -190,7 +202,7 @@ fn utc_offset_at_seconds(utc: SecondsSplit, segment: UtcTaiSegment) -> Second {
 
 fn tai_at_midnight(mjd: Day, segment: UtcTaiSegment) -> SecondsSplit {
     let utc = SecondsSplit::from_quantity(day_to_j2000_seconds::<MJD>(mjd));
-    utc.add_quantity(utc_offset_at_seconds(utc, segment))
+    shift(utc, utc_offset_at_seconds(utc, segment))
 }
 
 fn utc_seconds_in_segment(tai: SecondsSplit, segment: UtcTaiSegment) -> SecondsSplit {
@@ -206,7 +218,10 @@ fn utc_seconds_in_segment(tai: SecondsSplit, segment: UtcTaiSegment) -> SecondsS
     // by |k| <= 3e-8 over the defined historical segments.
     let correction = uncorrected.difference(SecondsSplit::from_quantity(reference))
         * (drift_rate / (1.0 + drift_rate));
-    uncorrected.sub_quantity(correction)
+    let candidate = uncorrected.sub_quantity(correction);
+    // Reuse the forward offset evaluation to avoid separately rounded base
+    // and drift terms when recovering scalar Unix fractions near its epoch.
+    shift(tai, -utc_offset_at_seconds(candidate, segment))
 }
 
 // Combine the large origins with the high word first. Adding an epoch-sized
@@ -256,7 +271,6 @@ fn locate_utc_region(
             return Ok(UtcTaiRegion::Leap {
                 end_mjd,
                 start: leap_start,
-                end: leap_end,
             });
         }
     }

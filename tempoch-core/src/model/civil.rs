@@ -5,13 +5,12 @@
 //! representations.
 
 use crate::data::runtime_data::{
-    time_data_tai_seconds_from_utc, time_data_tai_seconds_is_in_leap_window,
-    time_data_try_tai_minus_utc_mjd, time_data_utc_from_tai_seconds,
+    time_data_tai_seconds_from_unix, time_data_tai_seconds_from_utc,
+    time_data_tai_seconds_is_in_leap_window, time_data_unix_seconds_from_tai,
+    time_data_utc_from_tai_seconds,
 };
 use crate::earth::context::TimeContext;
-use crate::encoding::{day_to_j2000_seconds, unix_seconds_to_mjd};
 use crate::format::TimeFormat;
-use crate::format::MJD;
 use crate::foundation::constats::gps_epoch_tai_seconds;
 use crate::foundation::error::ConversionError;
 use crate::model::scale::{TAI, UTC};
@@ -118,26 +117,18 @@ impl<F: TimeFormat> Time<UTC, F> {
     }
 
     /// Build a UTC instant from a POSIX timestamp in seconds using the
-    /// context's captured time-data bundle.
+    /// context's captured time-data bundle. The shared history engine rejects
+    /// superseded historical labels, just as the chrono bridge does.
     #[inline]
     pub(crate) fn from_raw_unix_seconds_with(
         seconds: Second,
         ctx: &TimeContext,
     ) -> Result<Time<UTC, crate::format::J2000s>, ConversionError> {
-        if seconds.value().is_nan() {
-            return Err(ConversionError::NonFinite);
-        }
-        let mjd_utc = unix_seconds_to_mjd(seconds);
-        let tai_minus_utc = time_data_try_tai_minus_utc_mjd(
+        let (hi, lo) = time_data_tai_seconds_from_unix(
             ctx.time_data(),
-            mjd_utc,
+            seconds,
             ctx.allows_pre_definition_utc(),
         )?;
-        let origin = day_to_j2000_seconds::<MJD>(crate::foundation::constats::unix_epoch_mjd_day());
-        let (hi, lo) =
-            affn::algebra::SplitQuantity::<crate::qtty::unit::Second>::new(seconds, origin)
-                .add_quantity(tai_minus_utc)
-                .pair();
         Time::<UTC, crate::format::J2000s>::try_from_raw_j2000_seconds_split(hi, lo)
     }
 
@@ -148,12 +139,11 @@ impl<F: TimeFormat> Time<UTC, F> {
         self,
         ctx: &TimeContext,
     ) -> Result<Second, ConversionError> {
-        if self.to_j2000s().is_leap_second_with(ctx) {
-            return Err(ConversionError::InvalidLeapSecond);
-        }
-        let dt = self.try_to_chrono_with(ctx)?;
-        let nanos = dt.timestamp_subsec_nanos();
-        Ok(Second::new(dt.timestamp() as f64 + nanos as f64 / 1e9))
+        time_data_unix_seconds_from_tai(
+            ctx.time_data(),
+            self.raw_seconds_pair(),
+            ctx.allows_pre_definition_utc(),
+        )
     }
 
     /// Returns `true` if this instant falls inside a positive leap second in
@@ -215,13 +205,8 @@ mod tests {
 
             let back_with_ctx = with_ctx.to_chrono_with(&ctx).unwrap();
             let back_default = with_ctx.to_chrono().unwrap();
-            let with_ctx_delta_ns =
-                back_with_ctx.timestamp_nanos_opt().unwrap() - dt.timestamp_nanos_opt().unwrap();
-            let default_delta_ns =
-                back_default.timestamp_nanos_opt().unwrap() - dt.timestamp_nanos_opt().unwrap();
-
-            assert!(with_ctx_delta_ns.abs() < 50_000);
-            assert!(default_delta_ns.abs() < 50_000);
+            assert_eq!(back_with_ctx, dt);
+            assert_eq!(back_default, dt);
         });
     }
 

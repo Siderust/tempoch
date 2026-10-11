@@ -40,6 +40,13 @@ impl TimeFormat for J2000s {
 }
 
 /// POSIX (Unix) seconds since 1970-01-01T00:00:00 UTC.
+///
+/// Scalar `f64` precision depends on distance from the Unix epoch (about
+/// 238 ns per ULP in 2024). Civil history and ambiguity policies match chrono,
+/// JD and MJD; leap-second instants cannot be encoded as POSIX seconds.
+/// Conversion operates directly on split coordinates without chrono's date
+/// range or integer-nanosecond rounding. Split storage still has finite
+/// precision and cannot preserve every arbitrarily small `f64` fraction.
 #[derive(Debug, Copy, Clone)]
 pub struct Unix;
 impl Sealed for Unix {}

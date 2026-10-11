@@ -4,7 +4,7 @@
 //! Scale conversion matrix.
 
 use crate::data::runtime_data::{
-    active_time_data, time_data_delta_t, time_data_try_tai_minus_utc_mjd,
+    active_time_data, time_data_delta_t, time_data_tai_minus_utc_mjd_extrapolated,
 };
 use crate::earth::context::TimeContext;
 use crate::earth::delta_t::delta_t_seconds;
@@ -292,7 +292,9 @@ fn context_delta_t(jd_ut1: Day, ctx: &TimeContext) -> Result<Second, ConversionE
     }
 
     if let Some(eop) = ctx.eop_at(mjd_utc) {
-        if let Ok(tai_minus_utc) = time_data_try_tai_minus_utc_mjd(data.as_ref(), mjd_utc, true) {
+        if let Some(tai_minus_utc) =
+            time_data_tai_minus_utc_mjd_extrapolated(ctx.time_data(), mjd_utc)
+        {
             return Ok(TT_MINUS_TAI + tai_minus_utc - eop.ut1_minus_utc);
         }
     }

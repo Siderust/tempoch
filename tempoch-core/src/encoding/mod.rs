@@ -90,7 +90,7 @@ mod jd;
 mod mjd;
 
 pub(crate) use jd::jd_to_julian_centuries;
-pub(crate) use mjd::{jd_to_mjd, mjd_to_unix_seconds, unix_seconds_to_jd, unix_seconds_to_mjd};
+pub(crate) use mjd::{jd_to_mjd, mjd_to_unix_seconds, unix_seconds_to_mjd};
 
 #[cfg(test)]
 mod tests {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Vallés Puig, Ramon
 
-//! ISO 8601 / RFC 3339 / RFC 2822 parsing and formatting for `Time<UTC>`
+//! ISO 8601 / RFC 3339 parsing and formatting for `Time<UTC>`
 //! and (via scale conversion) `Time<TAI>`.
 //!
 //! The civil layer is `chrono`-backed today (chrono is a hard dependency
@@ -31,7 +31,7 @@
 //! assert!(s.starts_with("2024-06-15T12:34:56.789"));
 //! ```
 
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 
 use crate::earth::context::TimeContext;
 use crate::foundation::error::ConversionError;
@@ -115,135 +115,26 @@ pub fn parse_rfc3339_utc(s: &str) -> Result<Time<UTC>, ConversionError> {
 
 /// Like [`parse_rfc3339_utc`], but uses an explicit [`TimeContext`].
 pub fn parse_rfc3339_utc_with(s: &str, ctx: &TimeContext) -> Result<Time<UTC>, ConversionError> {
-    // Pre-validate: reject more than 9 fractional digits before passing to chrono.
+    // RFC 3339 fields are ASCII. Reject other UTF-8 before parsing.
+    if !s.is_ascii() {
+        return Err(ConversionError::OutOfRange);
+    }
+    // Chrono truncates excess fractional digits; enforce the civil bridge's
+    // nanosecond resolution before parsing, including lowercase `z` forms.
     if let Some(after_dot) = s.find('.') {
-        // Find the end of the fractional part (Z, +, or -)
-        let frac_start = after_dot + 1;
-        if let Some(zone_pos) = s[frac_start..].find(['Z', '+', '-']) {
-            let frac_len = zone_pos;
-            if frac_len == 0 {
-                return Err(ConversionError::OutOfRange);
-            }
-            if frac_len > 9 {
-                return Err(ConversionError::OutOfRange);
-            }
-        }
-    }
-
-    // Try `chrono::DateTime::parse_from_rfc3339` first; it accepts a wide range of valid forms.
-    if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
-        let utc = dt.with_timezone(&Utc);
-        return Time::<UTC>::try_from_chrono_with(utc, ctx);
-    }
-
-    // chrono rejects ":60" in the seconds field except via try_parse paths;
-    // fall back to a manual leap-second-aware parser for the standard form
-    //   YYYY-MM-DDTHH:MM:SS[.fraction](Z|±HH:MM)
-    parse_rfc3339_manual(s, ctx)
-}
-
-fn parse_rfc3339_manual(s: &str, ctx: &TimeContext) -> Result<Time<UTC>, ConversionError> {
-    // Minimum length: "YYYY-MM-DDTHH:MM:SSZ" = 20 chars.
-    if s.len() < 20 {
-        return Err(ConversionError::OutOfRange);
-    }
-    let bytes = s.as_bytes();
-    if bytes[4] != b'-'
-        || bytes[7] != b'-'
-        || (bytes[10] != b'T' && bytes[10] != b' ')
-        || bytes[13] != b':'
-        || bytes[16] != b':'
-    {
-        return Err(ConversionError::OutOfRange);
-    }
-    let year: i32 = s[..4].parse().map_err(|_| ConversionError::OutOfRange)?;
-    let month: u32 = s[5..7].parse().map_err(|_| ConversionError::OutOfRange)?;
-    let day: u32 = s[8..10].parse().map_err(|_| ConversionError::OutOfRange)?;
-    let hour: u32 = s[11..13].parse().map_err(|_| ConversionError::OutOfRange)?;
-    let minute: u32 = s[14..16].parse().map_err(|_| ConversionError::OutOfRange)?;
-    let second_str = &s[17..19];
-    let second: u32 = second_str
-        .parse()
-        .map_err(|_| ConversionError::OutOfRange)?;
-
-    // Trailing portion may be: [.fraction][Z|±HH:MM]
-    let tail = &s[19..];
-    let (frac_str, zone_str) = split_fraction_and_zone(tail)?;
-    let frac_nanos = parse_fraction_nanos(frac_str)?;
-
-    if zone_str != "Z" {
-        // Only Z is supported in this path (the chrono fast path covers the
-        // general timezone case).
-        return Err(ConversionError::OutOfRange);
-    }
-
-    // Handle leap-second labelling: second == 60 must occur during an
-    // announced positive leap second on this UTC date.
-    if second == 60 {
-        if minute >= 60 || hour >= 24 {
+        let digits = s[after_dot + 1..]
+            .bytes()
+            .take_while(u8::is_ascii_digit)
+            .count();
+        if digits == 0 || digits > 9 {
             return Err(ConversionError::OutOfRange);
         }
-        let base = chrono::NaiveDate::from_ymd_opt(year, month, day)
-            .and_then(|date| date.and_hms_nano_opt(hour, minute, 59, 1_000_000_000 + frac_nanos))
-            .ok_or(ConversionError::OutOfRange)?
-            .and_utc();
-        return Time::<UTC>::try_from_chrono_with(base, ctx);
     }
 
-    if second >= 60 || minute >= 60 || hour >= 24 {
-        return Err(ConversionError::OutOfRange);
-    }
-
-    let naive_str = if frac_nanos == 0 {
-        format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}")
-    } else {
-        format!(
-            "{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{:09}",
-            frac_nanos
-        )
-    };
-    let parsed = if frac_nanos == 0 {
-        NaiveDateTime::parse_from_str(&naive_str, "%Y-%m-%dT%H:%M:%S")
-    } else {
-        NaiveDateTime::parse_from_str(&naive_str, "%Y-%m-%dT%H:%M:%S%.9f")
-    }
-    .map_err(|_| ConversionError::OutOfRange)?
-    .and_utc();
-    Time::<UTC>::try_from_chrono_with(parsed, ctx)
-}
-
-fn split_fraction_and_zone(tail: &str) -> Result<(&str, &str), ConversionError> {
-    if let Some(stripped) = tail.strip_prefix('.') {
-        // fraction up to the timezone delimiter (Z, +, -)
-        let zone_pos = stripped
-            .find(['Z', '+', '-'])
-            .ok_or(ConversionError::OutOfRange)?;
-        let frac = &stripped[..zone_pos];
-        // Reject empty fraction: "2024-06-15T12:34:56.Z" is not valid RFC 3339.
-        if frac.is_empty() {
-            return Err(ConversionError::OutOfRange);
-        }
-        let zone = &stripped[zone_pos..];
-        Ok((frac, zone))
-    } else {
-        Ok(("", tail))
-    }
-}
-
-fn parse_fraction_nanos(s: &str) -> Result<u32, ConversionError> {
-    if s.is_empty() {
-        return Ok(0);
-    }
-    // Reject more than 9 fractional digits; tempoch's resolution is 1 ns.
-    if s.len() > 9 {
-        return Err(ConversionError::OutOfRange);
-    }
-    let mut padded = [b'0'; 9];
-    padded[..s.len()].copy_from_slice(s.as_bytes());
-    core::str::from_utf8(&padded)
-        .ok()
-        .and_then(|p| p.parse::<u32>().ok())
-        .ok_or(ConversionError::OutOfRange)
+    // Chrono already parses positive leap-second labels with nanoseconds
+    // >= 1e9. The shared civil engine validates them against the context.
+    let dt = DateTime::parse_from_rfc3339(s).map_err(|_| ConversionError::OutOfRange)?;
+    Time::<UTC>::try_from_chrono_with(dt.with_timezone(&Utc), ctx)
 }
 
 impl Time<UTC> {

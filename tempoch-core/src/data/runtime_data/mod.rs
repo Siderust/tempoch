@@ -14,9 +14,10 @@ pub(crate) use store::{
 };
 #[cfg(feature = "runtime-data-fetch")]
 pub use store::{fetch_latest_time_data, refresh_runtime_time_data, update_runtime_time_data};
+pub(crate) use utc_tai::time_data_tai_minus_utc_mjd_extrapolated;
 pub(crate) use utc_tai::{
-    time_data_tai_minus_utc_at, time_data_tai_seconds_from_utc,
-    time_data_tai_seconds_is_in_leap_window, time_data_try_tai_minus_utc_mjd,
+    time_data_tai_minus_utc_at, time_data_tai_seconds_from_unix, time_data_tai_seconds_from_utc,
+    time_data_tai_seconds_is_in_leap_window, time_data_unix_seconds_from_tai,
     time_data_utc_from_tai_seconds,
 };
 
@@ -246,11 +247,8 @@ mod tests {
         let unix = Second::new(1_680_000_000.25);
         let compiled_value = {
             let compiled = compiled_time_data();
-            let jd_utc = crate::encoding::unix_seconds_to_jd(unix);
-            let mjd_utc = crate::encoding::jd_to_mjd(jd_utc);
-            let tai_minus_utc =
-                time_data_try_tai_minus_utc_mjd(compiled.as_ref(), mjd_utc, false).unwrap();
-            (crate::encoding::day_to_j2000_seconds::<JD>(jd_utc) + tai_minus_utc).value()
+            let (hi, lo) = time_data_tai_seconds_from_unix(compiled.as_ref(), unix, false).unwrap();
+            (hi + lo).value()
         };
 
         with_test_time_data(bundle, || {

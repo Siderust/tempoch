@@ -155,11 +155,17 @@ mod tests {
             assert!(serde_json::to_value(sentinel).is_err());
         }
 
-        let distant = Time::<UTC, F>::try_new_with(Day::new(1e9 + offset), &ctx).unwrap();
-        assert!(serde_json::to_value(distant)
-            .unwrap_err()
-            .to_string()
-            .contains("out of representable range"));
+        // Scalar civil formats are no longer constrained by chrono's range.
+        let distant_raw = 1e9 + offset;
+        let distant = Time::<UTC, F>::try_new_with(Day::new(distant_raw), &ctx).unwrap();
+        assert_eq!(
+            serde_json::to_value(distant).unwrap(),
+            serde_json::json!(distant_raw)
+        );
+        assert_eq!(
+            distant.try_to_chrono_with(&ctx),
+            Err(crate::ConversionError::OutOfRange)
+        );
 
         let permissive = ctx.allow_pre_definition_utc();
         let old = Time::<UTC, F>::try_new_with(Day::new(37_299.0 + offset), &permissive).unwrap();

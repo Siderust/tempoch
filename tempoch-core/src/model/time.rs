@@ -281,12 +281,10 @@ impl<S: CoordinateScale, F: TimeFormat> Time<S, F> {
     /// into [`crate::ExactDuration`], which has 1 ns resolution.
     ///
     /// **Precision note:** `Time<S>` stores instants as a compensated split-f64
-    /// pair. Near typical astronomy epochs (e.g. J2000 ± 50 years) the ULP of
-    /// the high word is roughly 120–150 ns, so differences smaller than that
-    /// may not round-trip exactly. For sub-microsecond precision on two instants
-    /// that were originally constructed from the same `ExactDuration` arithmetic,
-    /// the compensation pair reduces the error significantly, but this is not a
-    /// guarantee of nanosecond parity for arbitrary instants.
+    /// pair, preserving small differences between nearby coordinates. The
+    /// displacement is then collapsed to `f64` before nanosecond projection;
+    /// large separations can therefore lose nanoseconds. The high word's ULP
+    /// alone does not describe the precision of the compensated pair.
     ///
     /// Returns [`crate::DurationError::Overflow`] only if the difference is
     /// outside the i128-nanosecond range (≈ ±5.4 × 10²¹ yr), which is unreachable
@@ -303,10 +301,10 @@ impl<S: CoordinateScale, F: TimeFormat> Time<S, F> {
     /// **Precision note:** The duration is split into a whole-second component and
     /// a sub-second nanosecond remainder, each added to the compensated split-f64
     /// storage separately. The whole-second part is an integer `f64` (exact for
-    /// `|seconds| < 2^53`). The nanosecond remainder crosses the split-f64 storage
-    /// boundary and is therefore bounded by the documented split-f64 precision
-    /// limits (ULP ≈ 120–150 ns near J2000 ± 50 years), so shifts smaller than
-    /// that threshold may not alter the stored instant.
+    /// `|seconds| < 2^53`). Small increments are retained in the low word,
+    /// rather than rounded to the high word's ULP. Both words still have
+    /// finite precision, and larger whole-second durations may themselves
+    /// round when converted to `f64`.
     #[inline]
     pub fn try_add_exact(
         self,
