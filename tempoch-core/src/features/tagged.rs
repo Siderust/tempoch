@@ -24,8 +24,14 @@ const TAGGED_SCALAR_NAN_ERROR: &str = "tagged time scalars must not be NaN (Â±âˆ
 /// Scale-tagged interchange encoding with canonical compensated J2000 seconds.
 ///
 /// `F` is a phantom format tag and does not change the `hi`/`lo` wire fields.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy)]
 pub struct TaggedTime<S: Scale, F: TimeFormat = J2000s>(pub Time<S, F>);
+
+impl<S: Scale, F: TimeFormat> PartialEq for TaggedTime<S, F> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
 
 impl<S: Scale, F: TimeFormat> From<Time<S, F>> for TaggedTime<S, F> {
     #[inline]
@@ -91,8 +97,14 @@ impl<'de, S: Scale + CoordinateScale, F: TimeFormat> Deserialize<'de> for Tagged
 
 /// Tagged half-open interval. `F` is a phantom view; the on-wire representation
 /// always holds canonical split J2000 seconds, not `F`-encoded scalars.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy)]
 pub struct TaggedPeriod<S: Scale, F: TimeFormat = J2000s>(pub Interval<Time<S, F>>);
+
+impl<S: Scale, F: TimeFormat> PartialEq for TaggedPeriod<S, F> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
 
 impl<S: Scale, F: TimeFormat> From<Interval<Time<S, F>>> for TaggedPeriod<S, F> {
     #[inline]
