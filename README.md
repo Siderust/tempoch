@@ -8,7 +8,8 @@ Typed astronomical time primitives for Rust.
 
 `tempoch` is built around a few deliberate modeling choices:
 
-- A `Time<S>` value is an instant on a scale-specific axis, not a bare `f64`.
+- A `Time<S, F>` value is an instant on a scale-specific axis with a typed
+  external format, not a bare `f64`.
 - Time instants are modeled with affine semantics: `time_a - time_b` yields a
   duration, while shifting an instant is `time + seconds`.
 - The canonical internal carrier is a split `(hi, lo)` pair of J2000-based
@@ -21,14 +22,17 @@ Typed astronomical time primitives for Rust.
 
 `tempoch` provides:
 
-- `Time<S>` instants parameterized by a physical or civil scale (`TT`,
+- `Time<S, F>` instants parameterized by a physical or civil scale (`TT`,
   `TAI`, `UTC`, `UT1`, `TDB`, `TCG`, `TCB`).
 - Unified target-based conversions:
   - `.to::<TT>()`, `.to::<UTC>()`, `.to::<TDB>()` for infallible scale routes
   - `.to_with::<UT1>(&ctx)` for context-backed UT1 routes, or `.try_to::<UT1>()` shorthand (snapshots active data at call time)
   - `.to::<JD>()` / `.to::<MJD>()` for infallible coordinates on continuous scales; UTC uses `.to_with::<MJD>(&ctx)` (or `JD`) followed by `try_raw_with(&ctx)`
   - `.try_to::<Unix>()` and `.to::<GPS>()` for transport encodings
-- `JulianDate<S>`, `ModifiedJulianDate<S>`, `UnixTime`, and `GpsTime` implement `Into<Time<_>>` (same instant as `.to_j2000s()`), so `Period::<S>::new(...)` / `try_new(...)` accept encoded endpoints directly; `J2000Seconds<S>` is already `Time<S>`.
+- `Period<S, F = J2000s>` aliases `Interval<Time<S, F>>` and supports the same
+  `to`, `try_to`, and `to_with` target conversions as `Time<S, F>`.
+  `TimeSeries<S, F = J2000s>` produces matching typed instants over a half-open range.
+- `JulianDate<S>`, `ModifiedJulianDate<S>`, `UnixTime`, and `GpsTime` implement `Into<Time<_>>` (same instant as `.to_j2000s()`), so default-format `Period::<S>::new(...)` / `try_new(...)` accept encoded endpoints directly. `Period<S, MJD>` takes MJD-tagged endpoints without retagging.
 - UTC conversion through `chrono`, leap-second aware over the official history
   (1961-01-01 onward). Requests for dates before the UTC standard was defined
   return `ConversionError::UtcBeforeDefinition` by default; opt in to the
@@ -62,7 +66,7 @@ Typed astronomical time primitives for Rust.
 - Compiled time-data tables generated from official UTC-TAI and Delta T
   sources.
 - Optional `serde` support for `Time<S, F>` as the format's scalar quantity and
-  `Period<S>` / `Interval<T>` as `{start, end}` objects, plus explicit
+  `Period<S, F>` / `Interval<T>` as `{start, end}` objects, plus explicit
   `tempoch::tagged::{TaggedTime, TaggedPeriod}` wrappers when the payload must
   carry the scale name and compensated split seconds. UTC JD/MJD scalars use
   civil coordinates and report conversion failures as Serde errors. Each
@@ -76,7 +80,7 @@ Typed astronomical time primitives for Rust.
   [`j2000_jd_tt`], [`qtty::Day`] literals such as [`J2000_JD_TT_DAY`], offsets like
   [`TT_MINUS_TAI`], and the ΔT horizon marker [`DELTA_T_PREDICTION_HORIZON_MJD`]
   (`qtty::Day`).
-- A utility `Interval<T>` type for half-open time ranges over `Time<A>`,
+- A utility `Interval<T>` type for half-open time ranges over `Time<S, F>`,
   with intersection, normalization, validation, and complement helpers.
 
 ## Compiled Tables And Official References
@@ -215,21 +219,21 @@ the horizon. Use the exported `DELTA_T_PREDICTION_HORIZON_MJD` typed
 
 ```toml
 [dependencies]
-tempoch = "0.9"
+tempoch = "0.10"
 ```
 
 Enable `serde` if you want to serialize typed times and periods:
 
 ```toml
 [dependencies]
-tempoch = { version = "0.9", features = ["serde"] }
+tempoch = { version = "0.10", features = ["serde"] }
 ```
 
 The `serde` feature composes with the ordinary runtime refresh behavior:
 
 ```toml
 [dependencies]
-tempoch = { version = "0.9", features = ["serde", "runtime-data-fetch"] }
+tempoch = { version = "0.10", features = ["serde", "runtime-data-fetch"] }
 ```
 
 ### `no_std`
@@ -238,7 +242,7 @@ tempoch = { version = "0.9", features = ["serde", "runtime-data-fetch"] }
 
 ```toml
 # no_std + alloc (including bare-metal targets)
-tempoch = { version = "0.9", default-features = false, features = ["alloc"] }
+tempoch = { version = "0.10", default-features = false, features = ["alloc"] }
 ```
 
 Bundled IERS tables come from `siderust-archive` 0.1.5+, which is itself
@@ -251,10 +255,11 @@ With the `serde` feature enabled:
 
 - `Time<S, F>` serializes as the format's scalar quantity; `Time<S>` uses
   J2000 seconds.
-- `Period<S>` serializes as `{"start": ..., "end": ...}`.
+- `Period<S, F>` serializes as `{"start": ..., "end": ...}` using `F` for each endpoint.
 - The scale remains type-level and is not embedded in the payload.
-- `tagged::TaggedTime<S>` and `tagged::TaggedPeriod<S>` serialize with an
-  explicit `"scale"` field and compensated split seconds for interchange payloads.
+- `tagged::TaggedTime<S, F>` and `tagged::TaggedPeriod<S, F>` carry an explicit
+  `"scale"` field and compensated split **J2000 seconds** for interchange.
+  `F` is only a typed view; it does not alter the tagged wire encoding.
 - UTC JD/MJD Serde captures fresh default time data per operation and returns
   Serde errors for leap-second encoding, pre-definition UTC, and unusable
   coordinates. Serialize an explicitly converted quantity when a fixed
@@ -304,34 +309,42 @@ println!("TT in MJD : {:.9}", tt_now.to::<MJD>());
 
 ## Period Operations
 
+`Time<S, F>` models an instant; `Period<S, F>` is the half-open
+`Interval<Time<S, F>>`; `TimeSeries<S, F>` steps over matching instants. All
+three default to `F = J2000s`. The format is a phantom tag, not another
+storage layout.
+
 ```rust
 use qtty::Day;
-use tempoch::{ModifiedJulianDate, Period, TT};
+use tempoch::{ModifiedJulianDate, Period, TT, JD, MJD};
 
-let day = Period::<TT>::new(
+let day = Period::<TT, MJD>::new(
   ModifiedJulianDate::<TT>::try_new(Day::new(61_000.0)).unwrap(),
   ModifiedJulianDate::<TT>::try_new(Day::new(61_001.0)).unwrap(),
 );
 let a = vec![
-  Period::<TT>::new(
+  Period::<TT, MJD>::new(
     ModifiedJulianDate::<TT>::try_new(Day::new(61_000.1)).unwrap(),
     ModifiedJulianDate::<TT>::try_new(Day::new(61_000.4)).unwrap(),
   ),
-  Period::<TT>::new(
+  Period::<TT, MJD>::new(
     ModifiedJulianDate::<TT>::try_new(Day::new(61_000.6)).unwrap(),
     ModifiedJulianDate::<TT>::try_new(Day::new(61_000.9)).unwrap(),
   ),
 ];
 let b = vec![
-  Period::<TT>::new(
+  Period::<TT, MJD>::new(
     ModifiedJulianDate::<TT>::try_new(Day::new(61_000.2)).unwrap(),
     ModifiedJulianDate::<TT>::try_new(Day::new(61_000.3)).unwrap(),
   ),
-  Period::<TT>::new(
+  Period::<TT, MJD>::new(
     ModifiedJulianDate::<TT>::try_new(Day::new(61_000.7)).unwrap(),
     ModifiedJulianDate::<TT>::try_new(Day::new(61_000.8)).unwrap(),
   ),
 ];
+
+let jd_day: Period<TT, JD> = day.to::<JD>();
+assert_eq!(jd_day.to::<MJD>(), day);
 
 let overlap = Period::intersect_many(&a, &b);
 let gaps = day.complement(&a);

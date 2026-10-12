@@ -1,8 +1,8 @@
-//! Serde round-trip examples for `Time<S>` and `Period<S>`.
+//! Serde round-trip examples for `Time<S, F>` and `Period<S, F>`.
 
 use tempoch::{
     tagged::{TaggedPeriod, TaggedTime},
-    J2000Seconds, J2000s, Period, Time, TT,
+    J2000Seconds, J2000s, Period, Time, MJD, TT,
 };
 
 fn main() {
@@ -26,6 +26,11 @@ fn main() {
         serde_json::from_str::<TaggedPeriod<TT>>(&tagged_window_json)
             .unwrap()
             .into();
+
+    // Scalar periods use F; tagged interchange always uses canonical J2000 seconds.
+    let mjd_window: Period<TT, MJD> = window.to::<MJD>();
+    let _mjd_json = serde_json::to_string(&mjd_window).unwrap();
+    let _tagged_mjd_json = serde_json::to_string(&TaggedPeriod(mjd_window)).unwrap();
 
     println!("Time JSON   : {tt_json}");
     println!("Period JSON : {window_json}");

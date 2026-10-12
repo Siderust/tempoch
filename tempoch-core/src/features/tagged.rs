@@ -6,9 +6,10 @@
 //! The crate-level `Serialize`/`Deserialize` impls for [`crate::Time`] and
 //! [`crate::Period`] intentionally keep the scale out of band. This module
 //! provides explicit scale-tagged wrappers when the payload itself must carry
-//! scale identity.
+//! scale identity. Both wrappers accept a format tag `F`, which is zero-cost;
+//! the wire fields always carry canonical split J2000 seconds.
 
-use crate::format::J2000s;
+use crate::format::{J2000s, TimeFormat};
 use crate::model::scale::{CoordinateScale, Scale};
 use crate::model::time::Time;
 use crate::period::Interval;
@@ -20,24 +21,33 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 const TAGGED_SCALAR_NAN_ERROR: &str = "tagged time scalars must not be NaN (±∞ is allowed at rest)";
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct TaggedTime<S: Scale>(pub Time<S>);
+/// Scale-tagged interchange encoding with canonical compensated J2000 seconds.
+///
+/// `F` is a phantom format tag and does not change the `hi`/`lo` wire fields.
+#[derive(Debug, Clone, Copy)]
+pub struct TaggedTime<S: Scale, F: TimeFormat = J2000s>(pub Time<S, F>);
 
-impl<S: Scale> From<Time<S>> for TaggedTime<S> {
+impl<S: Scale, F: TimeFormat> PartialEq for TaggedTime<S, F> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<S: Scale, F: TimeFormat> From<Time<S, F>> for TaggedTime<S, F> {
     #[inline]
-    fn from(value: Time<S>) -> Self {
+    fn from(value: Time<S, F>) -> Self {
         Self(value)
     }
 }
 
-impl<S: Scale> From<TaggedTime<S>> for Time<S> {
+impl<S: Scale, F: TimeFormat> From<TaggedTime<S, F>> for Time<S, F> {
     #[inline]
-    fn from(value: TaggedTime<S>) -> Self {
+    fn from(value: TaggedTime<S, F>) -> Self {
         value.0
     }
 }
 
-impl<S: Scale> Serialize for TaggedTime<S> {
+impl<S: Scale, F: TimeFormat> Serialize for TaggedTime<S, F> {
     fn serialize<Ser>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error>
     where
         Ser: Serializer,
@@ -51,7 +61,7 @@ impl<S: Scale> Serialize for TaggedTime<S> {
     }
 }
 
-impl<'de, S: Scale + CoordinateScale> Deserialize<'de> for TaggedTime<S> {
+impl<'de, S: Scale + CoordinateScale, F: TimeFormat> Deserialize<'de> for TaggedTime<S, F> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -79,29 +89,38 @@ impl<'de, S: Scale + CoordinateScale> Deserialize<'de> for TaggedTime<S> {
                 Second::new(raw.hi),
                 Second::new(raw.lo),
             )
-            .map_err(serde::de::Error::custom)?,
+            .map_err(serde::de::Error::custom)?
+            .reinterpret::<F>(),
         ))
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct TaggedPeriod<S: Scale>(pub Interval<Time<S>>);
+/// Tagged half-open interval. `F` is a phantom view; the on-wire representation
+/// always holds canonical split J2000 seconds, not `F`-encoded scalars.
+#[derive(Debug, Clone, Copy)]
+pub struct TaggedPeriod<S: Scale, F: TimeFormat = J2000s>(pub Interval<Time<S, F>>);
 
-impl<S: Scale> From<Interval<Time<S>>> for TaggedPeriod<S> {
+impl<S: Scale, F: TimeFormat> PartialEq for TaggedPeriod<S, F> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<S: Scale, F: TimeFormat> From<Interval<Time<S, F>>> for TaggedPeriod<S, F> {
     #[inline]
-    fn from(value: Interval<Time<S>>) -> Self {
+    fn from(value: Interval<Time<S, F>>) -> Self {
         Self(value)
     }
 }
 
-impl<S: Scale> From<TaggedPeriod<S>> for Interval<Time<S>> {
+impl<S: Scale, F: TimeFormat> From<TaggedPeriod<S, F>> for Interval<Time<S, F>> {
     #[inline]
-    fn from(value: TaggedPeriod<S>) -> Self {
+    fn from(value: TaggedPeriod<S, F>) -> Self {
         value.0
     }
 }
 
-impl<S: Scale> Serialize for TaggedPeriod<S> {
+impl<S: Scale, F: TimeFormat> Serialize for TaggedPeriod<S, F> {
     fn serialize<Ser>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error>
     where
         Ser: Serializer,
@@ -114,7 +133,7 @@ impl<S: Scale> Serialize for TaggedPeriod<S> {
     }
 }
 
-impl<'de, S: Scale + CoordinateScale> Deserialize<'de> for TaggedPeriod<S> {
+impl<'de, S: Scale + CoordinateScale, F: TimeFormat> Deserialize<'de> for TaggedPeriod<S, F> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -133,7 +152,7 @@ impl<'de, S: Scale + CoordinateScale> Deserialize<'de> for TaggedPeriod<S> {
             end: RawTaggedTime,
         }
 
-        let decode_time = |raw: RawTaggedTime| -> Result<Time<S>, D::Error> {
+        let decode_time = |raw: RawTaggedTime| -> Result<Time<S, F>, D::Error> {
             if raw.scale != S::NAME {
                 return Err(serde::de::Error::custom(format!(
                     "expected scale {}, got {}",
@@ -148,6 +167,7 @@ impl<'de, S: Scale + CoordinateScale> Deserialize<'de> for TaggedPeriod<S> {
                 Second::new(raw.hi),
                 Second::new(raw.lo),
             )
+            .map(Time::reinterpret::<F>)
             .map_err(serde::de::Error::custom)
         };
 

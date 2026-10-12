@@ -11,6 +11,8 @@
 //!
 //! - [`Time<S, F>`] is an instant on a scale-specific axis; `F` only types external
 //!   views (`raw()`, conversion targets), not a second storage layout.
+//! - [`Period<S, F>`](Period) aliases [`Interval<Time<S, F>>`](Interval), while
+//!   [`TimeSeries<S, F>`](TimeSeries) iterates such instants. All default to `J2000s`.
 //! - Time arithmetic follows affine rules: instant minus instant yields a
 //!   duration; shifting an instant by a duration yields another instant.
 //! - Internal storage is always a compensated `(hi, lo)` pair of J2000-based seconds
@@ -24,7 +26,8 @@
 //! - [`Time::new`] builds from a raw scalar when `F` is [`InfallibleFormatForScale`] for `S` (**NaN panics**; ±∞ allowed at rest). POSIX [`Unix`] instants still use [`Time::try_new`] / [`Time::try_new_with`] because decoding depends on leap-second tables.
 //! - [`Time::try_new`] / [`Time::try_new_with`] surface **domain** decode failures only (UTC policy, leap seconds, …); callers must not pass **NaN**.
 //! - `UTC`: civil (`chrono`) and POSIX ([`Unix`]); `TAI`: GPS ([`GPS`])
-//! - Unified targets: [`Time::to`], [`Time::try_to`], [`Time::to_with`]. Prefer
+//! - Unified targets: [`Time::to`], [`Time::try_to`], [`Time::to_with`] and
+//!   their period-level equivalents. Prefer
 //!   [`try_to`](Time::try_to) or [`to_with`](Time::to_with) for [`Unix`] so positive
 //!   leap-second instants are rejected when they are not representable as POSIX.
 //! - [`Time::to_j2000s`], [`Time::reinterpret`], and aliases
@@ -64,10 +67,10 @@
 //!
 //! ```toml
 //! # Default (std)
-//! tempoch = "0.9"
+//! tempoch = "0.10"
 //!
 //! # no_std + alloc (including bare-metal targets)
-//! tempoch = { version = "0.9", default-features = false, features = ["alloc"] }
+//! tempoch = { version = "0.10", default-features = false, features = ["alloc"] }
 //! ```
 
 #![cfg_attr(not(feature = "std"), no_std)]

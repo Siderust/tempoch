@@ -5,7 +5,7 @@
 //!
 //! [`Interval`] is a half-open range `[start, end)` over any totally-ordered
 //! instant type. It is parameterised on `T: Copy + PartialOrd` so that the
-//! same type works for `Time<A>` on any axis as well as for
+//! same type works for `Time<S, F>` on any axis and format as well as for
 //! `chrono::DateTime<Utc>`.
 
 use core::fmt;
@@ -58,11 +58,76 @@ where
     }
 }
 
-/// Typed time period on a given scale.
+/// Half-open time period on scale `S` with format `F`.
 ///
-/// This is an alias of [`Interval<Time<S>>`](Interval), so all interval
-/// operations are available directly on `Period`.
-pub type Period<S> = Interval<Time<S>>;
+/// `F` defaults to [`J2000s`](crate::J2000s), just as for [`Time`]
+/// and [`TimeSeries`]. This is solely an alias for an `Interval` of compensated
+/// instants: no storage or interval arithmetic is duplicated.
+///
+/// ```
+/// use tempoch_core::{JD, MJD, ModifiedJulianDate, Period, TT};
+///
+/// let p: Period<TT, MJD> = Period::try_new(
+///     ModifiedJulianDate::<TT>::new(60_000.0),
+///     ModifiedJulianDate::<TT>::new(60_001.0),
+/// ).unwrap();
+/// let jd: Period<TT, JD> = p.to::<JD>();
+/// assert_eq!(jd.to::<MJD>(), p);
+/// ```
+///
+/// UTC civil coordinates cannot be converted infallibly:
+///
+/// ```compile_fail
+/// use tempoch_core::{JD, Period, Time, UTC};
+/// let p = Period::<UTC>::new(Time::<UTC>::new(1.0), Time::<UTC>::new(2.0));
+/// let _ = p.to::<JD>();
+/// ```
+pub type Period<S, F = crate::format::J2000s> = Interval<Time<S, F>>;
+
+/// Conversions of a `Period` reuse exactly the conversion targets of `Time`.
+impl<S: crate::model::scale::Scale, F: crate::format::TimeFormat> Interval<Time<S, F>> {
+    /// Infallibly convert both endpoints to a supported format or scale target.
+    #[allow(private_bounds)]
+    #[inline]
+    pub fn to<T>(self) -> Interval<T::Output>
+    where
+        T: crate::InfallibleConversionTarget<S, F>,
+        T::Output: Copy + PartialOrd,
+    {
+        Interval::new(self.start.to::<T>(), self.end.to::<T>())
+    }
+
+    /// Fallibly convert both endpoints, propagating conversion errors.
+    #[allow(private_bounds)]
+    #[inline]
+    pub fn try_to<T>(self) -> Result<Interval<T::Output>, crate::ConversionError>
+    where
+        T: crate::ConversionTarget<S, F>,
+        T::Output: Copy + PartialOrd,
+    {
+        Ok(Interval::new(
+            self.start.try_to::<T>()?,
+            self.end.try_to::<T>()?,
+        ))
+    }
+
+    /// Convert both endpoints using a shared, explicit time-data context.
+    #[allow(private_bounds)]
+    #[inline]
+    pub fn to_with<T>(
+        self,
+        ctx: &crate::TimeContext,
+    ) -> Result<Interval<T::Output>, crate::ConversionError>
+    where
+        T: crate::ContextConversionTarget<S, F>,
+        T::Output: Copy + PartialOrd,
+    {
+        Ok(Interval::new(
+            self.start.to_with::<T>(ctx)?,
+            self.end.to_with::<T>(ctx)?,
+        ))
+    }
+}
 
 impl<T: Copy + PartialOrd> Interval<T> {
     /// Construct without validation.

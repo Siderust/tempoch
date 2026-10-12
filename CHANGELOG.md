@@ -3,6 +3,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.10.0] - 2026-10-12
+
+### Added
+- `Period<S, F = J2000s>` is now an alias for `Interval<Time<S, F>>`, matching
+  the scale and format parameters of `Time<S, F>` and `TimeSeries<S, F>`. It
+  supports typed formats such as `Period<TT, MJD>` and `Period<UTC, JD>`.
+- Generic period conversions `to::<T>()`, `try_to::<T>()`, and
+  `to_with::<T>(&ctx)` delegate to both endpoints' `Time` conversions,
+  preserving their infallible, fallible, and context-dependent constraints.
+- `TaggedTime<S, F>` and `TaggedPeriod<S, F>` accept an optional format tag.
+  Tagged interchange continues to preserve compensated split J2000 seconds
+  regardless of `F`, while ordinary `Period<S, F>` Serde encodes endpoint
+  scalars in the selected format.
+- Regression tests cover format round-trips, precision, UTC and leap-second
+  errors, UT1 context conversions, interval operations, Serde, and invalid
+  infallible conversion compile-time restrictions.
+
+### Changed
+- `Period<S>` retains its default `J2000s` format; generic `Interval<T>`
+  operations and half-open semantics remain unchanged, without a new period
+  struct or legacy compatibility layer.
+- Bumped `tempoch`, `tempoch-core`, and `tempoch-ffi` to `0.10.0`,
+  synchronized their internal dependency constraints and workspace lockfile,
+  and advanced the reported FFI version to `1000`. The C ABI signatures
+  and carrier layouts remain unchanged.
+
 ## [0.9.0] - 2026-10-11
 
 ### Changed
@@ -10,8 +38,6 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - **Breaking:** upgrade `affn` to `0.11`. Public geometry types and traits now
   use this version; downstream crates must use the same compatible `affn` version.
 - Synchronize `tempoch`, `tempoch-core`, and `tempoch-ffi` at `0.9.0`.
-
-## [Unreleased]
 
 ## [0.8.1] - 2026-10-11
 

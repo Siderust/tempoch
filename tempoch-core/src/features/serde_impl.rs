@@ -3,6 +3,10 @@
 
 //! Scalar Serde encoding uses the scale-aware format conversion traits.
 //!
+//! `Period<S, F>` remains `Interval<Time<S, F>>`: generic interval Serde
+//! encodes two endpoints in format `F`, whereas tagged interchange payloads
+//! always store compensated split J2000 seconds.
+//!
 //! Each serialization or deserialization captures a fresh default
 //! [`crate::TimeContext`]. For civil UTC formats this selects the active UTC-TAI
 //! data and rejects pre-definition dates and unrepresentable leap seconds.
