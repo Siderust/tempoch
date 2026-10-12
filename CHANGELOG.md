@@ -3,6 +3,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- `Period<S, F = J2000s>` supports format tags and delegated `to`, `try_to`,
+  and `to_with` conversions for both endpoints using `Time` conversion traits.
+- `TaggedTime<S, F>` and `TaggedPeriod<S, F>` carry phantom format tags while
+  retaining canonical split J2000-second interchange encoding.
+
+### Changed
+- **Breaking:** periods with explicitly tagged formats now use
+  `Period<S, F>` directly instead of first converting to J2000s endpoints.
+  No legacy period representation or compatibility layer was introduced.
+
 ## [0.9.0] - 2026-10-11
 
 ### Changed
@@ -10,8 +23,6 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - **Breaking:** upgrade `affn` to `0.11`. Public geometry types and traits now
   use this version; downstream crates must use the same compatible `affn` version.
 - Synchronize `tempoch`, `tempoch-core`, and `tempoch-ffi` at `0.9.0`.
-
-## [Unreleased]
 
 ## [0.8.1] - 2026-10-11
 
