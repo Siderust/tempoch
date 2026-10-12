@@ -5,16 +5,31 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-12
+
 ### Added
-- `Period<S, F = J2000s>` supports format tags and delegated `to`, `try_to`,
-  and `to_with` conversions for both endpoints using `Time` conversion traits.
-- `TaggedTime<S, F>` and `TaggedPeriod<S, F>` carry phantom format tags while
-  retaining canonical split J2000-second interchange encoding.
+- `Period<S, F = J2000s>` is now an alias for `Interval<Time<S, F>>`, matching
+  the scale and format parameters of `Time<S, F>` and `TimeSeries<S, F>`. It
+  supports typed formats such as `Period<TT, MJD>` and `Period<UTC, JD>`.
+- Generic period conversions `to::<T>()`, `try_to::<T>()`, and
+  `to_with::<T>(&ctx)` delegate to both endpoints' `Time` conversions,
+  preserving their infallible, fallible, and context-dependent constraints.
+- `TaggedTime<S, F>` and `TaggedPeriod<S, F>` accept an optional format tag.
+  Tagged interchange continues to preserve compensated split J2000 seconds
+  regardless of `F`, while ordinary `Period<S, F>` Serde encodes endpoint
+  scalars in the selected format.
+- Regression tests cover format round-trips, precision, UTC and leap-second
+  errors, UT1 context conversions, interval operations, Serde, and invalid
+  infallible conversion compile-time restrictions.
 
 ### Changed
-- **Breaking:** periods with explicitly tagged formats now use
-  `Period<S, F>` directly instead of first converting to J2000s endpoints.
-  No legacy period representation or compatibility layer was introduced.
+- `Period<S>` retains its default `J2000s` format; generic `Interval<T>`
+  operations and half-open semantics remain unchanged, without a new period
+  struct or legacy compatibility layer.
+- Bumped `tempoch`, `tempoch-core`, and `tempoch-ffi` to `0.10.0`,
+  synchronized their internal dependency constraints and workspace lockfile,
+  and advanced the reported FFI version to `1000`. The C ABI signatures
+  and carrier layouts remain unchanged.
 
 ## [0.9.0] - 2026-10-11
 

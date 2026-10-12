@@ -219,21 +219,21 @@ the horizon. Use the exported `DELTA_T_PREDICTION_HORIZON_MJD` typed
 
 ```toml
 [dependencies]
-tempoch = "0.9"
+tempoch = "0.10"
 ```
 
 Enable `serde` if you want to serialize typed times and periods:
 
 ```toml
 [dependencies]
-tempoch = { version = "0.9", features = ["serde"] }
+tempoch = { version = "0.10", features = ["serde"] }
 ```
 
 The `serde` feature composes with the ordinary runtime refresh behavior:
 
 ```toml
 [dependencies]
-tempoch = { version = "0.9", features = ["serde", "runtime-data-fetch"] }
+tempoch = { version = "0.10", features = ["serde", "runtime-data-fetch"] }
 ```
 
 ### `no_std`
@@ -242,7 +242,7 @@ tempoch = { version = "0.9", features = ["serde", "runtime-data-fetch"] }
 
 ```toml
 # no_std + alloc (including bare-metal targets)
-tempoch = { version = "0.9", default-features = false, features = ["alloc"] }
+tempoch = { version = "0.10", default-features = false, features = ["alloc"] }
 ```
 
 Bundled IERS tables come from `siderust-archive` 0.1.5+, which is itself
