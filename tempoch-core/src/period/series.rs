@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Vallés Puig, Ramon
 
-//! [`TimeSeries`] — exact-step iterator over `Time<S>`.
+//! [`TimeSeries`] — exact-step iterator over `Time<S, F>`.
 //!
 //! Generates a uniform sequence of typed instants over a half-open range
-//! `[start, end)` with an [`crate::ExactDuration`] step. The step is exact in
-//! nanoseconds; the produced `Time<S>` values inherit the split-f64 storage of
-//! `Time<S>` (see `foundation::duration` for the W1 caveat that exactness
+//! `[start, end)` with an [`crate::ExactDuration`] step. It uses the same
+//! scale and format tags as [`crate::Period`]. The step is exact in
+//! nanoseconds; the produced `Time<S, F>` values inherit split-f64 storage of
+//! `Time<S, F>` (see `foundation::duration` for the W1 caveat that exactness
 //! lives in the duration container, not in instant storage).
 //!
 //! # Examples

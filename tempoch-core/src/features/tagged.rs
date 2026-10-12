@@ -6,7 +6,8 @@
 //! The crate-level `Serialize`/`Deserialize` impls for [`crate::Time`] and
 //! [`crate::Period`] intentionally keep the scale out of band. This module
 //! provides explicit scale-tagged wrappers when the payload itself must carry
-//! scale identity.
+//! scale identity. Both wrappers accept a format tag `F`, which is zero-cost;
+//! the wire fields always carry canonical split J2000 seconds.
 
 use crate::format::{J2000s, TimeFormat};
 use crate::model::scale::{CoordinateScale, Scale};
@@ -20,10 +21,10 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 const TAGGED_SCALAR_NAN_ERROR: &str = "tagged time scalars must not be NaN (±∞ is allowed at rest)";
 
-#[derive(Debug, Clone, Copy, PartialEq)]
 /// Scale-tagged interchange encoding with canonical compensated J2000 seconds.
 ///
 /// `F` is a phantom format tag and does not change the `hi`/`lo` wire fields.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TaggedTime<S: Scale, F: TimeFormat = J2000s>(pub Time<S, F>);
 
 impl<S: Scale, F: TimeFormat> From<Time<S, F>> for TaggedTime<S, F> {

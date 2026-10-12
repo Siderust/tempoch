@@ -3,9 +3,11 @@
 
 //! Public façade over `tempoch-core`.
 //!
-//! The crate root exposes the redesigned scale-only time model:
+//! The crate root exposes a scale- and format-tagged time model:
 //!
-//! - [`Time<S>`] for typed instants on a given scale
+//! - [`Time<S, F>`] for typed instants (default `F = J2000s`)
+//! - [`Period<S, F>`] for half-open intervals of those instants
+//! - [`TimeSeries<S, F>`] for stepping through those instants
 //! - [`Scale`] markers such as [`TT`], [`TAI`], [`UTC`], and [`UT1`]
 //! - unified conversion targets via `time.to::<Target>()`, `try_to`, and
 //!   `to_with`
