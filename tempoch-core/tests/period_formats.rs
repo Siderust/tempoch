@@ -137,7 +137,7 @@ fn conversion_errors_are_not_swallowed_at_either_endpoint() {
 #[test]
 fn scale_conversions_delegate_and_keep_format_tag() {
     let ctx = TimeContext::new();
-    let p = Period::<TT, MJD>::try_new(mjd(51_544.5), mjd(51_544.5001)).unwrap();
+    let p = Period::<TT, MJD>::try_new(mjd(51_544.5), mjd(51_544.500_1)).unwrap();
     let ut1: Period<UT1, MJD> = p.to_with::<UT1>(&ctx).unwrap();
     let back: Period<TT, MJD> = ut1.to_with::<TT>(&ctx).unwrap();
     assert!((back.start.to::<J2000s>() - p.start.to::<J2000s>()).abs() < Second::new(1e-6));
