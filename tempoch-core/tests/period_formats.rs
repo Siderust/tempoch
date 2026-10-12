@@ -28,10 +28,8 @@ fn period_formats_are_typed_and_share_canonical_storage() {
         core::mem::size_of::<Period<TT, MJD>>(),
         core::mem::size_of::<Interval<Time<TT, MJD>>>()
     );
-    let _: Period<TAI, J2000s> =
-        Period::new(Time::<TAI>::new(0.0), Time::<TAI>::new(10.0));
-    let _: Period<UTC> =
-        Period::new(Time::<UTC>::new(0.0), Time::<UTC>::new(10.0));
+    let _: Period<TAI, J2000s> = Period::new(Time::<TAI>::new(0.0), Time::<TAI>::new(10.0));
+    let _: Period<UTC> = Period::new(Time::<UTC>::new(0.0), Time::<UTC>::new(10.0));
 }
 
 #[test]
@@ -51,7 +49,10 @@ fn format_roundtrip_preserves_compensated_low_word_and_interval_bounds() {
     let jd: Period<TT, JD> = encoded.to::<JD>();
     let back: Period<TT> = jd.to::<J2000s>();
     assert_eq!(back, source);
-    assert_eq!(back.start.raw_seconds_pair(), source.start.raw_seconds_pair());
+    assert_eq!(
+        back.start.raw_seconds_pair(),
+        source.start.raw_seconds_pair()
+    );
     assert_eq!(back.end.raw_seconds_pair(), source.end.raw_seconds_pair());
     assert_eq!(back.length(), Second::new(10.0 + 1e-9));
 }
@@ -64,7 +65,10 @@ fn non_default_format_reuses_all_interval_algebra() {
     let c = Period::<TT, MJD>::try_new(mjd(60_005.0), mjd(60_008.0)).unwrap();
 
     assert!(a.intersection(&b).is_none());
-    assert_eq!(b.intersection(&c), Some(Period::new(mjd(60_005.0), mjd(60_006.0))));
+    assert_eq!(
+        b.intersection(&c),
+        Some(Period::new(mjd(60_005.0), mjd(60_006.0)))
+    );
     assert_eq!(a.union(&b), vec![Period::new(mjd(60_001.0), mjd(60_006.0))]);
 
     let covered = Period::normalize(&[c, b, a]);
@@ -90,10 +94,9 @@ fn non_default_format_time_series_matches_period_endpoints() {
     let start = Time::<TT>::new(0.0).to::<MJD>();
     let end = Time::<TT>::new(3.0).to::<MJD>();
     let p = Period::<TT, MJD>::new(start, end);
-    let values: Vec<_> =
-        TimeSeries::<TT, MJD>::new(p.start, p.end, ExactDuration::SECOND)
-            .unwrap()
-            .collect();
+    let values: Vec<_> = TimeSeries::<TT, MJD>::new(p.start, p.end, ExactDuration::SECOND)
+        .unwrap()
+        .collect();
     assert_eq!(values.len(), 3);
     assert_eq!(values[0], p.start);
     assert_eq!(values[2], Time::<TT>::new(2.0).to::<MJD>());
@@ -148,7 +151,10 @@ fn scale_conversions_delegate_and_keep_format_tag() {
 fn scalar_period_serde_uses_selected_endpoint_format() {
     let p: Period<TT, MJD> = Period::new(mjd(60_000.25), mjd(60_001.5));
     let wire = serde_json::to_value(p).unwrap();
-    assert_eq!(wire, serde_json::json!({"start": 60_000.25, "end": 60_001.5}));
+    assert_eq!(
+        wire,
+        serde_json::json!({"start": 60_000.25, "end": 60_001.5})
+    );
     let decoded: Period<TT, MJD> = serde_json::from_value(wire).unwrap();
     assert_eq!(decoded, p);
     assert!(serde_json::from_value::<Period<TT, MJD>>(

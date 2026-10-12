@@ -1,4 +1,4 @@
-use tempoch::{Interval, ModifiedJulianDate, Period, TT, JD, MJD};
+use tempoch::{Interval, ModifiedJulianDate, Period, JD, MJD, TT};
 
 fn mjd(value: f64) -> ModifiedJulianDate<TT> {
     ModifiedJulianDate::<TT>::new(value)

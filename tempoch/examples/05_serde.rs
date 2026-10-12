@@ -2,7 +2,7 @@
 
 use tempoch::{
     tagged::{TaggedPeriod, TaggedTime},
-    J2000Seconds, J2000s, Period, Time, TT, MJD,
+    J2000Seconds, J2000s, Period, Time, MJD, TT,
 };
 
 fn main() {
