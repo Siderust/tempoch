@@ -5,6 +5,15 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** upgrade `tempoch-core` to affn 0.12 with unchanged feature
+  forwarding; public geometry traits and types now use the same version.
+- Synchronize `tempoch`, `tempoch-core`, and `tempoch-ffi` at 0.11.0,
+  update internal dependency requirements, and report C ABI version 1100.
+  The validation-only crate version is unchanged.
+
+
 ## [0.10.0] - 2026-10-12
 
 ### Added
