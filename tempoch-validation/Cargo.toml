@@ -17,4 +17,4 @@ regenerate = []
 path = "src/lib.rs"
 
 [dependencies]
-tempoch = { path = "../tempoch", version = "0.11.0" }
+tempoch = { path = "../tempoch", version = "0.11.1" }

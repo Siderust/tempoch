@@ -11,8 +11,6 @@ use alloc::sync::Arc;
 
 #[cfg(test)]
 use chrono::{DateTime, Utc};
-#[cfg(test)]
-use std::sync::Mutex;
 #[cfg(feature = "std")]
 use std::sync::{OnceLock, RwLock};
 
@@ -26,9 +24,37 @@ static COMPILED_TIME_DATA: OnceLock<Arc<TimeDataBundle>> = OnceLock::new();
 static ACTIVE_TIME_DATA: OnceLock<RwLock<Arc<TimeDataBundle>>> = OnceLock::new();
 
 #[cfg(test)]
-static TEST_TIME_DATA_GUARD: Mutex<()> = Mutex::new(());
-#[cfg(test)]
-static TEST_TIME_DATA: Mutex<Option<Arc<TimeDataBundle>>> = Mutex::new(None);
+mod test_overrides {
+    use super::*;
+    use std::{cell::RefCell, thread::LocalKey};
+
+    std::thread_local! {
+        pub(super) static OVERRIDE: RefCell<Option<Arc<TimeDataBundle>>> = const { RefCell::new(None) };
+        pub(super) static ACTIVE: RefCell<Option<Arc<TimeDataBundle>>> = const { RefCell::new(None) };
+    }
+
+    pub(super) fn scoped<T>(
+        slot: &'static LocalKey<RefCell<Option<Arc<TimeDataBundle>>>>,
+        replacement: Option<Arc<TimeDataBundle>>,
+        f: impl FnOnce() -> T,
+    ) -> T {
+        struct Restore {
+            slot: &'static LocalKey<RefCell<Option<Arc<TimeDataBundle>>>>,
+            previous: Option<Arc<TimeDataBundle>>,
+        }
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                self.slot
+                    .with(|slot| *slot.borrow_mut() = self.previous.take());
+            }
+        }
+        let _restore = Restore {
+            slot,
+            previous: slot.with(|slot| slot.replace(replacement)),
+        };
+        f()
+    }
+}
 
 #[cfg(feature = "std")]
 fn active_time_data_slot() -> &'static RwLock<Arc<TimeDataBundle>> {
@@ -37,18 +63,22 @@ fn active_time_data_slot() -> &'static RwLock<Arc<TimeDataBundle>> {
 
 #[cfg(any(test, feature = "runtime-data-fetch"))]
 pub(crate) fn set_active_time_data(bundle: TimeDataBundle) {
-    let mut slot = active_time_data_slot()
-        .write()
-        .unwrap_or_else(|err| err.into_inner());
-    *slot = Arc::new(bundle);
+    #[cfg(test)]
+    test_overrides::ACTIVE.with(|slot| *slot.borrow_mut() = Some(Arc::new(bundle)));
+    #[cfg(not(test))]
+    {
+        let mut slot = active_time_data_slot()
+            .write()
+            .unwrap_or_else(|err| err.into_inner());
+        *slot = Arc::new(bundle);
+    }
 }
 
 pub(crate) fn active_time_data() -> Arc<TimeDataBundle> {
     #[cfg(test)]
-    if let Some(bundle) = TEST_TIME_DATA
-        .lock()
-        .unwrap_or_else(|err| err.into_inner())
-        .clone()
+    if let Some(bundle) = test_overrides::OVERRIDE
+        .with(|slot| slot.borrow().clone())
+        .or_else(|| test_overrides::ACTIVE.with(|slot| slot.borrow().clone()))
     {
         return bundle;
     }
@@ -67,11 +97,7 @@ pub(crate) fn active_time_data() -> Arc<TimeDataBundle> {
 
 pub(crate) fn active_time_data_source() -> ActiveTimeDataSource {
     #[cfg(test)]
-    if TEST_TIME_DATA
-        .lock()
-        .unwrap_or_else(|err| err.into_inner())
-        .is_some()
-    {
+    if test_overrides::OVERRIDE.with(|slot| slot.borrow().is_some()) {
         return ActiveTimeDataSource::Override;
     }
 
@@ -158,23 +184,13 @@ pub(crate) fn select_time_data_for_auto_refresh(
 
 #[cfg(test)]
 pub(crate) fn with_test_time_data<T>(data: TimeDataBundle, f: impl FnOnce() -> T) -> T {
-    let _guard = TEST_TIME_DATA_GUARD
-        .lock()
-        .unwrap_or_else(|err| err.into_inner());
-    let mut slot = TEST_TIME_DATA.lock().unwrap_or_else(|err| err.into_inner());
-    let previous = slot.replace(Arc::new(data));
-    drop(slot);
-    let result = f();
-    *TEST_TIME_DATA.lock().unwrap_or_else(|err| err.into_inner()) = previous;
-    result
+    test_overrides::scoped(&test_overrides::OVERRIDE, Some(Arc::new(data)), f)
 }
 
 #[cfg(test)]
 pub(crate) fn with_runtime_data_lock<T>(f: impl FnOnce() -> T) -> T {
-    let _guard = TEST_TIME_DATA_GUARD
-        .lock()
-        .unwrap_or_else(|err| err.into_inner());
-    f()
+    let previous = test_overrides::ACTIVE.with(|slot| slot.borrow().clone());
+    test_overrides::scoped(&test_overrides::ACTIVE, previous, f)
 }
 
 pub(crate) fn compiled_time_data() -> Arc<TimeDataBundle> {
@@ -186,4 +202,19 @@ pub(crate) fn compiled_time_data() -> Arc<TimeDataBundle> {
     }
     #[cfg(not(feature = "std"))]
     Arc::new(crate::archive::time::bundled_time_data())
+}
+
+#[cfg(test)]
+mod isolation_tests {
+    use super::*;
+
+    #[test]
+    fn synthetic_bundle_does_not_leak_to_other_test_threads() {
+        with_test_time_data((*compiled_time_data()).clone(), || {
+            let here = active_time_data();
+            let elsewhere = std::thread::spawn(active_time_data).join().unwrap();
+            assert!(!Arc::ptr_eq(&here, &elsewhere));
+        });
+        assert!(Arc::ptr_eq(&active_time_data(), &compiled_time_data()));
+    }
 }

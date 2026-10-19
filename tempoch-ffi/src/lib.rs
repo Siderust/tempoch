@@ -54,11 +54,11 @@ pub(crate) use catch_panic;
 
 /// Returns the tempoch-ffi ABI version (major*10000 + minor*100 + patch).
 ///
-/// Current ABI line: 0.11.0 -> 1100
+/// Current ABI line: 0.11.1 -> 1101
 #[allow(clippy::erasing_op, clippy::identity_op)]
 #[no_mangle]
 pub extern "C" fn tempoch_ffi_version() -> u32 {
-    0 * 10000 + 11 * 100 + 0 // 0.11.0
+    0 * 10000 + 11 * 100 + 1 // 0.11.1
 }
 
 #[cfg(test)]
@@ -67,7 +67,7 @@ mod tests {
 
     #[test]
     fn version_returns_expected_value() {
-        assert_eq!(tempoch_ffi_version(), 1100);
+        assert_eq!(tempoch_ffi_version(), 1101);
     }
 
     // ── Layout tests ──────────────────────────────────────────────────────

@@ -440,3 +440,6 @@ Coverage is gated in CI at **>= 90% line coverage**.
 ## License
 
 AGPL-3.0-only
+
+See [nominal civil UTC offsets](doc/nominal-civil-utc.md) for precise calendar
+bridges and their distinction from elapsed SI arithmetic.
