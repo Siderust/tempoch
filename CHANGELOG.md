@@ -3,23 +3,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.11.1] - 2026-10-21
 
 ### Fixed
 
 - Isolate synthetic time-data bundles per unit-test thread and restore them on
   unwind. Existing parallel UTC/Serde tests could observe another test's modified
   leap table. Production runtime-data behavior is unchanged; no tests are disabled.
-
-### Documentation
-
-- Resolve #23 using existing explicit-context UTC calendar bridges and
-  `ExactDuration`, without adding or redefining arithmetic APIs. Add regression
-  tests contrasting nominal civil offsets with elapsed SI time at leap seconds,
-  including fractional/negative nanosecond offsets and invalid durations.
-- Prepare compatible patch releases tempoch/core/ffi 0.11.1; C version reports
-  1101. No C layouts, symbols, Serde formats or arithmetic semantics change.
-
 
 ### Changed
 
