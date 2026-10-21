@@ -3,7 +3,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.11.1] - 2026-10-21
+
+### Added
+
+- Document how to express nominal civil-UTC calendar offsets with existing
+  chrono/Tempoch bridges without confusing them with elapsed SI time.
+- Add leap-second, nanosecond, and duration-validation regression tests.
+
+### Changed
+
+- Synchronize `tempoch`, `tempoch-core`, and `tempoch-ffi` at 0.11.1,
+  update internal dependency constraints, and advance the reported C FFI
+  version to 1101 without changing binary layouts or symbols.
+
+### Fixed
+
+- Isolate synthetic time-data bundles per unit-test thread and restore them on
+  unwind. Existing parallel UTC/Serde tests could observe another test's modified
+  leap table. Production runtime-data behavior is unchanged; no tests are disabled.
+
+## [0.11.0] - 2026-10-18
 
 ### Changed
 

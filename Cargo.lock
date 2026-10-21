@@ -10,9 +10,9 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "affn"
-version = "0.12.0"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2a0b360b4990eaa67ad4413f407cfcd0d7f37f246456118d16ff9bdada7026f3"
+checksum = "f936458443dd39e400016641c0a64afa3054305c7e2399aa217fd7a34157f7d4"
 dependencies = [
  "affn-derive",
  "qtty",
@@ -965,7 +965,7 @@ dependencies = [
 
 [[package]]
 name = "tempoch"
-version = "0.11.0"
+version = "0.11.1"
 dependencies = [
  "chrono",
  "serde_json",
@@ -974,7 +974,7 @@ dependencies = [
 
 [[package]]
 name = "tempoch-core"
-version = "0.11.0"
+version = "0.11.1"
 dependencies = [
  "affn",
  "chrono",
@@ -986,7 +986,7 @@ dependencies = [
 
 [[package]]
 name = "tempoch-ffi"
-version = "0.11.0"
+version = "0.11.1"
 dependencies = [
  "cbindgen",
  "chrono",
