@@ -437,6 +437,11 @@ cargo +nightly llvm-cov --workspace --all-features --doctests --summary-only
 
 Coverage is gated in CI at **>= 90% line coverage**.
 
+
+For UTC calendar-coordinate operations around leap seconds, see
+[nominal civil-UTC offsets](doc/nominal-civil-utc.md). The guide distinguishes
+calendar minutes from elapsed SI seconds.
+
 ## License
 
 AGPL-3.0-only
