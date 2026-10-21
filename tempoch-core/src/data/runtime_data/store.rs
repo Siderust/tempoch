@@ -217,4 +217,66 @@ mod isolation_tests {
         });
         assert!(Arc::ptr_eq(&active_time_data(), &compiled_time_data()));
     }
+
+    #[test]
+    fn nested_synthetic_overrides_restore_the_outer_bundle() {
+        let before = active_time_data();
+        let before_source = active_time_data_source();
+
+        with_test_time_data((*compiled_time_data()).clone(), || {
+            let outer = active_time_data();
+            assert_eq!(active_time_data_source(), ActiveTimeDataSource::Override);
+
+            with_test_time_data((*compiled_time_data()).clone(), || {
+                let inner = active_time_data();
+                assert!(!Arc::ptr_eq(&inner, &outer));
+                assert_eq!(active_time_data_source(), ActiveTimeDataSource::Override);
+            });
+
+            assert!(Arc::ptr_eq(&active_time_data(), &outer));
+        });
+
+        assert!(Arc::ptr_eq(&active_time_data(), &before));
+        assert_eq!(active_time_data_source(), before_source);
+    }
+
+    #[test]
+    fn synthetic_overrides_restore_after_unwind() {
+        let before = active_time_data();
+        let result = std::panic::catch_unwind(|| {
+            with_test_time_data((*compiled_time_data()).clone(), || {
+                assert_eq!(active_time_data_source(), ActiveTimeDataSource::Override);
+                panic!("deliberate scoped override unwind");
+            });
+        });
+        assert!(result.is_err());
+        assert!(Arc::ptr_eq(&active_time_data(), &before));
+    }
+
+    #[test]
+    fn runtime_active_bundle_is_thread_local_and_restored_on_unwind() {
+        let before = active_time_data();
+        let other_thread_before = std::thread::spawn(active_time_data).join().unwrap();
+
+        let result = std::panic::catch_unwind(|| {
+            with_runtime_data_lock(|| {
+                set_active_time_data((*compiled_time_data()).clone());
+                let active = active_time_data();
+                assert!(!Arc::ptr_eq(&active, &before));
+
+                let other_thread = std::thread::spawn(active_time_data).join().unwrap();
+                assert!(Arc::ptr_eq(&other_thread, &other_thread_before));
+
+                with_runtime_data_lock(|| {
+                    set_active_time_data((*compiled_time_data()).clone());
+                    assert!(!Arc::ptr_eq(&active_time_data(), &active));
+                });
+                assert!(Arc::ptr_eq(&active_time_data(), &active));
+
+                panic!("deliberate active bundle unwind");
+            });
+        });
+        assert!(result.is_err());
+        assert!(Arc::ptr_eq(&active_time_data(), &before));
+    }
 }
