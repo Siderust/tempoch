@@ -212,7 +212,6 @@ mod tests {
         });
     }
 
-
     #[test]
     fn exact_endpoints_and_fractional_bounds() {
         let points = three_point_fixture();
@@ -300,9 +299,10 @@ mod tests {
         // Synthetic 2016-12-31 leap: DUT1 jumps by one second at MJD 57754,
         // but the continuous UT1-TAI interpolation does not.
         let mut points = three_point_fixture();
-        for (point, (mjd, dut1)) in points
-            .iter_mut()
-            .zip([(57_753, -0.4), (57_754, 0.6), (57_755, 0.7)])
+        for (point, (mjd, dut1)) in
+            points
+                .iter_mut()
+                .zip([(57_753, -0.4), (57_754, 0.6), (57_755, 0.7)])
         {
             point.mjd = mjd;
             point.ut1_minus_utc = Second::new(dut1);
