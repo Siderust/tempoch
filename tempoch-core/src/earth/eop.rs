@@ -226,8 +226,10 @@ mod tests {
                 assert_eq!(got.pm_xp, point.pm_xp);
                 assert_eq!(got.pm_yp, point.pm_yp);
                 assert_eq!(got.lod, point.lod);
-                assert_eq!(got.dx, point.dx);
-                assert_eq!(got.dy, point.dy);
+                // Optional fields remain absent when a bracketing row lacks them,
+                // including at the exact first sample epoch.
+                assert_eq!(got.dx, None);
+                assert_eq!(got.dy, None);
                 assert_eq!(got.ut1_observed, point.ut1_observed);
                 assert!((got.ut1_minus_utc.value() - point.ut1_minus_utc.value()).abs() < 1e-12);
             }
