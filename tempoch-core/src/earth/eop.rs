@@ -72,7 +72,8 @@ pub fn builtin_eop_covers(mjd_utc: Day) -> bool {
 /// Linearly interpolate EOP at a UTC MJD from the active bundle.
 ///
 /// Returns `None` when `mjd_utc` is outside the loaded EOP range, or when no
-/// EOP data has been loaded.  Within range the function always succeeds;
+/// EOP data has been loaded. First and last row MJDs are inclusive sample
+/// epochs, not entire-day validity intervals. Within range lookup succeeds;
 /// optional quantities remain `None` whenever either bracketing row leaves the
 /// source field blank.
 ///
@@ -211,12 +212,142 @@ mod tests {
         });
     }
 
+
+    #[test]
+    fn exact_endpoints_and_fractional_bounds() {
+        let points = three_point_fixture();
+        with_test_time_data(make_test_eop_bundle(points.clone()), || {
+            assert_eq!(eop_start(), Some(Day::new(50_000.0)));
+            assert_eq!(eop_end(), Some(Day::new(50_002.0)));
+            for point in [points[0], points[2]] {
+                let mjd = Day::new(point.mjd as f64);
+                let got = builtin_eop_at(mjd).expect("EOP sample epoch must be valid");
+                assert!(builtin_eop_covers(mjd));
+                assert_eq!(got.mjd_utc, mjd);
+                assert_eq!(got.pm_xp, point.pm_xp);
+                assert_eq!(got.pm_yp, point.pm_yp);
+                assert_eq!(got.lod, point.lod);
+                assert_eq!(got.dx, point.dx);
+                assert_eq!(got.dy, point.dy);
+                assert_eq!(got.ut1_observed, point.ut1_observed);
+                assert!((got.ut1_minus_utc.value() - point.ut1_minus_utc.value()).abs() < 1e-12);
+            }
+            let just_before_first = f64::from_bits(50_000.0_f64.to_bits() - 1);
+            let just_after_last = f64::from_bits(50_002.0_f64.to_bits() + 1);
+            for mjd in [
+                just_before_first,
+                49_999.9999,
+                just_after_last,
+                50_002.0001,
+                50_002.5,
+            ] {
+                assert!(
+                    builtin_eop_at(Day::new(mjd)).is_none(),
+                    "unexpected EOP extrapolation at MJD {mjd}"
+                );
+                assert!(!builtin_eop_covers(Day::new(mjd)));
+            }
+        });
+    }
+
+    #[test]
+    fn interior_fractional_interpolation_and_optional_fields() {
+        with_test_time_data(make_test_eop_bundle(three_point_fixture()), || {
+            let quarter = builtin_eop_at(Day::new(50_000.25)).unwrap();
+            assert!((quarter.pm_xp.unwrap().value() - 0.125).abs() < 1e-12);
+            assert!((quarter.pm_yp.unwrap().value() - 0.25).abs() < 1e-12);
+            assert!((quarter.ut1_minus_utc.value() - 0.35).abs() < 1e-12);
+            assert!((quarter.lod.unwrap().value() - 1.25).abs() < 1e-12);
+            assert_eq!(quarter.dx, None);
+            assert_eq!(quarter.dy, None);
+            assert!(quarter.ut1_observed);
+            let later = builtin_eop_at(Day::new(50_001.75)).unwrap();
+            assert!((later.pm_xp.unwrap().value() - 0.275).abs() < 1e-12);
+            assert!((later.pm_yp.unwrap().value() - 0.55).abs() < 1e-12);
+            assert!((later.ut1_minus_utc.value() - 0.65).abs() < 1e-12);
+            assert_eq!(later.lod, None);
+            assert!(!later.ut1_observed);
+        });
+    }
+
+    #[test]
+    fn context_coverage_agrees_and_nonfinite_epochs_are_rejected() {
+        with_test_time_data(make_test_eop_bundle(three_point_fixture()), || {
+            let ctx = crate::TimeContext::with_builtin_eop();
+            let without_eop = crate::TimeContext::new();
+            for mjd in [
+                49_999.9999,
+                50_000.0,
+                50_000.5,
+                50_001.75,
+                50_002.0,
+                50_002.0001,
+                f64::NAN,
+                f64::INFINITY,
+                f64::NEG_INFINITY,
+            ] {
+                let epoch = Day::new(mjd);
+                let direct = builtin_eop_at(epoch);
+                assert_eq!(builtin_eop_covers(epoch), direct.is_some());
+                assert_eq!(ctx.eop_at(epoch), direct);
+                assert!(without_eop.eop_at(epoch).is_none());
+            }
+        });
+    }
+
+    #[test]
+    fn ut1_interpolation_preserves_leap_second_discontinuity() {
+        // Synthetic 2016-12-31 leap: DUT1 jumps by one second at MJD 57754,
+        // but the continuous UT1-TAI interpolation does not.
+        let mut points = three_point_fixture();
+        for (point, (mjd, dut1)) in points
+            .iter_mut()
+            .zip([(57_753, -0.4), (57_754, 0.6), (57_755, 0.7)])
+        {
+            point.mjd = mjd;
+            point.ut1_minus_utc = Second::new(dut1);
+        }
+        let bundle = TimeDataBundle::new(
+            vec![
+                UtcTaiSegment {
+                    start_mjd: 57_753,
+                    end_mjd: Some(57_754),
+                    base: Second::new(36.0),
+                    reference_mjd: 57_753.0,
+                    slope_seconds_per_day: 0.0,
+                },
+                UtcTaiSegment {
+                    start_mjd: 57_754,
+                    end_mjd: None,
+                    base: Second::new(37.0),
+                    reference_mjd: 57_754.0,
+                    slope_seconds_per_day: 0.0,
+                },
+            ],
+            vec![(41_714.0, 42.184), (42_369.0, 45.0)],
+            41_714.0,
+            points,
+            TimeDataProvenance::new("test", "x", "x", "x", "x"),
+        );
+        with_test_time_data(bundle, || {
+            let before = builtin_eop_at(Day::new(57_753.5)).unwrap();
+            let boundary = builtin_eop_at(Day::new(57_754.0)).unwrap();
+            let after = builtin_eop_at(Day::new(57_754.5)).unwrap();
+            assert!((before.ut1_minus_utc.value() + 0.4).abs() < 1e-12);
+            assert!((boundary.ut1_minus_utc.value() - 0.6).abs() < 1e-12);
+            assert!((after.ut1_minus_utc.value() - 0.65).abs() < 1e-12);
+        });
+    }
+
     #[test]
     fn no_eop_data_returns_none() {
         let bundle = make_test_eop_bundle(Vec::new());
         with_test_time_data(bundle, || {
             assert!(builtin_eop_at(Day::new(50000.0)).is_none());
             assert!(!builtin_eop_covers(Day::new(50000.0)));
+            let context = crate::TimeContext::with_builtin_eop();
+            assert!(context.eop_at(Day::new(50000.0)).is_none());
+            assert!(context.eop_at(Day::new(f64::NAN)).is_none());
         });
     }
 }
