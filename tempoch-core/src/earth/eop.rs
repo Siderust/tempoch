@@ -237,9 +237,9 @@ mod tests {
             let just_after_last = f64::from_bits(50_002.0_f64.to_bits() + 1);
             for mjd in [
                 just_before_first,
-                49_999.9999,
+                49_999.999_9,
                 just_after_last,
-                50_002.0001,
+                50_002.000_1,
                 50_002.5,
             ] {
                 assert!(
@@ -277,12 +277,12 @@ mod tests {
             let ctx = crate::TimeContext::with_builtin_eop();
             let without_eop = crate::TimeContext::new();
             for mjd in [
-                49_999.9999,
+                49_999.999_9,
                 50_000.0,
                 50_000.5,
                 50_001.75,
                 50_002.0,
-                50_002.0001,
+                50_002.000_1,
                 f64::NAN,
                 f64::INFINITY,
                 f64::NEG_INFINITY,
