@@ -22,11 +22,12 @@ pub(crate) fn time_data_eop_at(data: &TimeDataBundle, mjd_utc: Day) -> Option<Eo
     let first = points.first()?.mjd;
     let last = points.last()?.mjd;
     let mjd_f = mjd_utc.value();
-    let lo_i = mjd_f.floor() as i32;
-    let hi_i = lo_i + 1;
-    if lo_i < first || lo_i > last {
+    // EOP rows mark exact sample epochs, not validity through the final day.
+    if !mjd_f.is_finite() || mjd_f < first as f64 || mjd_f > last as f64 {
         return None;
     }
+    let lo_i = mjd_f.floor() as i32;
+    let hi_i = lo_i + 1;
     let lo = find_eop_point(points, lo_i)?;
     let hi = if hi_i > last {
         lo

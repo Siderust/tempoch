@@ -3,6 +3,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.2] - 2026-10-31
+
+### Fixed
+
+- Reject out-of-coverage fractional MJD queries in IERS EOP lookups instead of
+  silently returning the final stored sample.
+- Safely reject non-finite EOP lookup epochs while preserving valid interpolation,
+  missing optional fields, and leap-second-aware UT1 behavior.
+
+### Changed
+
+- Synchronize `tempoch`, `tempoch-core`, and `tempoch-ffi` at 0.11.2,
+  update internal dependency constraints, and advance the reported C FFI
+  version to 1102 without changing binary layouts or symbols.
+
 ## [0.11.1] - 2026-10-21
 
 ### Added
