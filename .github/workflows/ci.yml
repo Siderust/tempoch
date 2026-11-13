@@ -25,6 +25,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Siderust/archive
+          ref: 5ec0343d4623b84ffbe5f990d15f0d48986b425d
+          path: .ci-deps/archive
+      - run: mv .ci-deps/archive ../archive
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: thumbv7em-none-eabihf
@@ -45,6 +51,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Siderust/archive
+          ref: 5ec0343d4623b84ffbe5f990d15f0d48986b425d
+          path: .ci-deps/archive
+      - run: mv .ci-deps/archive ../archive
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
@@ -55,6 +67,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Siderust/archive
+          ref: 5ec0343d4623b84ffbe5f990d15f0d48986b425d
+          path: .ci-deps/archive
+      - run: mv .ci-deps/archive ../archive
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -65,6 +83,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Siderust/archive
+          ref: 5ec0343d4623b84ffbe5f990d15f0d48986b425d
+          path: .ci-deps/archive
+      - run: mv .ci-deps/archive ../archive
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --locked --all-targets --all-features
       - run: cargo test --doc --all-features
@@ -75,6 +99,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Siderust/archive
+          ref: 5ec0343d4623b84ffbe5f990d15f0d48986b425d
+          path: .ci-deps/archive
+      - run: mv .ci-deps/archive ../archive
 
       - name: Set up Rust (nightly + llvm-tools)
         uses: dtolnay/rust-toolchain@v1

@@ -6,3 +6,7 @@ members = [
     "tempoch-ffi",
     "tempoch-validation",
 ]
+
+# Temporary until Archive 0.2.0 is published.
+[patch.crates-io]
+siderust-archive = { path = "../archive" }
