@@ -889,9 +889,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "siderust-archive"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5baa7a0a852b8305df7dc0b259f67041e668cb7965be2848bd4dbe9dccbefcce"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -965,7 +963,7 @@ dependencies = [
 
 [[package]]
 name = "tempoch"
-version = "0.11.2"
+version = "0.11.3"
 dependencies = [
  "chrono",
  "serde_json",
@@ -974,7 +972,7 @@ dependencies = [
 
 [[package]]
 name = "tempoch-core"
-version = "0.11.2"
+version = "0.11.3"
 dependencies = [
  "affn",
  "chrono",
@@ -986,7 +984,7 @@ dependencies = [
 
 [[package]]
 name = "tempoch-ffi"
-version = "0.11.2"
+version = "0.11.3"
 dependencies = [
  "cbindgen",
  "chrono",
