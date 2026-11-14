@@ -3,6 +3,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.3]
+
+### Changed
+
+- Use Siderust Archive 0.2 for time data so downstream compact ephemeris builds can share one Archive version.
+
 ## [0.11.2] - 2026-10-31
 
 ### Fixed
